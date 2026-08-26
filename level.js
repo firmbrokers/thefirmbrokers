@@ -69,7 +69,7 @@
     x: START_X, y: 0, vx: 0, vy: 0, facing: 1,
     keys: {}, frozen: false, mode: "street", streetX: START_X, roomW: 0,
     cueKey: null, cueW: 0, thoughtW: 0, thoughtH: 0, agentLineW: 0, agentLineH: 0, agentLineL: 0, boothEl: null,
-    tokenLive: false, mintOpen: false, stats: null, allowance: null, mintedByMe: null,
+    tokenLive: false, mintOpen: false, stats: null,
     brokers: [], assetMeta: null, account: null,
     fusePick: new Set(), wheelVel: 0,
     // the trading floor: which three are out front, and the roster menu's own
@@ -260,18 +260,16 @@
     toast("clocked out", true);
   }
 
-  /// A mint site has to notice the wallet switching accounts: people keep the
-  /// allowlisted one in a second account and flip to it. Without this the site
-  /// keeps the old address, shows its allowance, and sends a transaction from
-  /// an account the wallet is no longer on.
+  /// The site has to notice the wallet switching accounts: people keep their
+  /// brokers in a second account and flip to it. Without this the site keeps
+  /// the old address, shows its floor, and sends a transaction from an account
+  /// the wallet is no longer on.
   function watchWallet(p) {
     if (!p || p._fbWatched || typeof p.on !== "function") return;
     p._fbWatched = true;
     try {
       p.on("accountsChanged", (accs) => {
         state.account = accs && accs.length ? accs[0] : null;
-        state.allowance = null;
-        state.mintedByMe = null;
         state.brokers = [];
         updateThought();
         paintHud();
@@ -407,15 +405,30 @@
   const PRELAUNCH = {
     minted: null, maxSupply: 5000, priceWei: 3500000000000000n,
     totalHarvested: null, potBuffer: null, burned: null,
-    mintOpen: true, publicOpen: false,
+    publicOpen: false,
   };
 
+  /// THE MINT IS ON OPENSEA (decided 2026-08-25). Nothing on this site mints.
+  /// "The mint is open" means exactly one thing now: the OpenSea drop page
+  /// exists (config.js mintUrl), and that link is the only mint link the site
+  /// ever shows. The public round is read from SeaDrop's public stage once the
+  /// contract is live; config.js mintPublicAt covers the window before the
+  /// stage is configured. Both are the truth or nothing — never a guess.
+  const mintOpen = () => !!CFG.mintUrl;
+  const publicByConfig = () => !!CFG.mintPublicAt && Date.now() / 1000 >= Number(CFG.mintPublicAt);
+
   async function refreshStats() {
-    if (!DEPLOYED) { state.stats = PRELAUNCH; state.mintOpen = false; paintHud(); return; }
+    state.mintOpen = mintOpen();
+    if (!DEPLOYED) { state.stats = { ...PRELAUNCH, publicOpen: publicByConfig() }; paintHud(); return; }
     try {
-      state.stats = await F.stats();
-      state.mintOpen = state.stats.mintOpen;
-      state.tokenLive = state.stats.burned !== null;
+      const s = await F.stats();
+      // the price is a stage setting on OpenSea; until the stage is configured
+      // the number on the desk is the one the launch was announced with
+      if (s.priceWei == null) s.priceWei = PRELAUNCH.priceWei;
+      // SeaDrop answered: the chain decides. It did not: config decides.
+      s.publicOpen = s.publicOpen === null || s.publicOpen === undefined ? publicByConfig() : !!s.publicOpen;
+      state.stats = s;
+      state.tokenLive = s.burned !== null;
       paintHud();
       if (state.mode !== "street") rebuildRoom();
     } catch (e) { /* stale values stay */ }
@@ -424,13 +437,9 @@
   async function refreshBrokers() {
     if (!DEPLOYED || !state.account) return;
     try {
-      const info = await F.mintInfo(state.account);
-      state.allowance = info.allowance;
-      state.mintedByMe = info.minted;
       const ids = await F.tokensOf(state.account);
       state.assetMeta = await F.assetMeta();
       state.brokers = await F.brokerBundle(ids);
-      // HR shows the allowance, so it has to be redrawn when that lands too
       if (state.mode === "floor" || state.mode === "hr") rebuildRoom();
       if (document.body.classList.contains("flat-mode")) buildFlat();
       refreshOpenBroker();
@@ -898,7 +907,9 @@
   function paintMintWall() {
     const wall = $("fb-mintwall");
     if (!wall) return;
-    const open = DEPLOYED && state.mintOpen;
+    // "open" = the OpenSea drop page exists. The contract being deployed is
+    // not the mint being open any more; the page is.
+    const open = state.mintOpen;
     // ☠️ THIS SAID "WALK RIGHT IN" WHILE THE DOOR WAS SHUT. The booth below it
     // says the form comes first, so the building was giving two opposite
     // instructions at once — which is how somebody read a locked door as a bug
@@ -908,7 +919,7 @@
     const gated = open && !st.publicOpen && !clearanceDone();
     wall.innerHTML = `<b>${open ? "MINTING NOW" : "MINT HERE"}</b>
       <span>5,000 BROKERS</span><span>0.0035 ETH EACH</span>
-      <span>${!open ? "OPENING SOON" : gated ? "SEND THE FORM FIRST" : "WALK RIGHT IN"}</span>`;
+      <span>${!open ? "SOON, ON OPENSEA" : gated ? "SEND THE FORM FIRST" : "WALK RIGHT IN"}</span>`;
   }
 
   function paintDoors() {
@@ -1107,7 +1118,42 @@
     else if (id === "bank") buildBankRoom();
   }
 
-  // ---------- HR: mint inside the tower lobby
+  // ---------- HR: the mint desk inside the tower lobby
+  /// The mint desk, room and page alike. Since 2026-08-25 the mint is on
+  /// OpenSea: the desk shows the count, the price, the round, and ONE link —
+  /// config.js mintUrl — or, before the drop page exists, says so and shows no
+  /// button at all. It never asks for a wallet and never sends a transaction.
+  /// The anti-phishing rule is the same as the token's: this site links
+  /// exactly one mint page, and says out loud that any other is fake.
+  function mintLink(label) {
+    const a = el("a", "fb-btn fb-oslink", label + " \u2197");
+    a.href = CFG.mintUrl;
+    a.target = "_blank";
+    a.rel = "noopener";
+    return a;
+  }
+  function mintDesk(s, into, withTitle) {
+    const pct = Math.min(100, (100 * (s.minted || 0)) / (s.maxSupply || 1));
+    const soldOut = (s.maxSupply || 0) > 0 && (s.minted || 0) >= s.maxSupply;
+    into.innerHTML = `${withTitle ? "<h2>MINT A BROKER</h2>" : ""}
+      <div class="big">${(s.minted ?? 0).toLocaleString()} / ${(s.maxSupply ?? 0).toLocaleString()}</div>
+      <div class="fb-progress"><i style="width:${pct}%"></i></div>
+      <p style="margin-top:10px">${fmtEth(s.priceWei)} ETH each, minted on OpenSea. Art is on-chain and revealed the moment you mint.</p>`;
+    const note = el("div", "fb-mintnote");
+    if (soldOut) {
+      if (CFG.mintUrl) into.appendChild(mintLink("SEE THEM ON OPENSEA"));
+      note.innerHTML = "Sold out. Every broker is minted \u2014 the trading floor is where they live now.";
+    } else if (state.mintOpen) {
+      into.appendChild(mintLink("MINT ON OPENSEA"));
+      note.innerHTML = s.publicOpen
+        ? `Open to everyone: ${PUBLIC_CAP} per wallet.`
+        : `Whitelist round: ${WL_CAP} per wallet. Public round next, ${PUBLIC_CAP} per wallet.`;
+    } else {
+      note.innerHTML = `The mint opens on OpenSea at launch. The link will be right here. Anywhere else is fake.`;
+    }
+    into.appendChild(note);
+  }
+
   function buildHrRoom() {
     const s = state.stats || PRELAUNCH;
     roomShell(2050, []);
@@ -1150,94 +1196,10 @@
     px(rec, { left: "700px" });
     roomLayer.appendChild(rec);
     prop("hr2-poster", 710, '<div class="pic"><i class="m2"></i><i class="m1"></i><u class="sun"></u></div>');
-    prop("room-speech", 758, s.maxSupply > 0 && s.minted >= s.maxSupply ? "All full. Try the floor." : state.mintOpen ? "Next!" : "We open at launch.");
+    prop("room-speech", 758, s.maxSupply > 0 && s.minted >= s.maxSupply ? "All full. Try the floor." : state.mintOpen ? "The mint is on OpenSea. Link's on the desk." : "We open at launch.");
 
-    const pct = Math.min(100, (100 * (s.minted || 0)) / (s.maxSupply || 1));
     const inner = el("div");
-    inner.innerHTML = `<h2>MINT A BROKER</h2>
-      <div class="big">${(s.minted ?? 0).toLocaleString()} / ${(s.maxSupply ?? 0).toLocaleString()}</div>
-      <div class="fb-progress"><i style="width:${pct}%"></i></div>
-      <p style="margin-top:10px">${fmtEth(s.priceWei)} ETH per broker · art drawn on-chain and already revealed, so you see yours instantly.</p>`;
-    // what this wallet may still take: the contract's own answer once we know
-    // who is asking, otherwise the cap for the phase we are in
-    const phaseCap = s.publicOpen ? PUBLIC_CAP : WL_CAP;
-    const cap = state.account && state.allowance !== null ? state.allowance : phaseCap;
-
-    const locked = !DEPLOYED || !state.mintOpen || (s.minted >= s.maxSupply) || cap === 0;
-    const qlabel = el("div", "fb-qtylabel", "HOW MANY? TYPE A NUMBER");
-    const row = el("div");
-    row.style.cssText = "display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center";
-    const qty = el("input", "fb-input fb-qty");
-    qty.type = "number";
-    qty.min = "1";
-    qty.max = String(Math.max(1, cap));
-    qty.step = "1";
-    qty.value = "1";
-    qty.inputMode = "numeric";
-    qty.title = "type how many brokers you want";
-    const btn = el("button", "fb-btn", "MINT");
-    btn.disabled = locked;
-
-    const note = el("div", "fb-mintnote");
-    // read without touching the field, so clearing it to retype does not
-    // snap back to 1 under the user's fingers
-    const readQty = () => {
-      let q = Math.floor(Number(qty.value));
-      if (!Number.isFinite(q) || q < 1) q = 1;
-      if (q > cap) q = Math.max(1, cap);
-      return q;
-    };
-    const clamp = () => { const q = readQty(); qty.value = String(q); return q; };
-    const paintNote = () => {
-      const q = readQty();
-      const total = fmtEth(s.priceWei * BigInt(q), 4);
-      const line = s.publicOpen
-        ? `${PUBLIC_CAP} per wallet`
-        : `whitelist, ${WL_CAP} per wallet`;
-      const priced = `${q} broker${q > 1 ? "s" : ""} cost${q > 1 ? "" : "s"} ${total} ETH`;
-      if (!state.account) { note.innerHTML = `${priced} · ${line}`; return; }
-      // the allowance suffix ("you can still take N") is gone on user request:
-      // it restated what the clamp and MAX already enforce, and read as a
-      // warning. The card header carries the per-wallet cap.
-      if (cap > 0) { note.innerHTML = priced; return; }
-      // nothing to take: three very different reasons, never the same sentence
-      if (!s.mintOpen) note.innerHTML = `The mint opens at launch.`;
-      else if (state.mintedByMe > 0) note.innerHTML = `You have taken your whole allocation.`;
-      else if (!s.publicOpen) note.innerHTML = `This wallet is not on the whitelist. Everyone can mint when the public round opens.`;
-      else note.innerHTML = `This wallet cannot mint right now.`;
-    };
-    qty.addEventListener("input", paintNote);
-    qty.addEventListener("change", () => { clamp(); paintNote(); });
-    qty.addEventListener("blur", () => { clamp(); paintNote(); });
-
-    const step = (label, fn) => {
-      const b = el("button", "fb-step", label);
-      b.type = "button";
-      // these only choose a number. They must work whenever the field does,
-      // including the pre-launch walkthrough where nothing can be minted yet
-      b.disabled = cap === 0;
-      b.addEventListener("click", () => { qty.value = String(fn(readQty())); clamp(); paintNote(); });
-      return b;
-    };
-    const minus = step("-", (q) => q - 1);
-    const plus = step("+", (q) => q + 1);
-    const maxBtn = step("MAX", () => cap);
-    maxBtn.classList.add("wide");
-    paintNote();
-
-    btn.addEventListener("click", async () => {
-      if (!state.account) { await connect(); if (!state.account) return; }
-      const q = clamp();
-      await txFlow(`hire ${q}`, () => F.mint(q, state.account, state.stats.priceWei), async () => {
-        await refreshStats(); await refreshBrokers(); rebuildRoom();
-        toast("done. Your broker is on the trading floor", true);
-      });
-    });
-    row.appendChild(minus); row.appendChild(qty); row.appendChild(plus);
-    row.appendChild(maxBtn); row.appendChild(btn);
-    inner.appendChild(qlabel);
-    inner.appendChild(row);
-    inner.appendChild(note);
+    mintDesk(s, inner, true);
     deskCard(960, 500, inner);
 
     const frame = el("div", "hr2-frame");
@@ -3439,39 +3401,8 @@
         wl.appendChild(ab);
         room.appendChild(wl);
       }
-      const pct = Math.min(100, (100 * (s.minted || 0)) / (s.maxSupply || 1));
       const c = el("div", "fb-card");
-      c.innerHTML = `<div class="big">${(s.minted ?? 0).toLocaleString()} / ${(s.maxSupply ?? 0).toLocaleString()}</div>
-        <div class="fb-progress"><i style="width:${pct}%"></i></div>
-        <p style="margin-top:10px">${fmtEth(s.priceWei)} ETH each · ${s.publicOpen ? `${PUBLIC_CAP} per wallet` : `whitelist, ${WL_CAP} per wallet`}.</p>`;
-      const flatCap = state.account && state.allowance !== null ? state.allowance : (s.publicOpen ? PUBLIC_CAP : WL_CAP);
-      c.appendChild(el("div", "fb-qtylabel", "HOW MANY? TYPE A NUMBER"));
-      const row = el("div");
-      row.style.cssText = "display:flex;gap:10px;margin-top:8px;align-items:center;flex-wrap:wrap";
-      const qty = el("input", "fb-input fb-qty");
-      qty.type = "number";
-      qty.min = "1";
-      qty.max = String(Math.max(1, flatCap));
-      qty.step = "1";
-      qty.value = "1";
-      qty.setAttribute("aria-label", "how many brokers to mint");
-      const flatClamp = () => {
-        let q = Math.floor(Number(qty.value));
-        if (!Number.isFinite(q) || q < 1) q = 1;
-        if (q > flatCap) q = Math.max(1, flatCap);
-        qty.value = String(q);
-        return q;
-      };
-      qty.addEventListener("change", flatClamp);
-      const btn = el("button", "fb-btn", "MINT");
-      btn.disabled = !DEPLOYED || !state.mintOpen || s.minted >= s.maxSupply || flatCap === 0;
-      btn.addEventListener("click", async () => {
-        if (!state.account) { await connect(); if (!state.account) return; }
-        const q = flatClamp();
-        await txFlow(`hire ${q}`, () => F.mint(q, state.account, state.stats.priceWei), async () => { await refreshStats(); await refreshBrokers(); buildFlat(); });
-      });
-      row.appendChild(qty); row.appendChild(btn);
-      c.appendChild(row);
+      mintDesk(s, c, false);
       room.appendChild(c);
     });
 

@@ -12,12 +12,10 @@
     totalMinted: "0xa2309ff8",
     totalSupply: "0x18160ddd",
     maxSupply: "0xd5abeb01",
-    mintOpen: "0x24bbd049",
-    publicOpen: "0xba70c515",
-    mintAllowance: "0xc5119ff8",
-    mintedBy: "0x3cef28d2",
     mintPriceWei: "0xcb2c9722",
-    mint: "0xa0712d68",
+    // seadrop: getPublicDrop(address nft) -> (uint80 mintPrice, uint48 start,
+    // uint48 end, uint16 maxPerWallet, uint16 feeBps, bool restrictFeeRecipients)
+    getPublicDrop: "0xbc6a629c",
     balanceOf: "0x70a08231",
     ownerOf: "0x6352211e",
     isActive: "0x82afd23b",
@@ -259,47 +257,57 @@
 
   async function stats() {
     const t = await launchToken();
+    // The mint moved to OpenSea (2026-08-25). Nothing here sends a mint, and
+    // the only mint facts the site still shows are the counter and the price:
+    // the counter from the NFT, the price and the public window from SeaDrop's
+    // public stage for this NFT. Every NFT read that a SeaDrop-shaped contract
+    // might not answer (totalMinted, mintPriceWei) is optional and falls back,
+    // so a missing selector can never take the whole HUD down with it.
     const reqs = [
-      { to: CFG.nft, data: SEL.totalMinted },
-      { to: CFG.nft, data: SEL.maxSupply },
-      { to: CFG.nft, data: SEL.totalSupply },
-      { to: CFG.nft, data: SEL.mintPriceWei },
-      { to: CFG.nft, data: SEL.mintOpen },
-      { to: CFG.nft, data: SEL.publicOpen },
-      { to: CFG.engine, data: SEL.totalHarvested },
-      { to: CFG.engine, data: SEL.totalWeight },
-      { to: CFG.engine, data: SEL.potBuffer },
+      { to: CFG.nft, data: SEL.maxSupply },          // 0 required
+      { to: CFG.nft, data: SEL.totalSupply },        // 1 required
+      { to: CFG.engine, data: SEL.totalHarvested },  // 2 required
+      { to: CFG.engine, data: SEL.totalWeight },     // 3 required
+      { to: CFG.engine, data: SEL.potBuffer },       // 4 required
+      { to: CFG.nft, data: SEL.totalMinted },        // 5 optional
+      { to: CFG.nft, data: SEL.mintPriceWei },       // 6 optional
     ];
-    if (t) reqs.push({ to: t, data: SEL.balanceOf + word(DEAD) });
+    const iBurn = t ? reqs.push({ to: t, data: SEL.balanceOf + word(DEAD) }) - 1 : -1;
+    const iDrop = CFG.seaDrop ? reqs.push({ to: CFG.seaDrop, data: SEL.getPublicDrop + word(CFG.nft) }) - 1 : -1;
     const r = await callBatch(reqs);
-    if (r.slice(0, 9).some((x) => x === null)) throw new Error("stats read failed");
+    if (r.slice(0, 5).some((x) => x === null)) throw new Error("stats read failed");
+    const drop = iDrop >= 0 ? publicDrop(r[iDrop]) : null;
+    const nftPrice = r[6] !== null ? toBig(r[6]) : null;
     return {
-      minted: Number(toBig(r[0])),
-      maxSupply: Number(toBig(r[1])),
-      liveSupply: Number(toBig(r[2])),
-      priceWei: toBig(r[3]),
-      mintOpen: toBig(r[4]) === 1n,
-      publicOpen: toBig(r[5]) === 1n,
-      totalHarvested: toBig(r[6]),
-      totalWeight: toBig(r[7]),
-      potBuffer: toBig(r[8]),
-      burned: t && r[9] !== null ? toBig(r[9]) : null,
+      minted: Number(toBig(r[5] !== null ? r[5] : r[1])),
+      maxSupply: Number(toBig(r[0])),
+      liveSupply: Number(toBig(r[1])),
+      // SeaDrop's stage price is the truth once the drop is configured; the
+      // contract's own price (pre-pivot builds) next; null renders as "—"
+      priceWei: drop && drop.price > 0n ? drop.price : nftPrice,
+      // null = SeaDrop did not answer (not configured yet): the caller falls
+      // back to config. false = configured and the window is not open now.
+      publicOpen: drop ? drop.open : null,
+      publicDrop: drop,
+      totalHarvested: toBig(r[2]),
+      totalWeight: toBig(r[3]),
+      potBuffer: toBig(r[4]),
+      burned: iBurn >= 0 && r[iBurn] !== null ? toBig(r[iBurn]) : null,
     };
   }
 
-  /// What this wallet may still mint and what it has already taken, straight
-  /// from the contract. Both are needed: an allowance of zero means something
-  /// different to a wallet that has minted out than to one that was never on
-  /// the list, and the site must not tell the second it is the first.
-  /// Anything that is not a real 32 byte answer comes back null, so a rate
-  /// limited or reverted read can never read as "you have none left".
-  async function mintInfo(addr) {
-    const r = await callBatch([
-      { to: CFG.nft, data: SEL.mintAllowance + word(addr) },
-      { to: CFG.nft, data: SEL.mintedBy + word(addr) },
-    ]);
-    const num = (hex) => (!hex || hex === "0x" ? null : Number(toBig(hex)));
-    return { allowance: num(r[0]), minted: num(r[1]) };
+  /// SeaDrop.getPublicDrop(nft): six ABI words. An unconfigured NFT answers
+  /// all zeros (start 0), which reads as "no public stage yet", not "open".
+  function publicDrop(hex) {
+    if (!hex || hex === "0x" || hex.length < 2 + 64 * 6) return null;
+    const w = (i) => BigInt("0x" + hex.slice(2 + 64 * i, 2 + 64 * (i + 1)));
+    const price = w(0), start = Number(w(1)), end = Number(w(2));
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      price, start, end,
+      maxPerWallet: Number(w(3)), feeBps: Number(w(4)),
+      open: start > 0 && now >= start && (end === 0 || now < end),
+    };
   }
 
   async function tokensOf(addr) {
@@ -572,8 +580,6 @@
     nftNumber,
     send,
     waitForTx,
-    mintInfo,
-    mint: (q, from, priceWei) => send(CFG.nft, SEL.mint + word(BigInt(q)), priceWei * BigInt(q), from),
     approveMax: async (from) =>
       send(await launchToken(), SEL.approve + word(CFG.nft) + word((1n << 256n) - 1n), 0n, from),
     activate: (id, from) => send(CFG.nft, SEL.activate + word(id), 0n, from),

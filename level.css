@@ -3866,3 +3866,9 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
 /* the wall clock: the room's quiet live element now the countdown has gone to
    the bank. Its hand sweeps once a minute and it states no number twice. */
 .room-floor .room-clock { top: 60px; }
+
+/* the one mint link on the whole site (2026-08-25: the mint is on OpenSea):
+   an anchor wearing the button, so it sits in the desk card like MINT did */
+a.fb-btn { display: inline-block; text-decoration: none; text-align: center; line-height: 1; }
+.fb-oslink { margin-top: 12px; }
+.room-hr .room-deskcard a.fb-oslink { display: block; width: fit-content; }

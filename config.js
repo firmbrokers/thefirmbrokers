@@ -17,6 +17,24 @@ window.FIRM_CFG = {
   splitter: "",   // the letscash fee splitter (for the trust panel link)
   deployBlock: 0, // NFT deploy block: log scans start here
 
+  // ---- the mint: on OpenSea (decided 2026-08-25) ----
+  // Minting happens on OpenSea, not on this site. The HR desk and the street
+  // wall show ONE link, this one, and nothing else on the site ever offers a
+  // mint. Empty = the drop page does not exist yet: the desk says "opening
+  // soon" and shows NO button. Fill it the moment the OpenSea page is live.
+  // (Anti-phishing rule, same as the token: the site never links a mint page
+  // that is not this exact URL.)
+  mintUrl: "",
+  // When the PUBLIC round opens on OpenSea, unix seconds UTC. 0 = not yet.
+  // Until then HR is gated on the whitelist form (listed wallets mint first);
+  // from then on the guard steps aside, because everyone can mint. The site
+  // also reads the public stage straight from SeaDrop once `nft` is set, so
+  // this is the fallback for the window before the stage is configured.
+  mintPublicAt: 0,
+  // OpenSea's SeaDrop 1.0 on Robinhood Chain (canonical, verified on-chain
+  // 2026-08-24). Read-only here: getPublicDrop(nft) gives price + window.
+  seaDrop: "0x00005EA00Ac477B1030CE78506496e8C2dE24bf5",
+
   // art. images keyed by ARTWORK id (nft.artworkOf(tokenId))
   imageBase: "art/images", // swap for ipfs://CID after pinning
   sealedImage: "art/sealed.png",
