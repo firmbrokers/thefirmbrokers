@@ -1,0 +1,10 @@
+thefirmbrokers.com — domain control statement (2026-08-25)
+
+This file is published by the owner of thefirmbrokers.com in support of the following false-positive blocklist appeals:
+- MetaMask eth-phishing-detect: https://github.com/MetaMask/eth-phishing-detect/issues/286920
+- ChainPatrol dispute and SEAL (via @seal_tips_bot), filed the same day.
+
+Firm Brokers is a pixel-art NFT collection on Robinhood Chain (chain id 4663). Official X: @thefirmbrokers.
+The site's source is public and byte-identical to what this domain serves: https://github.com/firmbrokers/thefirmbrokers
+The site requests no signatures or token approvals and collects no keys. No mint contract is deployed yet.
+We are not affiliated with any other collection and the site carries no third-party brand.

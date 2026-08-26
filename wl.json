@@ -1,0 +1,6 @@
+{
+ "algo": "sha256(lowercase)",
+ "final": false,
+ "n": 0,
+ "hashes": []
+}

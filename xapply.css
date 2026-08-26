@@ -1,0 +1,93 @@
+/* ===========================================================================
+   The application, v2 — "post to apply". One modal, four steps, the same
+   jumbotron chassis as everything else on the street. Owns xa-* only.
+   =========================================================================== */
+.xa-wrap {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  background: #05070add; padding: 14px;
+}
+.xa-modal {
+  position: relative; width: 660px; max-width: 96vw; max-height: 94vh; overflow: auto;
+  background: #2a2f36; border: 4px solid var(--ink); padding: 10px;
+  box-shadow: 8px 8px 0 rgba(0, 0, 0, .45); display: flex; flex-direction: column; gap: 10px;
+}
+.xa-head {
+  position: relative; font-family: var(--font-display); font-size: 13px; color: var(--gold);
+  text-shadow: 0 0 10px #ffc93366; text-align: center; letter-spacing: 1px;
+  padding: 11px 40px 10px; background: linear-gradient(#10151d, #0a0e14); border: 3px solid #06080c;
+}
+.xa-close {
+  position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; cursor: pointer;
+  background: var(--red); color: var(--cream); border: 3px solid #06080c;
+  font-family: var(--font-display); font-size: 10px; line-height: 1;
+}
+.xa-steps { display: flex; gap: 6px; justify-content: center; }
+.xa-steps i {
+  width: 34px; height: 8px; background: #182029; border: 2px solid #06080c; font-style: normal;
+}
+.xa-steps i.on { background: var(--gold); box-shadow: 0 0 8px #ffc93355; }
+.xa-steps i.done { background: #6fe08c; }
+.xa-body {
+  position: relative; overflow: hidden; padding: 14px; min-height: 200px;
+  background: linear-gradient(#10151d, #0a0e14); border: 3px solid #06080c;
+  /* the modal scrolls; its parts must never be squeezed. Without this, a tall
+     step (the post mock) let flexbox shrink the body and the overflow:hidden
+     sliced the buttons to slivers. */
+  flex-shrink: 0;
+}
+.xa-head, .xa-steps, .xa-foot { flex-shrink: 0; }
+.xa-body::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #00000048 3px 4px);
+}
+.xa-body > * { position: relative; z-index: 1; }
+.xa-title { font-family: var(--font-display); font-size: 10px; color: #9fe0af; margin-bottom: 10px; }
+.xa-sub { font-family: var(--font-data); font-size: 19px; color: #c6d1da; line-height: 1.25; margin-bottom: 12px; }
+.xa-sub b { color: var(--cream); font-weight: normal; }
+/* the one line an applicant must not miss: the post IS the application. Bigger
+   than the subs, two-tone (gold claim on its own line, red consequence below),
+   no filled box — just strong type. */
+.xa-mandate { font-family: var(--font-data); font-size: 25px; line-height: 1.3; color: #ff8a8a; margin: 4px 0 16px; }
+.xa-mandate b { display: block; font-family: var(--font-data); font-size: 29px; font-weight: normal; color: var(--gold); letter-spacing: .5px; text-shadow: 0 0 10px #ffc93340; margin-bottom: 3px; }
+.xa-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.xa-input {
+  flex: 1; min-width: 200px; background: var(--field); color: var(--ink);
+  border: 3px solid var(--ink); padding: 10px 12px; font-family: var(--font-data); font-size: 20px;
+}
+.xa-btn { text-decoration: none; }
+.xa-btn.ghost { background: transparent; color: var(--gold); }
+.xa-err {
+  display: none; margin-top: 10px; padding: 8px 10px; background: #b22c2c22; border: 2px solid var(--red);
+  font-family: var(--font-data); font-size: 18px; color: #ffb3b3;
+}
+.xa-err.show { display: block; }
+.xa-cardwrap { margin: 10px 0 4px; border: 3px solid #06080c; box-shadow: 0 0 0 2px #3a4148; }
+.xa-cardwrap canvas { display: block; width: 100%; height: auto; }
+.xa-post {
+  margin: 8px 0; padding: 10px 12px; background: #182029; border: 2px solid #06080c;
+  font-family: var(--font-data); font-size: 18px; color: #c6d1da; white-space: pre-wrap; word-break: break-word;
+}
+.xa-ok { text-align: center; padding: 12px 0 4px; }
+.xa-ok b {
+  display: block; font-family: var(--font-display); font-size: 20px; color: #6fe08c;
+  text-shadow: 0 0 14px #6fe08c66; margin-bottom: 10px;
+}
+.xa-ok span { display: block; font-family: var(--font-data); font-size: 19px; color: #c6d1da; margin-bottom: 12px; }
+.xa-ts { display: flex; justify-content: center; min-height: 0; }
+.xa-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.xa-foot .xa-note { font-family: var(--font-display); font-size: 6px; color: #8fa0b0; }
+@media (max-width: 700px) {
+  .xa-modal { width: 100%; }
+  .xa-input { font-size: 18px; }
+}
+
+/* the post, mocked as a post: what you see is what you publish */
+.xa-mock { background: #182029; border: 2px solid #06080c; padding: 12px; margin-bottom: 10px; }
+.xa-mock .head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.xa-mock .head img { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--ink); }
+.xa-mock .head b { font-family: var(--font-data); font-size: 19px; color: var(--cream); font-weight: normal; }
+.xa-mock .txt { font-family: var(--font-data); font-size: 19px; color: #c6d1da; line-height: 1.25; white-space: pre-wrap; word-break: break-word; margin-bottom: 10px; }
+.xa-mock .cardimg { border: 2px solid #06080c; }
+.xa-mock .cardimg canvas { display: block; width: 100%; height: auto; }
+.xa-hint b { color: var(--gold); }
+.xa-hint { margin-top: 10px; }

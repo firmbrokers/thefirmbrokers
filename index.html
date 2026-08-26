@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5bb2ef">
+  <title>Firm Brokers</title>
+  <meta name="description" content="5,000 pixel brokers on Robinhood Chain. Burn $9TO5 to put yours to work; it earns a salary every hour in tokenized stocks and USDG. The 80/20 payroll split is enforced on-chain. Walk the street.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://thefirmbrokers.com/">
+  <meta property="og:title" content="Firm Brokers: get hired, get paid every hour">
+  <meta property="og:description" content="5,000 pixel brokers on Robinhood Chain. Burn $9TO5 to put yours to work; it earns a salary every hour in tokenized stocks and USDG. The 80/20 payroll split is enforced on-chain. Walk the street.">
+  <meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://thefirmbrokers.com/og-street.png">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="favicon.png">
+  <link rel="stylesheet" href="level.css">
+  <link rel="stylesheet" href="xapply.css">
+</head>
+<body>
+
+  <div id="fb-stage" class="fb-stage" aria-label="Firm Brokers street. Use arrow keys to walk, E to enter a zone"></div>
+
+  <div class="fb-controls">← → WALK · <em>E</em> ENTER A ZONE · 1–4 WARP</div>
+
+  <div id="fb-panel" class="fb-panel" data-zone="">
+    <div class="room" id="fb-room"></div>
+  </div>
+
+  <div id="fb-flat" class="fb-flat"></div>
+
+  <nav id="fb-zonebar" class="fb-zonebar" aria-label="zones">
+    <a id="fb-buybtn" class="fb-hudbtn buy" href="#" target="_blank" rel="noopener" style="display:none">BUY $9TO5</a>
+    <a id="fb-docsbtn" class="fb-hudbtn" href="/docs" target="_blank" rel="noopener">DOCS</a>
+    <!-- The follow link, permanent: the bar is the only chrome that survives
+         every mode, so this is the one place it is always reachable. The href
+         is written here so it works before a single script runs, and level.js
+         overwrites it from CFG.x on load — the handle has been renamed three
+         times and the two must never disagree. handle.mjs holds that down. -->
+    <a id="fb-xbtn" class="fb-hudbtn x" href="https://x.com/thefirmbrokers" target="_blank"
+       rel="noopener" title="Firm Brokers on X" aria-label="Firm Brokers on X"><svg viewBox="0 0 24 24"
+       aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a>
+    <!-- THE LIST button (#fb-wlbtn) is created by level.js beside DOCS,
+         guarded on window.__WL_CHECK — one source, not two -->
+
+    <button id="fb-flatbtn" class="fb-hudbtn" type="button">PAGE</button>
+    <!-- Two labels, the way the zone buttons carry theirs: the sentence where
+         there is room for it, one short pair of words on a phone. Adding the
+         follow link put the bar over its second row inside a room, and a
+         three-row bar eats a sixth of the screen. -->
+    <button id="fb-back" class="fb-hudbtn" type="button"><span class="long">BACK TO THE STREET</span><span class="short">← STREET</span></button>
+  </nav>
+
+  <div id="fb-toast" class="fb-toast"></div>
+
+  <script src="config.js"></script>
+  <script src="firm.js"></script>
+  <script src="wlcheck.js"></script>
+  <script src="city.js"></script>
+  <script src="lobby.js"></script>
+  <script src="flathero.js"></script>
+  <script src="xapply.js"></script>
+  <script src="level.js"></script>
+</body>
+</html>
