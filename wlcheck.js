@@ -120,8 +120,11 @@
       wlAt = performance.now();
       wlPromise = fetch("wl.json", { cache: "no-cache" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => (j && j.algo === "sha256(lowercase)" && Array.isArray(j.hashes) && j.hashes.length
-          ? { set: new Set(j.hashes), final: !!j.final } : null))
+        // two tiers since 2026-08-27: `hashes` = the GTD (guaranteed) list,
+        // `fcfs` = the first-come round, both sha256(lowercase address)
+        .then((j) => (j && j.algo === "sha256(lowercase)" && Array.isArray(j.hashes)
+          && (j.hashes.length || (Array.isArray(j.fcfs) && j.fcfs.length))
+          ? { set: new Set(j.hashes), fcfs: new Set(Array.isArray(j.fcfs) ? j.fcfs : []), final: !!j.final } : null))
         .catch(() => null);
     }
     return wlPromise;
@@ -137,18 +140,23 @@
   // ------------------------------------------------------------- the answers
   async function checkList(addr, wl) {
     const live = !!(window.FIRM_CFG || {}).mintUrl;
-    const hit = wl.set.has(await sha256Hex(addr.toLowerCase()));
-    if (hit) {
-      return ["on", "YOU ARE IN", live
-        ? "You made the list. Mint on our OpenSea page: 3 per wallet in the whitelist round."
-        : "You made the list. You mint first, on OpenSea: 3 per wallet, before the doors open to everyone."];
+    const h = await sha256Hex(addr.toLowerCase());
+    if (wl.set.has(h)) {
+      return ["on", "YOU ARE IN \u00b7 GTD", live
+        ? "Guaranteed whitelist. You mint first, in the GTD round on our OpenSea page."
+        : "Guaranteed whitelist. You mint first, in the GTD round on OpenSea, before anyone else."];
+    }
+    if (wl.fcfs.has(h)) {
+      return ["on", "YOU ARE IN \u00b7 FCFS", live
+        ? "First-come whitelist. You mint right after the GTD round on our OpenSea page, while supply lasts."
+        : "First-come whitelist. You mint right after the GTD round on OpenSea, while supply lasts."];
     }
     // absent from a ROLLING list is "not yet", never a verdict — approvals
     // land in waves until the list locks for launch
     return wl.final
       ? ["off", "NOT ON THE LIST", live
-        ? "The list is closed. You can still mint 3 in the public round on OpenSea."
-        : "The list is closed. You can still mint 3 in the public sale."]
+        ? "The list is closed. You can still mint in the public round on OpenSea, after the whitelist rounds."
+        : "The list is closed. You can still mint in the public round, after the whitelist rounds."]
       : ["hold", "NOT ON IT YET",
         "The list is being made name by name, and not everyone gets in. Sent the form? Check back later."];
   }
@@ -259,7 +267,15 @@
           // "not yet" earns the apply button; in and locked-out both get the
           // OpenSea link once it exists (a locked-out wallet still mints in
           // the public round there)
-          verdict(kind, headline, why, kind === "hold" ? toHR : toOpenSea());
+          // "not yet" earns the form only while applications are open
+          const closed = !!(window.FIRM_CFG || {}).applyClosed;
+          verdict(kind, headline, why, kind === "hold" ? (closed ? null : toHR) : toOpenSea());
+          return;
+        }
+        if ((window.FIRM_CFG || {}).applyClosed) {
+          // the cut is made but the names are not published yet: say so, offer nothing
+          verdict("hold", "THE LIST IS BEING FINALIZED",
+            "Applications are closed. The names drop here soon. Check back.");
           return;
         }
         verdict("hold", "THE FIRST NAMES DROP SOON",

@@ -52,6 +52,14 @@ window.FIRM_CFG = {
   // agent says applications are not open yet rather than pretending to send.
   applyUrl: "https://firm-wl.firmbrokersrhchain.workers.dev",
   applyFormUrl: "",
+  // ---- the whitelist is CLOSED (2026-08-27): applications are over ----
+  // true = the security booth no longer offers the post-to-apply flow; it opens
+  // THE LIST checker instead, HR's door stops asking for a form, the flat page
+  // shows "check the list", and the handbook says the list is closed. The
+  // Worker refuses /verify and /card too (env APPLY_CLOSED). false = the
+  // campaign is open, the state before the cut. The list itself (site/wl.json)
+  // carries the GTD hashes and, optionally, an `fcfs` tier.
+  applyClosed: true,
 
   // ---- the v2 application: post on X to apply ----
   // The post every applicant sends (FINAL, user-approved 2026-08-24). {code}

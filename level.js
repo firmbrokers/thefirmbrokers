@@ -2401,11 +2401,15 @@
   const X_HANDLE = CFG.x || "thefirmbrokers";
   const xProfile = () => "https://x.com/" + X_HANDLE;
   const xPinned = () => CFG.xPinned || xProfile();
-  const applyOpen = () => !!(CFG.applyUrl || CFG.applyFormUrl);
+  // closed beats open: once the cut is made, no endpoint reopens the booth
+  const applyClosed = () => !!CFG.applyClosed;
+  const applyOpen = () => !applyClosed() && !!(CFG.applyUrl || CFG.applyFormUrl);
 
   /// The four steps, and the send when there is somewhere to send to. Without an
   /// endpoint the steps alone are the clearance, or nobody could ever get in.
   function clearanceDone() {
+    // the list is closed: there is no form left to ask for, so nobody is gated
+    if (applyClosed()) return true;
     const a = loadApply();
     const four = !!(a.follow && a.like && EVM_RE.test(a.evm || "") && XNAME_RE.test(cleanUser(a.user)));
     return applyOpen() ? !!a.sent : four;
@@ -2419,6 +2423,12 @@
   /// said so. The sign states the rule and what happens if you skip it, in
   /// that order, in the shortest words that carry it.
   function agentLine() {
+    // after the cut the booth is the list desk: the sign says so and invites
+    // the check, instead of vanishing (a silent booth reads as broken)
+    if (applyClosed()) {
+      return '<span class="hd">THE LIST IS CLOSED</span>' +
+        '<span class="dt">Applications are over.<br>Check your wallet here</span>';
+    }
     if (clearanceDone()) return "";
     return '<span class="hd">FORM FIRST</span>' +
       '<span class="dt">HR will not let you in<br>until you send this form</span>';
@@ -2474,6 +2484,13 @@
   }
 
   function openApply(onPass) {
+    // the list is closed: every door that used to open the application opens
+    // THE LIST checker instead (booth, agent, sill, sign, flat page, HR gate)
+    if (applyClosed()) {
+      if (window.__WL_CHECK) window.__WL_CHECK.open(state.account || undefined, {});
+      else toast("The whitelist is closed. The list drops here soon.", false);
+      return;
+    }
     // v2: the application is a post on X now. xapply.js runs the whole flow
     // and calls back `grant` so the street's clearance stays one system: the
     // booth lamps, the mint wall and HR's door all keep reading clearanceDone.
@@ -3390,7 +3407,16 @@
       // press MINT and be turned away. Same form, same clearance, and the
       // wording is the popover's own so the gate says the same thing
       // everywhere. Gone once the mint is public, same as the booth.
-      if (applyOpen() && !s.publicOpen) {
+      if (applyClosed() && !s.publicOpen) {
+        // the cut is made: the phone page offers the check, never the form
+        const wl = el("div", "fb-card");
+        wl.innerHTML = `<h2>The Whitelist</h2><p>Applications are closed. Paste your wallet to see if you are on the list. Whitelist wallets mint first, on OpenSea, before the doors open to everyone.</p>`;
+        const cb = el("button", "fb-btn", "AM I ON THE LIST?");
+        cb.style.marginTop = "10px";
+        cb.addEventListener("click", () => { if (window.__WL_CHECK) window.__WL_CHECK.open(state.account || undefined, {}); });
+        wl.appendChild(cb);
+        room.appendChild(wl);
+      } else if (applyOpen() && !s.publicOpen) {
         const wl = el("div", "fb-card");
         wl.innerHTML = clearanceDone()
           ? `<h2>The Whitelist</h2><p>Your form is in, and the HR door is open. If you make the whitelist you mint first, ${WL_CAP} per wallet, before anyone else.</p>`
@@ -3513,8 +3539,9 @@
     const wb = el("button", "fb-hudbtn", "THE LIST");
     wb.id = "fb-wlbtn";
     wb.type = "button";
+    // after the cut the modal must never offer the form, so no onApply is passed
     wb.addEventListener("click", () =>
-      window.__WL_CHECK.open(state.account || undefined, { onApply: () => openApply() }));
+      window.__WL_CHECK.open(state.account || undefined, applyClosed() ? {} : { onApply: () => openApply() }));
     const db = $("fb-docsbtn");
     if (db && db.parentElement) db.parentElement.insertBefore(wb, db);
   }
