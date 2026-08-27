@@ -88,6 +88,7 @@
   .wl-verdict.on { color: #6fe08c; text-shadow: 0 0 8px #6fe08c55; }
   .wl-verdict.off { color: #e06f6f; text-shadow: 0 0 8px #e06f6f44; }
   .wl-verdict.hold { color: var(--gold, #ffc933); text-shadow: 0 0 8px #ffc93355; }
+  .wl-verdict.fcfs { color: var(--gold, #ffc933); text-shadow: 0 0 8px #ffc93355; }
   .wl-why { margin-top: 12px; color: #b7c9bd; font-size: 16px; line-height: 1.7; }
   .wl-act { position: relative; z-index: 1; margin-top: 12px; }
   .wl-act button {
@@ -147,9 +148,10 @@
         : "Guaranteed whitelist. You mint first, in the GTD round on OpenSea, before anyone else."];
     }
     if (wl.fcfs.has(h)) {
-      return ["on", "YOU ARE IN \u00b7 FCFS", live
-        ? "First-come whitelist. You mint right after the GTD round on our OpenSea page, while supply lasts."
-        : "First-come whitelist. You mint right after the GTD round on OpenSea, while supply lasts."];
+      // only the guaranteed list reads IN (user, 2026-08-27); FCFS is a chance, not a seat
+      return ["fcfs", "NOT GUARANTEED \u00b7 FCFS ROUND", live
+        ? "You are not on the GTD list, but you can mint in the first-come round right after it, on our OpenSea page, while supply lasts."
+        : "You are not on the GTD list, but you can mint in the first-come round right after it, on OpenSea, while supply lasts."];
     }
     // absent from a ROLLING list is "not yet", never a verdict — approvals
     // land in waves until the list locks for launch
