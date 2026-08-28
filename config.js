@@ -5,7 +5,11 @@ window.FIRM_CFG = {
   chainName: "Robinhood Chain",
   rpcs: [
     "https://rpc.mainnet.chain.robinhood.com",
-    // rpc.arrowrpc.com removed 2026-08-27: dead (HTTP 530); a browser rotating to it failed every read
+    // fallback added 2026-08-28 15:4xZ: the official RPC intermittently sends a
+    // DUPLICATE Access-Control-Allow-Origin header and browsers refuse the
+    // response; publicnode serves recent-range reads with clean CORS (archive
+    // ranges need a token there, which is why deployBlock moved to the launch).
+    "https://robinhood-rpc.publicnode.com",
   ],
   explorer: "https://robinhoodchain.blockscout.com",
 
@@ -15,7 +19,7 @@ window.FIRM_CFG = {
   vault: "0x5D792986F671b11e6C551F7C90591c61341d749e",      // PayVault
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)
-  deployBlock: 47105759, // NFT deploy block: log scans start here
+  deployBlock: 48370000, // scan start = the token launch (2026-08-28 14:28Z). Every broker anyone owns was minted after this except our reserve #1; keeps the owned-broker scan inside the range every public RPC serves.
 
   // ---- the mint: on OpenSea (decided 2026-08-25) ----
   // Minting happens on OpenSea, not on this site. The HR desk and the street
