@@ -47,6 +47,8 @@
     assets: "0xcf35bdd0",
     tokenState: "0x9745cc3d",
     deliver: "0xd3dcde9a",
+    harvest: "0x4641257d",
+    owed: "0xdf18e047",
     potBuffer: "0x1e134423",
     totalWeight: "0x96c82e57",
     totalHarvested: "0x23dc1142",
@@ -534,6 +536,13 @@
     });
   }
 
+  /// trading fees sitting in the splitter, not yet pulled into the pay pot
+  async function owedEngine() {
+    if (!CFG.splitter) return 0n;
+    const r = await call(CFG.splitter, SEL.owed + word(CFG.engine));
+    return r && r !== "0x" ? toBig(r) : 0n;
+  }
+
   async function tokenAllowance(owner) {
     const t = await launchToken();
     if (!t) return null;
@@ -681,6 +690,9 @@
     pendingOf,
     rolledIds,
     usdgShareOf,
+    owedEngine,
+    // pull the fee pot in; fixed gas — harvest's estimate is the original trap
+    harvest: (from) => send(CFG.engine, SEL.harvest, 0n, from, 1_000_000),
     upgradeTier: (id, tier, from) => send(CFG.nft, SEL.upgradeTier + word(id) + word(tier), 0n, from),
     fuse: (ids, from) =>
       send(CFG.nft, SEL.fuse + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""), 0n, from),
