@@ -3872,3 +3872,44 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
 a.fb-btn { display: inline-block; text-decoration: none; text-align: center; line-height: 1; }
 .fb-oslink { margin-top: 12px; }
 .room-hr .room-deskcard a.fb-oslink { display: block; width: fit-content; }
+
+/* ------------------------------------------------ THE PAYDAY MACHINE (floor) */
+@keyframes fb-crankglow { 0%,100% { box-shadow: 0 0 0 0 rgba(247,201,72,0); } 50% { box-shadow: 0 0 12px 3px rgba(247,201,72,.55); } }
+@keyframes fb-crankspin { to { transform: rotate(360deg); } }
+@keyframes fb-billpop { from { transform: translateY(0) rotate(-5deg); } to { transform: translateY(-5px) rotate(3deg); } }
+.fb-payday { position: absolute; bottom: var(--ground-h); width: 200px; height: 292px; }
+.fb-payday.armed { cursor: pointer; }
+.fb-payday .body { position: absolute; top: 0; left: 0; right: 0; bottom: 12px; background: linear-gradient(90deg, #2f3540 0 8px, #262b33 8px 178px, #171b21 178px); border: 4px solid var(--ink); }
+.fb-payday .marq { position: absolute; top: 10px; left: 12px; right: 12px; height: 34px; background: #0b0e13; border: 3px solid var(--ink); box-shadow: inset 0 0 0 2px #1d232c; text-align: center; line-height: 32px; font-family: var(--font-display); font-size: 16px; letter-spacing: 6px; color: #ffd75e; text-shadow: 0 0 10px rgba(255,215,94,.6), 0 0 2px rgba(255,215,94,.9); }
+.fb-payday .crt { position: absolute; top: 54px; left: 12px; right: 12px; height: 88px; background: #06110b; border: 3px solid var(--ink); box-shadow: inset 0 0 0 2px #1d232c; text-align: center; overflow: hidden; }
+.fb-payday .crt .scan { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 2px, transparent 2px 4px); pointer-events: none; }
+.fb-payday .crt .vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.42)); pointer-events: none; }
+.fb-payday .crt b { display: block; margin-top: 14px; font-family: var(--font-display); font-size: 7px; color: #67b184; letter-spacing: 0; white-space: nowrap; }
+.fb-payday .crt u { display: block; margin-top: 12px; text-decoration: none; font-family: var(--font-display); font-size: 15px; color: #8bf59a; text-shadow: 0 0 12px rgba(126,231,135,.75); white-space: nowrap; }
+.fb-payday .btn { position: absolute; top: 148px; left: 12px; right: 12px; height: 28px; background: linear-gradient(#ffe08a, #ffd75e 55%, #e0af3a); border: 4px solid var(--ink); text-align: center; line-height: 21px; font-family: var(--font-display); font-size: 7px; color: #1c1408; letter-spacing: 0; white-space: nowrap; overflow: hidden; animation: fb-crankglow 1.6s ease-in-out infinite; }
+.fb-payday.armed:hover .btn { background: linear-gradient(#fff0b8, #ffe08a 55%, #eec04a); }
+.fb-payday .btn.dim { background: linear-gradient(#39404a, #2b3038); color: #8fa0b0; animation: none; }
+.fb-payday .mouth { position: absolute; top: 186px; left: 12px; right: 12px; height: 46px; }
+.fb-payday .mouth .cav { position: absolute; top: 0; left: 0; right: 0; height: 24px; background: #07090d; border: 3px solid var(--ink); }
+.fb-payday .mouth .bill { position: absolute; top: 5px; width: 34px; height: 22px; background: #59b26e; border: 3px solid var(--ink); box-shadow: inset 0 4px 0 #6fce85; }
+.fb-payday .mouth .b1 { left: 14px; transform: rotate(-5deg); }
+.fb-payday .mouth .b2 { left: 66px; top: 3px; transform: rotate(3deg); }
+.fb-payday .mouth .b3 { left: 118px; transform: rotate(-2deg); }
+.fb-payday .mouth .bill::after { content: ""; position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; transform: translate(-50%, -50%); background: #2e6e42; border-radius: 50%; }
+.fb-payday .mouth .lip { position: absolute; top: 24px; left: -4px; right: -4px; height: 12px; background: linear-gradient(#4a525b, #343b44); border: 3px solid var(--ink); }
+.fb-payday .louv { position: absolute; top: 240px; left: 24px; right: 24px; height: 16px; }
+.fb-payday .louv i { position: absolute; left: 0; right: 0; height: 4px; background: #171b21; box-shadow: 0 2px 0 rgba(255,255,255,.05); }
+.fb-payday .louv i:nth-child(1) { top: 0; } .fb-payday .louv i:nth-child(2) { top: 7px; } .fb-payday .louv i:nth-child(3) { top: 14px; }
+.fb-payday .plate { position: absolute; left: 32px; right: 32px; bottom: 8px; height: 22px; background: linear-gradient(#d8b04a, #b8892f); border: 3px solid var(--ink); text-align: center; line-height: 20px; font-family: var(--font-display); font-size: 6px; color: #2b2013; letter-spacing: 1px; }
+.fb-payday .plate .bolt { position: absolute; top: 6px; width: 6px; height: 6px; background: #6b5119; border-radius: 50%; }
+.fb-payday .plate .bl { left: 4px; } .fb-payday .plate .br { right: 4px; }
+.fb-payday .crank { position: absolute; right: -34px; top: 150px; width: 46px; height: 76px; }
+.fb-payday .crank .boss { position: absolute; left: 0; top: 28px; width: 22px; height: 22px; background: #4a525b; border: 4px solid var(--ink); border-radius: 50%; }
+.fb-payday .crank .arm { position: absolute; left: 12px; top: 8px; width: 9px; height: 34px; background: #7d8791; border: 3px solid var(--ink); transform: rotate(38deg); transform-origin: bottom center; }
+.fb-payday .crank .handle { position: absolute; right: 0; top: -2px; width: 20px; height: 20px; background: #d8b04a; border: 4px solid var(--ink); border-radius: 50%; animation: fb-crankglow 1.8s ease-in-out infinite; }
+.fb-payday .plinth { position: absolute; left: 50%; transform: translateX(-50%); background: #171b21; border: 4px solid var(--ink); }
+.fb-payday .p1 { bottom: 4px; width: 208px; height: 14px; }
+.fb-payday .p2 { bottom: -4px; width: 220px; height: 10px; background: var(--ink); }
+.fb-payday.working .marq { animation: fb-blink .3s steps(2, end) infinite; }
+.fb-payday.working .crank { animation: fb-crankspin .6s linear infinite; transform-origin: 11px 39px; }
+.fb-payday.working .mouth .bill { animation: fb-billpop .45s ease-in-out infinite alternate; }

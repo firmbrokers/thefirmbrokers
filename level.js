@@ -1380,8 +1380,7 @@
     // A and G: the door on one side, the merger on the other
     prop("hr2-plant", 160);
     // C and E: the working furniture, split so neither wall is bare
-    prop("floor3-rack", 470, "<u></u><u></u><u></u><u></u><b>PAYROLL ENGINE</b>");
-    prop("room-coffee", 574);
+    buildPaydayMachine(state.brokers || []);
     prop("floor3-printer", 1540, '<div class="stand"></div><div class="box"></div>');
     prop("floor3-pizza", 1660, "<i></i><i></i><i></i>");
 
@@ -1413,7 +1412,7 @@
     const GRID_W = 236;
     const tile = (cls, sym) => `<i class="${cls}"><b>${sym}</b></i>`;
     // eight instruments, eight climbs, green and gold mixed across the wall
-    prop("floor3-wall grid2 mounted", 510,
+    prop("floor3-wall grid2 mounted", 790,
       tile("rise-steady", "AAPL") + tile("rise-stairs", "TSLA")
       + tile("rise-curve", "NVDA") + tile("rise-grind", "MSFT"));
     prop("floor3-wall grid2 mounted", FLOOR_W - 510 - GRID_W,
@@ -1750,6 +1749,45 @@
     tryEnter(z);
   }
 
+  /// THE PAYDAY MACHINE — the payroll engine, walk-up edition. The whole
+  /// cabinet is one click target: it collects every broker you own through
+  /// the same COLLECT PAY runner, and between paydays it counts down to the
+  /// next hour so it is never a dead prop.
+  function paydayUsdgOf(b) {
+    const p = b.pending || 0n;
+    if (!p || !b.split || !b.split.length) return p;
+    return (p * b.split.reduce((a, sp) => a + (sp.idx === 11 ? BigInt(sp.bps) : 0n), 0n)) / 10000n;
+  }
+  function buildPaydayMachine(bs) {
+    const out = !state.account;
+    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + paydayUsdgOf(b), 0n);
+    const armed = collectable >= 100_000_000_000_000n;
+    const mm = String(59 - new Date().getUTCMinutes()).padStart(2, "0");
+    const face = armed
+      ? `<div class="crt"><i class="scan"></i><i class="vig"></i><b>YOUR BROKERS EARNED</b><u>${fmtEth(collectable)} ETH</u></div>
+        <div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`
+      : `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${out ? "EVERY BROKER PAID HOURLY" : "ALL COLLECTED"}</b><u>PAYDAY :${mm}</u></div>
+        <div class="btn dim">${out ? "CLOCK IN TO SEE YOUR PAY" : "NOTHING TO COLLECT YET"}</div>`;
+    const m = prop("fb-payday" + (armed ? " armed" : ""), 386, `
+      <div class="body">
+        <div class="marq">PAYDAY</div>
+        ${face}
+        <div class="mouth"><i class="cav"></i><i class="bill b1"></i><i class="bill b2"></i><i class="bill b3"></i><i class="lip"></i></div>
+        <div class="louv"><i></i><i></i><i></i></div>
+        <div class="plate"><i class="bolt bl"></i>PAYROLL&nbsp;ENGINE<i class="bolt br"></i></div>
+      </div>
+      <div class="crank"><i class="boss"></i><i class="arm"></i><i class="handle"></i></div>
+      <i class="plinth p1"></i><i class="plinth p2"></i>`);
+    m.title = "collect your brokers' pay";
+    m.addEventListener("click", async () => {
+      if (out) { connect(); return; }
+      if (m.classList.contains("working")) return;
+      if (!armed) { toast(`nothing to collect yet — next payday at the top of the hour (:${mm})`); return; }
+      m.classList.add("working");
+      try { await collectPay(bs); } finally { m.classList.remove("working"); }
+    });
+  }
+
   /// The board over the desks. It exists to say the thing three desks cannot:
   /// how many brokers you actually own, and that all of them are on payroll
   /// whether or not they are one of the three standing here.
@@ -1766,19 +1804,9 @@
     // mid-sale the one job is getting people ON payroll, so a squad of two or
     // more unhired brokers takes the slot ahead of the cleanup buttons
     const unhired = out ? [] : bs.filter((b) => !b.active);
-    // only the USDG-bound slice of pending pay counts: a 100% stock-split
-    // holder cannot lift their own pot over the swap floor, so the button
-    // would only ever tell them "nothing moved" — their pay rides the hourly
-    // payday instead.
-    const usdgOf = (b) => {
-      const p = b.pending || 0n;
-      if (!p || !b.split || !b.split.length) return p;
-      return (p * b.split.reduce((a, sp) => a + (sp.idx === 11 ? BigInt(sp.bps) : 0n), 0n)) / 10000n;
-    };
-    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + usdgOf(b), 0n);
-    const extra = collectable >= 100_000_000_000_000n
-      ? { cls: "payme", label: `COLLECT PAY <i>${fmtEth(collectable)} ETH</i>` }
-      : unhired.length >= 2
+    // collecting moved to the PAYDAY machine beside the window; the slot goes
+    // back to the squad jobs
+    const extra = unhired.length >= 2
       ? { cls: "hireall", label: `HIRE ALL <i>${unhired.length}</i>` }
       : claimable.length
         ? { cls: "claimall", label: `CLAIM ALL <i>${claimable.length}</i>` }
@@ -1824,8 +1852,6 @@
           extra ? `<button class="btn ${extra.cls}" type="button">${extra.label}</button>` : ""
         }</div>
       </div>`);
-    const pm = bd.querySelector(".payme");
-    if (pm) pm.addEventListener("click", () => collectPay(bs));
     const ha = bd.querySelector(".hireall");
     if (ha) ha.addEventListener("click", () => hireAll(unhired));
     const ca = bd.querySelector(".claimall");
