@@ -377,6 +377,16 @@
   /// NotHired, one already standing on the rung reverts BadTier, one sold since
   /// the roster was drawn reverts NotOwner — and a 5792 batch is atomic, so any
   /// one of those takes the whole squad down. Filter, then re-read, then send.
+  /// HIRE ALL: every unhired broker in one run. The allowance covers the whole
+  /// bill up front, so a regular wallet only signs the hires themselves.
+  const hireAll = async (list) => {
+    const burn = (await loadActivateBurn()) ?? ACTIVATE_FALLBACK;
+    const total = burn * BigInt(list.length);
+    const bal = await F.tokenBalance(state.account);
+    if (bal !== null && bal < total) { toast(`hiring ${list.length} burns ${fmtCompact(total)} $9TO5. The cash machine is at the bank`, false); return; }
+    if (!(await ensureAllowance(total))) return;
+    await runForAll(list, (id) => F.activateCall(id), "hiring", (n) => `${n} broker${n === 1 ? "" : "s"} hired`);
+  };
   const promoteAll = (list, idx) => runForAll(list, (id) => F.upgradeCall(id, idx), "promoting",
     (n) => `${n} broker${n === 1 ? "" : "s"} promoted to ${TIERS[idx].name}`);
 
@@ -1699,11 +1709,16 @@
     // and once the second is done neither ever comes back.
     const claimable = out ? [] : bs.filter((b) => b.holdings.length);
     const manual = out ? [] : bs.filter((b) => b.active && !b.collect);
-    const extra = claimable.length
-      ? { cls: "claimall", label: `CLAIM ALL <i>${claimable.length}</i>` }
-      : manual.length
-        ? { cls: "autoall", label: `GO AUTOMATIC <i>${manual.length}</i>` }
-        : null;
+    // mid-sale the one job is getting people ON payroll, so a squad of two or
+    // more unhired brokers takes the slot ahead of the cleanup buttons
+    const unhired = out ? [] : bs.filter((b) => !b.active);
+    const extra = unhired.length >= 2
+      ? { cls: "hireall", label: `HIRE ALL <i>${unhired.length}</i>` }
+      : claimable.length
+        ? { cls: "claimall", label: `CLAIM ALL <i>${claimable.length}</i>` }
+        : manual.length
+          ? { cls: "autoall", label: `GO AUTOMATIC <i>${manual.length}</i>` }
+          : null;
     // The one number anyone came here for is how many of the brokers you own
     // are actually on payroll. A big figure with a caption beside it did not
     // read; a labelled fraction with a bar under it does, and it does it
@@ -1743,6 +1758,8 @@
           extra ? `<button class="btn ${extra.cls}" type="button">${extra.label}</button>` : ""
         }</div>
       </div>`);
+    const ha = bd.querySelector(".hireall");
+    if (ha) ha.addEventListener("click", () => hireAll(unhired));
     const ca = bd.querySelector(".claimall");
     if (ca) ca.addEventListener("click", () => claimAll(claimable));
     const aa = bd.querySelector(".autoall");

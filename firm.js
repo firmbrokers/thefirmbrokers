@@ -616,6 +616,8 @@
     claim: (id, from) => send(CFG.vault, SEL.claim + word(id), 0n, from),
     // the same three calls as data only, so a whole roster can go in one list
     claimCall: (id) => ({ to: CFG.vault, data: SEL.claim + word(id) }),
+    // hiring a squad is a list of activate() calls, same shape as promoting
+    activateCall: (id) => ({ to: CFG.nft, data: SEL.activate + word(id) }),
     collectCall: (id, toWallet) =>
       ({ to: CFG.engine, data: SEL.setCollectMode + word(id) + word(toWallet ? 1 : 0) }),
     // upgradeTier is per token as well, so promoting a squad is a list too. The
