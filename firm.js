@@ -206,11 +206,17 @@
     return Number(BigInt(j.result));
   }
 
-  async function rpcLogs(params) {
+  async function rpcLogs(params, noWallet) {
     const p = provider();
-    if (p && p.request) {
+    // the wallet's answer is only trusted when the wallet is actually ON this
+    // chain — a MetaMask parked on another network answers getLogs from THAT
+    // chain and the floor reads "0 of 0" (seen live 2026-08-28, mint day)
+    if (!noWallet && p && p.request) {
       try {
-        return await p.request({ method: "eth_getLogs", params: [params] });
+        const cid = await p.request({ method: "eth_chainId" });
+        if (typeof cid === "string" && cid.toLowerCase() === CFG.chainHex) {
+          return await p.request({ method: "eth_getLogs", params: [params] });
+        }
       } catch (e) {}
     }
     let last;
@@ -238,21 +244,21 @@
     throw last;
   }
 
-  async function rpcLogsRange(base, from, to, depth) {
+  async function rpcLogsRange(base, from, to, depth, noWallet) {
     depth = depth || 0;
     const params = Object.assign({}, base, {
       fromBlock: "0x" + from.toString(16),
       toBlock: to === "latest" ? "latest" : "0x" + to.toString(16),
     });
     try {
-      return await rpcLogs(params);
+      return await rpcLogs(params, noWallet);
     } catch (e) {
       if (depth > 12) throw e;
       if (to === "latest") to = await blockNumber();
       if (to - from < 2) throw e;
       const mid = Math.floor((from + to) / 2);
-      return (await rpcLogsRange(base, from, mid, depth + 1)).concat(
-        await rpcLogsRange(base, mid + 1, to, depth + 1)
+      return (await rpcLogsRange(base, from, mid, depth + 1, noWallet)).concat(
+        await rpcLogsRange(base, mid + 1, to, depth + 1, noWallet)
       );
     }
   }
@@ -323,11 +329,27 @@
 
   async function tokensOf(addr) {
     const padded = "0x" + word(addr);
-    const got = await rpcLogsRange(
+    let got = await rpcLogsRange(
       { address: CFG.nft, topics: [TRANSFER_TOPIC, null, padded] },
       CFG.deployBlock,
       "latest"
     );
+    // an empty scan is only believed if the chain agrees the wallet is empty.
+    // A glitching wallet RPC returns [] without erroring; balanceOf is one
+    // cheap read through OUR rpc, and a mismatch retries with the wallet
+    // bypassed entirely.
+    if (!got.length) {
+      const bal = toBig(await call(CFG.nft, SEL.balanceOf + word(addr)));
+      if (bal && bal > 0n) {
+        got = await rpcLogsRange(
+          { address: CFG.nft, topics: [TRANSFER_TOPIC, null, padded] },
+          CFG.deployBlock,
+          "latest",
+          0,
+          true
+        );
+      }
+    }
     const ids = [];
     const seen = {};
     for (const g of got) {
