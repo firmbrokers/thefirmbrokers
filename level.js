@@ -380,12 +380,18 @@
   const promoteAll = (list, idx) => runForAll(list, (id) => F.upgradeCall(id, idx), "promoting",
     (n) => `${n} broker${n === 1 ? "" : "s"} promoted to ${TIERS[idx].name}`);
 
+  /// true when the wallet may burn `needed`; false (with the reason shown)
+  /// when there is nothing to approve yet. Before the token exists this used
+  /// to fall through to an approve() on a null address and hang on the
+  /// "one-time approval…" toast (seen 2026-08-28 with the reserve broker).
   async function ensureAllowance(needed) {
     const allowance = await F.tokenAllowance(state.account);
-    if (allowance !== null && allowance >= needed) return;
+    if (allowance === null) { toast("$9TO5 is not live yet — hiring opens at launch", false); return false; }
+    if (allowance >= needed) return true;
     toast("one-time approval…");
     const hash = await F.approveMax(state.account);
     await F.waitForTx(hash);
+    return true;
   }
 
   // ------------------------------------------------------------ data
@@ -2061,7 +2067,7 @@
       const ids = m.picked.map((b) => b.id);
       const burn = fuseCost(m) ?? (await loadFuseBurns(), fuseCost(m));
       if (burn === null) return toast("could not read the merge cost — try again", false);
-      await ensureAllowance(burn);
+      if (!(await ensureAllowance(burn))) return;
       await txFlow("merger", () => F.fuse(ids, state.account), async () => {
         state.fusePick.clear();
         closePopover();
@@ -2258,7 +2264,7 @@
       if (!hired) {
         const burn = (await loadActivateBurn()) ?? ACTIVATE_FALLBACK;
         if (bal !== null && bal < burn) return toast(`hiring burns ${fmtCompact(burn)} $9TO5. The cash machine is in this room`, false);
-        await ensureAllowance(burn);
+        if (!(await ensureAllowance(burn))) return;
         return txFlow("hiring", () => F.activate(b.id, state.account), async () => {
           await preferWallet(b.id);
           await refreshBrokers();
@@ -2270,7 +2276,7 @@
       const cur = furnaceState();
       if (!cur.b || cur.target === null) return toast("that level is no longer ahead of him", false);
       if (bal !== null && bal < cur.cost) return toast(`this burns ${fmtCompact(cur.cost)} $9TO5. Not enough in the wallet`, false);
-      await ensureAllowance(cur.cost);
+      if (!(await ensureAllowance(cur.cost))) return;
       await txFlow("promotion", () => F.upgradeTier(cur.b.id, cur.target, state.account), async () => {
         state.furnaceTier = null;
         await refreshBrokers();
@@ -2297,7 +2303,7 @@
       if (bal !== null && bal < total) {
         return toast(`promoting ${list.length} burns ${fmtCompact(total)} $9TO5. Not enough in the wallet`, false);
       }
-      await ensureAllowance(total);
+      if (!(await ensureAllowance(total))) return;
       await promoteAll(list, idx);
       state.furnaceTier = null;
       if (document.body.contains(card)) redraw();
@@ -2844,7 +2850,7 @@
         const burn = await F.nftNumber("ACTIVATE_BURN");
         const bal = await F.tokenBalance(state.account);
         if (bal !== null && bal < burn) return toast(`needs ${fmtCompact(burn)} $9TO5. The Bank sells it`, false);
-        await ensureAllowance(burn);
+        if (!(await ensureAllowance(burn))) return;
         await txFlow("hiring", () => F.activate(b.id, state.account), async () => {
           await preferWallet(b.id);
           await refreshBrokers();
