@@ -414,8 +414,20 @@
   /// ever shows. The public round is read from SeaDrop's public stage once the
   /// contract is live; config.js mintPublicAt covers the window before the
   /// stage is configured. Both are the truth or nothing — never a guess.
-  const mintOpen = () => !!CFG.mintUrl;
+  // scheduled = the drop page exists but the first stage has not started yet
+  // (config.js mintStartsAt). Re-evaluated on every stats refresh, so the
+  // street flips to "minting now" by itself at the minute it opens.
+  const mintScheduled = () => !!CFG.mintUrl && !!CFG.mintStartsAt && Date.now() / 1000 < Number(CFG.mintStartsAt);
+  const mintOpen = () => !!CFG.mintUrl && !mintScheduled();
   const publicByConfig = () => !!CFG.mintPublicAt && Date.now() / 1000 >= Number(CFG.mintPublicAt);
+  /// "Fri 28 Aug, 15:00 UTC" — one format everywhere the schedule is spoken
+  function fmtUtc(ts) {
+    const d = new Date(Number(ts) * 1000);
+    const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
+    const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
+    const hh = String(d.getUTCHours()).padStart(2, "0"), mm = String(d.getUTCMinutes()).padStart(2, "0");
+    return `${day} ${d.getUTCDate()} ${mon}, ${hh}:${mm} UTC`;
+  }
 
   async function refreshStats() {
     state.mintOpen = mintOpen();
@@ -919,7 +931,7 @@
     const gated = open && !st.publicOpen && !clearanceDone();
     wall.innerHTML = `<b>${open ? "MINTING NOW" : "MINT HERE"}</b>
       <span>5,000 BROKERS</span><span>0.0035 ETH EACH</span>
-      <span>${!open ? "SOON, ON OPENSEA" : gated ? "SEND THE FORM FIRST" : "WALK RIGHT IN"}</span>`;
+      <span>${!open ? (mintScheduled() ? "OPENS " + fmtUtc(CFG.mintStartsAt).toUpperCase() : "SOON, ON OPENSEA") : gated ? "SEND THE FORM FIRST" : "WALK RIGHT IN"}</span>`;
   }
 
   function paintDoors() {
@@ -1148,6 +1160,11 @@
       note.innerHTML = s.publicOpen
         ? `Open to everyone: ${PUBLIC_CAP} per wallet.`
         : `Whitelist round: ${WL_CAP} per wallet. Public round next, ${PUBLIC_CAP} per wallet.`;
+    } else if (mintScheduled()) {
+      // the page exists, the clock has not struck: link it, say when, claim nothing more
+      into.appendChild(mintLink("SEE THE DROP ON OPENSEA"));
+      note.innerHTML = `Minting opens ${fmtUtc(CFG.mintStartsAt)}, on our OpenSea page: team round first, whitelist rounds next` +
+        (CFG.mintPublicAt ? `, public at ${fmtUtc(CFG.mintPublicAt)}` : "") + `. This is the only mint link. Anywhere else is fake.`;
     } else {
       note.innerHTML = `The mint opens on OpenSea at launch. The link will be right here. Anywhere else is fake.`;
     }
@@ -1196,7 +1213,7 @@
     px(rec, { left: "700px" });
     roomLayer.appendChild(rec);
     prop("hr2-poster", 710, '<div class="pic"><i class="m2"></i><i class="m1"></i><u class="sun"></u></div>');
-    prop("room-speech", 758, s.maxSupply > 0 && s.minted >= s.maxSupply ? "All full. Try the floor." : state.mintOpen ? "The mint is on OpenSea. Link's on the desk." : "We open at launch.");
+    prop("room-speech", 758, s.maxSupply > 0 && s.minted >= s.maxSupply ? "All full. Try the floor." : state.mintOpen ? "The mint is on OpenSea. Link's on the desk." : mintScheduled() ? `We open ${fmtUtc(CFG.mintStartsAt)}.` : "We open at launch.");
 
     const inner = el("div");
     mintDesk(s, inner, true);

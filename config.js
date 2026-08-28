@@ -5,17 +5,17 @@ window.FIRM_CFG = {
   chainName: "Robinhood Chain",
   rpcs: [
     "https://rpc.mainnet.chain.robinhood.com",
-    "https://rpc.arrowrpc.com",
+    // rpc.arrowrpc.com removed 2026-08-27: dead (HTTP 530); a browser rotating to it failed every read
   ],
   explorer: "https://robinhoodchain.blockscout.com",
 
   // ---- fill these at launch ----
-  nft: "",        // EmployeeNFT (Firm Brokers collection)
-  engine: "",     // PayrollEngine
-  vault: "",      // PayVault
+  nft: "0x2d4dFF47ba18c89847facA0C968e073d8B70ABb4",        // EmployeeNFT — deployed 2026-08-27, block 47105759
+  engine: "0x5a362FFdaB7ffA585D50f1a5c032288EF0029740",     // PayrollEngine
+  vault: "0x5D792986F671b11e6C551F7C90591c61341d749e",      // PayVault
   token: "",      // $9TO5 (read from nft.token() if left empty)
   splitter: "",   // the letscash fee splitter (for the trust panel link)
-  deployBlock: 0, // NFT deploy block: log scans start here
+  deployBlock: 47105759, // NFT deploy block: log scans start here
 
   // ---- the mint: on OpenSea (decided 2026-08-25) ----
   // Minting happens on OpenSea, not on this site. The HR desk and the street
@@ -24,13 +24,18 @@ window.FIRM_CFG = {
   // soon" and shows NO button. Fill it the moment the OpenSea page is live.
   // (Anti-phishing rule, same as the token: the site never links a mint page
   // that is not this exact URL.)
-  mintUrl: "",
+  mintUrl: "https://opensea.io/collection/thefirmbrokers",
   // When the PUBLIC round opens on OpenSea, unix seconds UTC. 0 = not yet.
   // Until then HR is gated on the whitelist form (listed wallets mint first);
   // from then on the guard steps aside, because everyone can mint. The site
   // also reads the public stage straight from SeaDrop once `nft` is set, so
   // this is the fallback for the window before the stage is configured.
-  mintPublicAt: 0,
+  mintPublicAt: 1787937600, // Fri 2026-08-28 17:20 UTC — the public stage start published in Studio
+  // When minting STARTS at all (the first stage, the team round), unix seconds
+  // UTC. Until then the drop page exists but nothing can be minted, so the
+  // street says "opens <when>" and the desk links the page without claiming
+  // the mint is open. 0 = no schedule (the old behaviour: page exists = open).
+  mintStartsAt: 1787929200, // Fri 2026-08-28 15:00 UTC — team round, first stage
   // OpenSea's SeaDrop 1.0 on Robinhood Chain (canonical, verified on-chain
   // 2026-08-24). Read-only here: getPublicDrop(nft) gives price + window.
   seaDrop: "0x00005EA00Ac477B1030CE78506496e8C2dE24bf5",
