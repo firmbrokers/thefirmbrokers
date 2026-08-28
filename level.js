@@ -387,6 +387,60 @@
     if (!(await ensureAllowance(total))) return;
     await runForAll(list, (id) => F.activateCall(id), "hiring", (n) => `${n} broker${n === 1 ? "" : "s"} hired`);
   };
+  /// COLLECT PAY: the holder triggers payroll delivery themselves. The engine
+  /// only swaps a pot of 0.01+ ETH per asset, so a small holder's claim is
+  /// padded with OTHER brokers' rolled credit (they get paid too — deliver is
+  /// permissionless and pay only ever goes to each broker's own owner/vault).
+  const COLLECT_NEED = 12_000_000_000_000_000n; // 0.012 ETH clears the 0.01 swap floor with margin
+  const collectPay = async (bs) => {
+    const act = bs.filter((b) => b.active).map((b) => b.id);
+    if (!act.length || !state.account) return;
+    toast("adding up your pay…");
+    let ids, total;
+    try {
+      const mine = await F.pendingOf(act);
+      const myShare = {};
+      for (const [id, b] of await F.usdgShareOf(act)) myShare[id] = BigInt(b);
+      ids = mine.filter(([, p]) => p > 0n).map(([id]) => id);
+      // the number that has to clear the engine's per-asset swap floor is the
+      // USDG-bound slice of the batch, weighted by each broker's paycheck mix
+      total = mine.reduce((a, [id, p]) => a + (p * (myShare[id] ?? 10000n)) / 10000n, 0n);
+      if (!ids.length) { toast("nothing settled to collect yet — the hour has to close first", false); return; }
+      if (total < COLLECT_NEED) {
+        const pool = (await F.rolledIds()).filter((id) => !ids.includes(id)).slice(0, 600);
+        const [pend, shares] = await Promise.all([F.pendingOf(pool), F.usdgShareOf(pool)]);
+        const bpsOf = {};
+        for (const [id, b] of shares) bpsOf[id] = BigInt(b);
+        const cand = pend
+          .map(([id, p]) => [id, (p * (bpsOf[id] ?? 0n)) / 10000n])
+          .filter(([, c]) => c > 0n);
+        cand.sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
+        for (const [id, c] of cand) {
+          if (total >= COLLECT_NEED || ids.length >= 150) break;
+          ids.push(id);
+          total += c;
+        }
+      }
+    } catch (e) { toast(humanError(e), false); return; }
+    if (total < 10_000_000_000_000_000n) {
+      toast("the firm-wide pending pot is under the swap minimum right now — pay lands with the next payday", false);
+      return;
+    }
+    const mineBefore = total; // includes padding; the honest check is below
+    const ownBefore = (await F.pendingOf(act)).reduce((a, [, p]) => a + p, 0n);
+    await txFlow("collecting pay", () => F.deliver(ids, state.account), async () => {
+      // a deliver can "succeed" while every credit rolls (pot under the swap
+      // floor). Never tell the holder it worked without reading the result.
+      const ownAfter = (await F.pendingOf(act)).reduce((a, [, p]) => a + p, 0n);
+      if (ownBefore > 0n && ownAfter >= ownBefore) {
+        toast("the pot is still under the swap minimum — your pay rolled forward, nothing lost. It lands with the next payday", false);
+      } else {
+        toast("pay collected — check your broker's vault or wallet", true);
+      }
+      await refreshBrokers();
+      if (state.mode === "floor") rebuildRoom();
+    });
+  };
   const promoteAll = (list, idx) => runForAll(list, (id) => F.upgradeCall(id, idx), "promoting",
     (n) => `${n} broker${n === 1 ? "" : "s"} promoted to ${TIERS[idx].name}`);
 
@@ -1712,7 +1766,10 @@
     // mid-sale the one job is getting people ON payroll, so a squad of two or
     // more unhired brokers takes the slot ahead of the cleanup buttons
     const unhired = out ? [] : bs.filter((b) => !b.active);
-    const extra = unhired.length >= 2
+    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + (b.pending || 0n), 0n);
+    const extra = collectable >= 100_000_000_000_000n
+      ? { cls: "payme", label: `COLLECT PAY <i>${fmtEth(collectable)} ETH</i>` }
+      : unhired.length >= 2
       ? { cls: "hireall", label: `HIRE ALL <i>${unhired.length}</i>` }
       : claimable.length
         ? { cls: "claimall", label: `CLAIM ALL <i>${claimable.length}</i>` }
@@ -1758,6 +1815,8 @@
           extra ? `<button class="btn ${extra.cls}" type="button">${extra.label}</button>` : ""
         }</div>
       </div>`);
+    const pm = bd.querySelector(".payme");
+    if (pm) pm.addEventListener("click", () => collectPay(bs));
     const ha = bd.querySelector(".hireall");
     if (ha) ha.addEventListener("click", () => hireAll(unhired));
     const ca = bd.querySelector(".claimall");

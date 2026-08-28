@@ -46,6 +46,7 @@
     assetCount: "0xeafe7a74",
     assets: "0xcf35bdd0",
     tokenState: "0x9745cc3d",
+    deliver: "0xd3dcde9a",
     potBuffer: "0x1e134423",
     totalWeight: "0x96c82e57",
     totalHarvested: "0x23dc1142",
@@ -483,6 +484,53 @@
     return ids.map((id) => by[id]);
   }
 
+  /// settled-but-undelivered pay for a list of ids, as [id, wei] pairs
+  async function pendingOf(ids) {
+    const raws = await callBatch(ids.map((id) => ({ to: CFG.engine, data: SEL.pendingEth + word(id) })));
+    return ids.map((id, i) => [id, raws[i] ? toBig(raws[i]) : 0n]);
+  }
+
+  /// brokers whose small pay rolled instead of delivering lately — the padding
+  /// pool that lets one holder's COLLECT PAY carry the whole batch over the
+  /// engine's per-asset swap minimum. Recent range only; served by every rpc.
+  const CREDIT_ROLLED_TOPIC = "0xc2cda032f63ebe7629abecffad35589c71515edfd5b2c2048e340b3033a536e4";
+  const DELIVERED_TOPIC = "0x8110a247e3bf84088ca20c991ad431b68293ca3bdfe626df91b9744bf4d7b9ce";
+  async function rolledIds() {
+    // every broker the payroll has ever touched: paid once, or rolled once.
+    // Between them that is the whole active floor, discoverable from logs
+    // without enumerating 5,000 tokens.
+    const base = { address: CFG.engine };
+    const [rolled, paid] = await Promise.all([
+      rpcLogsRange(Object.assign({ topics: [CREDIT_ROLLED_TOPIC] }, base), CFG.deployBlock, "latest", 0, true),
+      rpcLogsRange(Object.assign({ topics: [DELIVERED_TOPIC] }, base), CFG.deployBlock, "latest", 0, true),
+    ]);
+    const seen = {};
+    const out = [];
+    for (const g of rolled.concat(paid)) {
+      const id = Number(BigInt(g.topics[1]));
+      if (!seen[id]) { seen[id] = true; out.push(id); }
+    }
+    return out;
+  }
+
+  /// how much of each broker's pay flows to USDG, in bps (0..10000).
+  /// splitOf returns (uint8[3] idx, uint16[3] bps, uint8 count); count 0 means
+  /// never picked, which pays 100% into the default asset — USDG, index 11.
+  const USDG_IDX = 11n;
+  async function usdgShareOf(ids) {
+    const raws = await callBatch(ids.map((id) => ({ to: CFG.engine, data: SEL.splitOf + word(id) })));
+    return ids.map((id, i) => {
+      const r = raws[i];
+      if (!r || r.length < 2 + 64 * 7) return [id, 10000];
+      const wAt = (j) => BigInt("0x" + r.slice(2 + 64 * j, 2 + 64 * (j + 1)));
+      const count = Number(wAt(6));
+      if (count === 0) return [id, 10000];
+      let bps = 0n;
+      for (let j = 0; j < count && j < 3; j++) if (wAt(j) === USDG_IDX) bps += wAt(3 + j);
+      return [id, Number(bps)];
+    });
+  }
+
   async function tokenAllowance(owner) {
     const t = await launchToken();
     if (!t) return null;
@@ -500,10 +548,11 @@
   }
 
   // ------------------------------------------------------------ writes
-  async function send(to, data, valueWei, from) {
+  async function send(to, data, valueWei, from, gasLimit) {
     const p = provider();
     const tx = { from, to, data };
     if (valueWei && valueWei > 0n) tx.value = "0x" + valueWei.toString(16);
+    if (gasLimit) tx.gas = "0x" + gasLimit.toString(16);
     return await p.request({ method: "eth_sendTransaction", params: [tx] });
   }
 
@@ -616,6 +665,19 @@
     approveMax: async (from) =>
       send(await launchToken(), SEL.approve + word(CFG.nft) + word((1n << 256n) - 1n), 0n, from),
     activate: (id, from) => send(CFG.nft, SEL.activate + word(id), 0n, from),
+    // one payroll delivery for a LIST of ids, holder-triggered. Explicit gas:
+    // 600k base + 150k per id — the estimate trap is real (see send()).
+    deliver: (ids, from) =>
+      send(
+        CFG.engine,
+        SEL.deliver + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""),
+        0n,
+        from,
+        600_000 + 150_000 * ids.length
+      ),
+    pendingOf,
+    rolledIds,
+    usdgShareOf,
     upgradeTier: (id, tier, from) => send(CFG.nft, SEL.upgradeTier + word(id) + word(tier), 0n, from),
     fuse: (ids, from) =>
       send(CFG.nft, SEL.fuse + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""), 0n, from),
