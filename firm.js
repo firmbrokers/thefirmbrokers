@@ -214,14 +214,25 @@
       } catch (e) {}
     }
     let last;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    // getLogs over our range is served ONLY by the primary RPC (public
+    // fallbacks archive-gate it, seen 2026-08-28: publicnode -32602), so a
+    // failed scan retries the primary with backoff instead of rotating into
+    // an endpoint that can never answer. Single calls still rotate (rpcPost).
+    const primary = CFG.rpcs[0];
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const j = await rpcPost({ jsonrpc: "2.0", id: 1, method: "eth_getLogs", params: [params] });
+        const r = await fetch(primary, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs", params: [params] }),
+        });
+        if (!r.ok) throw new Error("http " + r.status);
+        const j = await r.json();
         if (j.error) throw new Error(j.error.message);
         return j.result;
       } catch (e) {
         last = e;
-        if (attempt < 2) await sleep(400 * (attempt + 1));
+        if (attempt < 4) await sleep(500 * (attempt + 1));
       }
     }
     throw last;
