@@ -496,13 +496,16 @@
   const CREDIT_ROLLED_TOPIC = "0xc2cda032f63ebe7629abecffad35589c71515edfd5b2c2048e340b3033a536e4";
   const DELIVERED_TOPIC = "0x8110a247e3bf84088ca20c991ad431b68293ca3bdfe626df91b9744bf4d7b9ce";
   async function rolledIds() {
-    // every broker the payroll has ever touched: paid once, or rolled once.
-    // Between them that is the whole active floor, discoverable from logs
-    // without enumerating 5,000 tokens.
+    // every broker the payroll touched RECENTLY: paid or rolled within the
+    // last ~4 hours of blocks. Bounded so the scan stays fast as the chain
+    // grows (and note: it still needs the primary rpc — public fallbacks
+    // archive-gate even modest ranges).
+    const head = await blockNumber();
+    const from = Math.max(head - 150_000, CFG.deployBlock);
     const base = { address: CFG.engine };
     const [rolled, paid] = await Promise.all([
-      rpcLogsRange(Object.assign({ topics: [CREDIT_ROLLED_TOPIC] }, base), CFG.deployBlock, "latest", 0, true),
-      rpcLogsRange(Object.assign({ topics: [DELIVERED_TOPIC] }, base), CFG.deployBlock, "latest", 0, true),
+      rpcLogsRange(Object.assign({ topics: [CREDIT_ROLLED_TOPIC] }, base), from, "latest", 0, true),
+      rpcLogsRange(Object.assign({ topics: [DELIVERED_TOPIC] }, base), from, "latest", 0, true),
     ]);
     const seen = {};
     const out = [];

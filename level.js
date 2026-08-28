@@ -1766,7 +1766,16 @@
     // mid-sale the one job is getting people ON payroll, so a squad of two or
     // more unhired brokers takes the slot ahead of the cleanup buttons
     const unhired = out ? [] : bs.filter((b) => !b.active);
-    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + (b.pending || 0n), 0n);
+    // only the USDG-bound slice of pending pay counts: a 100% stock-split
+    // holder cannot lift their own pot over the swap floor, so the button
+    // would only ever tell them "nothing moved" — their pay rides the hourly
+    // payday instead.
+    const usdgOf = (b) => {
+      const p = b.pending || 0n;
+      if (!p || !b.split || !b.split.length) return p;
+      return (p * b.split.reduce((a, sp) => a + (sp.idx === 11 ? BigInt(sp.bps) : 0n), 0n)) / 10000n;
+    };
+    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + usdgOf(b), 0n);
     const extra = collectable >= 100_000_000_000_000n
       ? { cls: "payme", label: `COLLECT PAY <i>${fmtEth(collectable)} ETH</i>` }
       : unhired.length >= 2
