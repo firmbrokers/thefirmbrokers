@@ -588,15 +588,21 @@
   /// before, so level.js's two callers are untouched. Cached 3 minutes; the
   /// window rotates with the cache so repeat clicks look at fresh brokers.
   const SAMPLE = 600;
-  async function rolledIds() {
-    if (_rolledCache.ids && Date.now() - _rolledCache.at < 180_000) return _rolledCache.ids;
+  async function rolledIds(account) {
+    if (_rolledCache.ids && Date.now() - _rolledCache.at < 180_000 && _rolledCache.for === (account || "")) return _rolledCache.ids;
     // call() may answer "0x" (a wallet parked on another chain answers the
     // eth_call with nothing) — that must not become max = 0 and an empty pool
     const raw = await call(CFG.nft, SEL.maxSupply);
     let max = raw && raw !== "0x" && raw.length >= 66 ? Number(toBig(raw)) : 5000;
     if (!(max > 0)) max = 5000;
     const n = Math.min(SAMPLE, max);
-    const start = (Math.floor(Date.now() / 180_000) * 97) % max; // 0-based, rotates each cache window
+    // 0-based; rotates each cache window AND is salted per wallet: two holders
+    // clicking in the same three minutes must not pad with the same brokers,
+    // or whoever lands second finds them already paid and rolls (measured:
+    // one id in all five plans built within ten minutes on 2026-08-29)
+    let salt = 0;
+    try { if (account) salt = Number(BigInt(account) % BigInt(max)); } catch (e) { salt = 0; }
+    const start = (Math.floor(Date.now() / 180_000) * 97 + salt) % max;
     const ids = [];
     for (let i = 0; i < n; i++) ids.push(1 + ((start + i) % max));
     const pend = await pendingOf(ids);
@@ -604,7 +610,7 @@
       .filter(([, p]) => p > 0n)
       .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
       .map(([id]) => id);
-    _rolledCache = { at: Date.now(), ids: out };
+    _rolledCache = { at: Date.now(), ids: out, for: account || "" };
     return out;
   }
 
@@ -677,7 +683,19 @@
     if (gasLimit) tx.gas = "0x" + gasLimit.toString(16);
     const fees = await suggestedFees();
     if (fees) Object.assign(tx, fees);
-    return await p.request({ method: "eth_sendTransaction", params: [tx] });
+    try {
+      return await p.request({ method: "eth_sendTransaction", params: [tx] });
+    } catch (e) {
+      // a wallet that will not take EIP-1559 fields on this chain says so
+      // (MetaMask: "…does not support EIP-1559"); retry once the old way.
+      // A plain rejection is not that, and is never retried.
+      const m = String(e?.message || e || "").toLowerCase();
+      if (fees && /1559|maxfeepergas|maxpriorityfeepergas/.test(m) && !/reject|denied/.test(m)) {
+        delete tx.maxFeePerGas; delete tx.maxPriorityFeePerGas;
+        return await p.request({ method: "eth_sendTransaction", params: [tx] });
+      }
+      throw e;
+    }
   }
   /// gas for a payroll delivery, from what it actually costs: ≈28.7k per pay
   /// slot (a 3-way split is 3 slots) + ≈100k per real swap, fitted over
@@ -794,6 +812,7 @@
     hasChosen,
     call,
     callBatch,
+    blockNumber,
     stats,
     tokensOf,
     assetMeta,

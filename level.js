@@ -405,7 +405,7 @@
     let total = mine.reduce((a, [id, p]) => a + (p * (myShare[id] ?? 10000n)) / 10000n, 0n);
     const own = total;
     if (total < collectNeed()) {
-      const pool = (await F.rolledIds()).filter((id) => !ids.includes(id)).slice(0, 600);
+      const pool = (await F.rolledIds(state.account)).filter((id) => !ids.includes(id)).slice(0, 600);
       const [pend, shares] = await Promise.all([F.pendingOf(pool), F.usdgShareOf(pool)]);
       const bpsOf = {};
       for (const [id, b] of shares) bpsOf[id] = BigInt(b);
@@ -456,7 +456,7 @@
         // batch (a 150-id batch was shown as $6–$33). The keeper's starvation
         // sweep now carries the broad distribution; the click only has to
         // clear the floor with a margin.
-        const extraPool = (await F.rolledIds()).filter((id) => !ids.includes(id));
+        const extraPool = (await F.rolledIds(state.account)).filter((id) => !ids.includes(id));
         for (const id of extraPool) {
           if (ids.length >= WIDEN_MAX) break;
           ids.push(id);
@@ -483,7 +483,7 @@
       // floor). Never tell the holder it worked without reading the result.
       const ownAfter = (await F.pendingOf(act)).reduce((a, [, p]) => a + p, 0n);
       if (ownBefore > 0n && ownAfter >= ownBefore) {
-        toast("the pot is still under the swap minimum — your pay rolled forward, nothing lost. It lands with the next payday", false);
+        toast("your pay rolled forward, nothing lost. Stock pay pools with other brokers' before it can be swapped; the payroll sweep pays it out once the pool is big enough", false);
       } else {
         toast("pay collected — check your broker's vault or wallet" + feeLine, true);
       }
