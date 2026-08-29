@@ -521,11 +521,20 @@
   let _ledgerCache = { at: 0, v: null };
   async function firmLedger() {
     if (_ledgerCache.v && Date.now() - _ledgerCache.at < 240_000) return _ledgerCache.v;
-    const [paid, act, deact] = await Promise.all([
+    const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+    const ZERO_WORD = "0x" + "0".repeat(64);
+    const [paid, act, deact, burns] = await Promise.all([
       rpcLogsRange({ address: CFG.engine, topics: [DELIVERED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
       rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
       rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
+      // fuse() burns the absorbed tokens WITHOUT a Deactivated event, so a
+      // fused broker's last Activated/Deactivated event stays Activated and
+      // the last-wins ledger would count him hired forever. A burn is
+      // terminal, so burned ids are a hard exclusion, immune to ordering.
+      // NB Transfer's tokenId is the THIRD indexed arg: topics[3].
+      rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, ZERO_WORD] }, CFG.deployBlock, "latest", 0, true),
     ]);
+    const burned = new Set(burns.map((g) => Number(BigInt(g.topics[3]))));
     const paidById = {};
     for (const g of paid) {
       const id = Number(BigInt(g.topics[1]));
@@ -544,7 +553,7 @@
     mark(act, true);
     mark(deact, false);
     let hired = 0;
-    for (const id in last) if (last[id].on) hired++;
+    for (const id in last) if (last[id].on && !burned.has(Number(id))) hired++;
     const v = { paidById, hired };
     _ledgerCache = { at: Date.now(), v };
     return v;
