@@ -391,8 +391,35 @@
   /// only swaps a pot of 0.01+ ETH per asset, so a small holder's claim is
   /// padded with OTHER brokers' rolled credit (they get paid too — deliver is
   /// permissionless and pay only ever goes to each broker's own owner/vault).
-  const COLLECT_NEED = 12_000_000_000_000_000n; // 0.012 ETH clears the 0.01 swap floor with margin
   const PAYDAY_OWED = 5_000_000_000_000_000n; // fees waiting in the splitter worth a harvest
+  const engineMinSwap = () => (state.stats && state.stats.minSwap) || 10_000_000_000_000_000n;
+  const collectNeed = () => (engineMinSwap() * 12n) / 10n; // 20% over the swap floor
+  /// the USDG-bound settled total a click could deliver (holder + padding).
+  /// This IS the click's pre-flight, so the machine only arms on a real plan.
+  async function payPlan(act) {
+    const mine = await F.pendingOf(act);
+    const myShare = {};
+    for (const [id, b] of await F.usdgShareOf(act)) myShare[id] = BigInt(b);
+    const ids = mine.filter(([, p]) => p > 0n).map(([id]) => id);
+    let total = mine.reduce((a, [id, p]) => a + (p * (myShare[id] ?? 10000n)) / 10000n, 0n);
+    const own = total;
+    if (total < collectNeed()) {
+      const pool = (await F.rolledIds()).filter((id) => !ids.includes(id)).slice(0, 600);
+      const [pend, shares] = await Promise.all([F.pendingOf(pool), F.usdgShareOf(pool)]);
+      const bpsOf = {};
+      for (const [id, b] of shares) bpsOf[id] = BigInt(b);
+      const cand = pend
+        .map(([id, p]) => [id, (p * (bpsOf[id] ?? 0n)) / 10000n])
+        .filter(([, c]) => c > 0n);
+      cand.sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
+      for (const [id, c] of cand) {
+        if (total >= collectNeed() || ids.length >= 150) break;
+        ids.push(id);
+        total += c;
+      }
+    }
+    return { ids, total, own };
+  }
   const collectPay = async (bs, roundDue) => {
     const act = bs.filter((b) => b.active).map((b) => b.id);
     if (!act.length || !state.account) return;
@@ -412,33 +439,14 @@
     } catch (e) { /* the pot pull is best-effort; collection continues */ }
     let ids, total;
     try {
-      const mine = await F.pendingOf(act);
-      const myShare = {};
-      for (const [id, b] of await F.usdgShareOf(act)) myShare[id] = BigInt(b);
-      ids = mine.filter(([, p]) => p > 0n).map(([id]) => id);
-      // the number that has to clear the engine's per-asset swap floor is the
-      // USDG-bound slice of the batch, weighted by each broker's paycheck mix
-      total = mine.reduce((a, [id, p]) => a + (p * (myShare[id] ?? 10000n)) / 10000n, 0n);
+      const plan = await payPlan(act);
+      ids = plan.ids;
+      total = plan.total;
       if (!ids.length) {
         if (!ranHarvest && !roundDue) { toast("nothing settled to collect yet — the hour has to close first", false); return; }
         // fresh pot on its way: the settle inside deliver credits everyone,
         // so start the batch from the clicker's own brokers
         ids = act.slice();
-      }
-      if (total < COLLECT_NEED) {
-        const pool = (await F.rolledIds()).filter((id) => !ids.includes(id)).slice(0, 600);
-        const [pend, shares] = await Promise.all([F.pendingOf(pool), F.usdgShareOf(pool)]);
-        const bpsOf = {};
-        for (const [id, b] of shares) bpsOf[id] = BigInt(b);
-        const cand = pend
-          .map(([id, p]) => [id, (p * (bpsOf[id] ?? 0n)) / 10000n])
-          .filter(([, c]) => c > 0n);
-        cand.sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
-        for (const [id, c] of cand) {
-          if (total >= COLLECT_NEED || ids.length >= 150) break;
-          ids.push(id);
-          total += c;
-        }
       }
       if ((ranHarvest || roundDue) && ids.length < 150) {
         // fresh pot: pendings credit at the settle inside deliver, so widen
@@ -450,8 +458,8 @@
         }
       }
     } catch (e) { toast(humanError(e), false); return; }
-    if (!ranHarvest && !roundDue && total < 10_000_000_000_000_000n) {
-      toast("the firm-wide pending pot is under the swap minimum right now — pay lands with the next payday", false);
+    if (!ranHarvest && !roundDue && total < engineMinSwap()) {
+      toast("the pot is under the swap minimum right now — the machine arms when a collect can really pay", false);
       return;
     }
     const mineBefore = total; // includes padding; the honest check is below
@@ -1794,19 +1802,23 @@
     const st = state.stats || {};
     const nowRound = Math.floor(Date.now() / 3_600_000);
     const roundDue = hasActive && st.lastSettled !== null && st.lastSettled !== undefined
-      && nowRound > st.lastSettled && (st.potBuffer || 0n) >= 10_000_000_000_000_000n;
-    const feesWaiting = hasActive && (state.owedFees || 0n) >= 5_000_000_000_000_000n;
-    const armed = collectable >= 100_000_000_000_000n || feesWaiting || roundDue;
+      && nowRound > st.lastSettled && (st.potBuffer || 0n) >= engineMinSwap();
     const mm = String(59 - new Date().getUTCMinutes()).padStart(2, "0");
-    const face = armed
-      ? `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${collectable >= 100_000_000_000_000n ? "YOUR BROKERS EARNED" : "FEES ACCRUED FOR PAYDAY"}</b><u>${collectable >= 100_000_000_000_000n ? fmtEth(collectable) + " ETH" : "RUN PAYDAY"}</u></div>
-        <div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`
-      : `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${out ? "EVERY BROKER PAID" : "ALL COLLECTED"}</b><u>${out ? "CLOCK IN" : `PAYDAY :${mm}`}</u></div>
-        <div class="btn dim">${out ? "CLOCK IN TO SEE PAY" : `NEXT PAYDAY IN ${mm} MIN`}</div>`;
-    const m = prop("fb-payday" + (armed ? " armed" : ""), 386, `
+    // faces: the button is only ever CLICKABLE when a click will really pay.
+    // Until the async pre-flight answers, earnings show as BUILDING.
+    const crt = (label, big) => `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${label}</b><u>${big}</u></div>`;
+    const faceArmed = (label, big) => crt(label, big) + `<div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`;
+    const faceIdle = () => (out
+      ? crt("EVERY BROKER PAID", "CLOCK IN") + `<div class="btn dim">CLOCK IN TO SEE PAY</div>`
+      : collectable > 0n
+        ? crt("EARNED SO FAR", `${fmtEth(collectable)} ETH`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`
+        : crt("ALL COLLECTED", `PAYDAY :${mm}`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`);
+    let armed = false;
+    let face = out ? faceIdle() : crt(collectable > 0n ? "EARNED SO FAR" : "PAYROLL", collectable > 0n ? `${fmtEth(collectable)} ETH` : "CHECKING…") + `<div class="btn dim">CHECKING THE POT…</div>`;
+    const m = prop("fb-payday", 386, `
       <div class="body">
         <div class="marq">PAYDAY</div>
-        ${face}
+        <div class="face">${face}</div>
         <div class="mouth"><i class="cav"></i><i class="bill b1"></i><i class="bill b2"></i><i class="bill b3"></i><i class="lip"></i></div>
         <div class="louv"><i></i><i></i><i></i></div>
         <div class="plate"><i class="bolt bl"></i>PAYROLL&nbsp;ENGINE<i class="bolt br"></i></div>
@@ -1814,10 +1826,33 @@
       <div class="crank"><i class="boss"></i><i class="arm"></i><i class="handle"></i></div>
       <i class="plinth p1"></i><i class="plinth p2"></i>`);
     m.title = "collect your brokers' pay";
+    const setFace = (html, on) => {
+      armed = on;
+      m.classList.toggle("armed", on);
+      const f = m.querySelector(".face");
+      if (f) f.innerHTML = html;
+    };
+    // async pre-flight: arm only when a click would truly pay out
+    if (!out) (async () => {
+      try {
+        if (roundDue) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
+        const owedFees = await F.owedEngine();
+        state.owedFees = owedFees;
+        if (hasActive && owedFees >= PAYDAY_OWED) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
+        if (hasActive) {
+          const plan = await payPlan(bs.filter((b) => b.active).map((b) => b.id));
+          if (plan.total >= engineMinSwap() && plan.ids.length) {
+            setFace(faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`), true);
+            return;
+          }
+        }
+        setFace(faceIdle(), false);
+      } catch (e) { if (document.body.contains(m)) setFace(faceIdle(), false); }
+    })();
     m.addEventListener("click", async () => {
       if (out) { connect(); return; }
       if (m.classList.contains("working")) return;
-      if (!armed) { toast(`nothing to collect yet — the pot rolls at the top of the hour (:${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} to go)`); return; }
+      if (!armed) { toast(`payday runs at the top of the hour — :${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} to go. Your pay keeps building until then`); return; }
       m.classList.add("working");
       try { await collectPay(bs, roundDue); } finally { m.classList.remove("working"); }
     });

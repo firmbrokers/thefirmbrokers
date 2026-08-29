@@ -47,6 +47,7 @@
     assets: "0xcf35bdd0",
     tokenState: "0x9745cc3d",
     lastSettledRound: "0xfe51b955",
+    minSwap: "0x59cd9031",
     deliver: "0xd3dcde9a",
     harvest: "0x4641257d",
     owed: "0xdf18e047",
@@ -293,6 +294,7 @@
       { to: CFG.nft, data: SEL.totalMinted },        // 5 optional
       { to: CFG.nft, data: SEL.mintPriceWei },       // 6 optional
       { to: CFG.engine, data: SEL.lastSettledRound }, // 7 optional
+      { to: CFG.engine, data: SEL.minSwap },          // 8 optional
     ];
     const iBurn = t ? reqs.push({ to: t, data: SEL.balanceOf + word(DEAD) }) - 1 : -1;
     const iDrop = CFG.seaDrop ? reqs.push({ to: CFG.seaDrop, data: SEL.getPublicDrop + word(CFG.nft) }) - 1 : -1;
@@ -316,6 +318,7 @@
       potBuffer: toBig(r[4]),
       burned: iBurn >= 0 && r[iBurn] !== null ? toBig(r[iBurn]) : null,
       lastSettled: r[7] !== null ? Number(toBig(r[7])) : null,
+      minSwap: r[8] !== null ? toBig(r[8]) : null,
     };
   }
 
