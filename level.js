@@ -393,6 +393,7 @@
   /// permissionless and pay only ever goes to each broker's own owner/vault).
   const PAYDAY_OWED = 5_000_000_000_000_000n; // fees waiting in the splitter worth a harvest
   const WIDEN_MAX = 40; // ids a click pads a fresh pot out to (payPlan needs ~6; the keeper sweeps the rest)
+  const OWN_MIN = 1_000_000_000_000_000n; // 0.001 ETH of own pay before the machine arms a collect (a click costs ≈$1 in gas)
   const engineMinSwap = () => (state.stats && state.stats.minSwap) || 10_000_000_000_000_000n;
   const collectNeed = () => (engineMinSwap() * 12n) / 10n; // 20% over the swap floor
   /// the USDG-bound settled total a click could deliver (holder + padding).
@@ -562,7 +563,16 @@
       // SeaDrop answered: the chain decides. It did not: config decides.
       s.publicOpen = s.publicOpen === null || s.publicOpen === undefined ? publicByConfig() : !!s.publicOpen;
       state.stats = s;
-      state.tokenLive = s.burned !== null;
+      // the token is on chain the moment config.js names it; the burned read is
+      // a number for the HUD, not the door key — one flaky eth_call must never
+      // show the bank as "locked" (seen 2026-08-29 in the user's own tab)
+      state.tokenLive = !!CFG.token || s.burned !== null;
+      document.querySelectorAll(".fb-zonebtn").forEach((b, i) => {
+        const z = ZONES[i]; if (!z) return;
+        const live = zoneLive(z);
+        b.classList.toggle("is-locked", !live);
+        const lbl = b.querySelector("span:last-child"); if (lbl) lbl.textContent = live ? z.does : "locked";
+      });
       try { state.owedFees = await F.owedEngine(); } catch (e) { /* stale value stands */ }
       paintHud();
       if (state.mode !== "street") rebuildRoom();
@@ -1863,7 +1873,10 @@
         if (hasActive && owedFees >= PAYDAY_OWED) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
         if (hasActive) {
           const plan = await payPlan(bs.filter((b) => b.active).map((b) => b.id));
-          if (plan.own > 0n && plan.total >= engineMinSwap() && plan.ids.length) {
+          // arm only when the holder's own pay is worth the click: a 40-id
+          // deliver costs ≈$1 real gas, so under OWN_MIN the face pools and the
+          // hourly sweep pays them for free (it pays at 0.002 anyway)
+          if (plan.own >= OWN_MIN && plan.total >= engineMinSwap() && plan.ids.length) {
             setFace(faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`), true);
             return;
           }
