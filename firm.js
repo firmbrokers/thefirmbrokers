@@ -512,22 +512,50 @@
   const DELIVERED_TOPIC = "0x8110a247e3bf84088ca20c991ad431b68293ca3bdfe626df91b9744bf4d7b9ce";
   /// every Delivered event since launch, cached: the all-time ledger.
   /// Grows slowly (hundreds/hour at most), one bounded scan, shared cache.
-  let _paidCache = { at: 0, byId: null };
-  async function paidLedger() {
-    if (_paidCache.byId && Date.now() - _paidCache.at < 180_000) return _paidCache.byId;
-    const got = await rpcLogsRange({ address: CFG.engine, topics: [DELIVERED_TOPIC] }, CFG.deployBlock, "latest", 0, true);
-    const byId = {};
-    for (const g of got) {
+  const ACTIVATED_TOPIC = "0x9e4bccd4fa5e19e8e1d222251970473cc66d2206fd78ce89fd263bd56e7bd28a";
+  const DEACTIVATED_TOPIC = "0xed48e4e899b34abded07dd8f092a22585a3fdec7db6b83f3927af165bf04cb1e";
+  /// one combined pass over the slow-moving ledgers: all-time deliveries per
+  /// broker AND the live hired count (a token is hired iff its LAST
+  /// Activated/Deactivated event is Activated — transfers deactivate through
+  /// the hook, so no Transfer scan is needed). One cache, one TTL.
+  let _ledgerCache = { at: 0, v: null };
+  async function firmLedger() {
+    if (_ledgerCache.v && Date.now() - _ledgerCache.at < 240_000) return _ledgerCache.v;
+    const [paid, act, deact] = await Promise.all([
+      rpcLogsRange({ address: CFG.engine, topics: [DELIVERED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
+      rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
+      rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
+    ]);
+    const paidById = {};
+    for (const g of paid) {
       const id = Number(BigInt(g.topics[1]));
-      byId[id] = (byId[id] || 0n) + BigInt("0x" + g.data.slice(2, 66));
+      paidById[id] = (paidById[id] || 0n) + BigInt("0x" + g.data.slice(2, 66));
     }
-    _paidCache = { at: Date.now(), byId };
-    return byId;
+    const last = {};
+    const mark = (logs, on) => {
+      for (const g of logs) {
+        const id = Number(BigInt(g.topics[1]));
+        const b2 = Number(BigInt(g.blockNumber));
+        const li = Number(BigInt(g.logIndex));
+        const cur = last[id];
+        if (!cur || b2 > cur.b || (b2 === cur.b && li > cur.i)) last[id] = { b: b2, i: li, on };
+      }
+    };
+    mark(act, true);
+    mark(deact, false);
+    let hired = 0;
+    for (const id in last) if (last[id].on) hired++;
+    const v = { paidById, hired };
+    _ledgerCache = { at: Date.now(), v };
+    return v;
   }
   /// all-time ETH value delivered to a set of broker ids
   async function earnedAllTime(ids) {
-    const byId = await paidLedger();
+    const byId = (await firmLedger()).paidById;
     return ids.reduce((a, id) => a + (byId[id] || 0n), 0n);
+  }
+  async function hiredCount() {
+    return (await firmLedger()).hired;
   }
 
   let _rolledCache = { at: 0, ids: null };
@@ -744,6 +772,7 @@
     usdgShareOf,
     owedEngine,
     earnedAllTime,
+    hiredCount,
     // pull the fee pot in; fixed gas — harvest's estimate is the original trap
     harvest: (from) => send(CFG.engine, SEL.harvest, 0n, from, 1_000_000),
     upgradeTier: (id, tier, from) => send(CFG.nft, SEL.upgradeTier + word(id) + word(tier), 0n, from),

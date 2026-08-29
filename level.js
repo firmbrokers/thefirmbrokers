@@ -2559,7 +2559,19 @@
           <b>EARNED BY BROKERS · ALL TIME</b>
           <u data-usd="${usd !== null ? Math.round(usd) : ""}">${big}</u>
           <s>in USDG and real stocks · 5,000 brokers · every hour, on-chain</s>
+          <div class="count"></div>
         </div>`);
+      // the headcount joins the money on the same board: hired == isActive,
+      // derived from the activation ledger. Hidden (not zero) if the scan
+      // fails — "0 brokers hired" would be a lie.
+      (async () => {
+        try {
+          const hired = await F.hiredCount();
+          const c = board.querySelector(".count");
+          if (!c || !document.body.contains(c) || !hired) return;
+          c.textContent = `BROKERS ON PAYROLL · ${hired.toLocaleString()} OF 5,000 · ${(100 * hired / 5000).toFixed(1)}% of the collection working`;
+        } catch (e) { /* stat stays hidden */ }
+      })();
       // odometer: the number rolls up on entry, because a number this good
       // deserves a moment
       const uEl = board.querySelector("u");

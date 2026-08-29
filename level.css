@@ -3928,3 +3928,4 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
 
 /* the floor board's all-time line */
 .floor-board .fig .alltime { margin-top: 8px; font-family: var(--font-display); font-size: 6px; color: #ffd75e; letter-spacing: 1px; min-height: 8px; }
+.bank2-earned .count { margin-top: 10px; padding-top: 8px; border-top: 2px solid #1d232c; font-family: var(--font-display); font-size: 6px; color: #ffd75e; letter-spacing: 1px; min-height: 8px; }
