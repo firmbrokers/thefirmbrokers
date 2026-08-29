@@ -1803,6 +1803,9 @@
     const nowRound = Math.floor(Date.now() / 3_600_000);
     const roundDue = hasActive && st.lastSettled !== null && st.lastSettled !== undefined
       && nowRound > st.lastSettled && (st.potBuffer || 0n) >= engineMinSwap();
+    // hired but never seated on payroll: admission lost its heartbeat with the
+    // keeper, so the machine seats the visitor's own brokers on click
+    const stranded = out ? [] : bs.filter((b) => b.active && !b.liveNow && b.liveFrom > 0 && nowRound >= b.liveFrom).map((b) => b.id);
     const mm = String(59 - new Date().getUTCMinutes()).padStart(2, "0");
     // faces: the button is only ever CLICKABLE when a click will really pay.
     // Until the async pre-flight answers, earnings show as BUILDING.
@@ -1836,6 +1839,7 @@
     // async pre-flight: arm only when a click would truly pay out
     if (!out) (async () => {
       try {
+        if (stranded.length) { setFace(faceArmed(`${stranded.length} BROKER${stranded.length === 1 ? "" : "S"} OFF PAYROLL`, "CLICK TO SEAT"), true); return; }
         if (roundDue) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
         const owedFees = await F.owedEngine();
         state.owedFees = owedFees;
@@ -1860,7 +1864,17 @@
       if (m.classList.contains("working")) return;
       if (!armed) { toast(`your pay is building — it becomes collectable at the top of the hour (${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} min), when the whole floor's payday pot fills`); return; }
       m.classList.add("working");
-      try { await collectPay(bs, roundDue); } finally { m.classList.remove("working"); }
+      try {
+        if (stranded.length) {
+          toast(`seating ${stranded.length} broker${stranded.length === 1 ? "" : "s"} on payroll…`);
+          const h = await F.sync(stranded, state.account);
+          await F.waitForTx(h);
+          toast("on payroll — earning from this hour on", true);
+          await refreshBrokers();
+        } else {
+          await collectPay(bs, roundDue);
+        }
+      } finally { m.classList.remove("working"); }
     });
   }
 

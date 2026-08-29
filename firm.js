@@ -47,6 +47,7 @@
     assets: "0xcf35bdd0",
     tokenState: "0x9745cc3d",
     lastSettledRound: "0xfe51b955",
+    sync: "0x4b7314e4",
     minSwap: "0x59cd9031",
     twapQuote: "0x6e3e495e",
     deliver: "0xd3dcde9a",
@@ -447,7 +448,7 @@
       totalW = 0n;
     const by = {};
     for (const id of ids)
-      by[id] = { id, active: false, weight: 0, tierBurned: 0n, artwork: 0, parts: 1, holdings: [], pending: 0n, collect: false, split: [], liveNow: false, liveWeight: 0 };
+      by[id] = { id, active: false, weight: 0, tierBurned: 0n, artwork: 0, parts: 1, holdings: [], pending: 0n, collect: false, split: [], liveNow: false, liveWeight: 0, liveFrom: 0 };
     res.forEach((hex, i) => {
       const [id, kind] = plan[i];
       if (id === null) {
@@ -476,6 +477,7 @@
         const b = hex.slice(2);
         t.liveWeight = Number(BigInt("0x" + b.slice(0, 64)));
         t.liveNow = BigInt("0x" + b.slice(192, 256)) === 1n;
+        t.liveFrom = Number(BigInt("0x" + b.slice(256, 320)));
       } else if (kind === "vault" && hex && hex !== "0x") {
         try {
           const body = hex.slice(2);
@@ -717,6 +719,16 @@
     approveMax: async (from) =>
       send(await launchToken(), SEL.approve + word(CFG.nft) + word((1n << 256n) - 1n), 0n, from),
     activate: (id, from) => send(CFG.nft, SEL.activate + word(id), 0n, from),
+    // seat waiting brokers on payroll (permissionless, corrective). Explicit
+    // gas — same estimate trap family as harvest/deliver.
+    sync: (ids, from) =>
+      send(
+        CFG.engine,
+        SEL.sync + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""),
+        0n,
+        from,
+        600_000 + 120_000 * ids.length
+      ),
     // one payroll delivery for a LIST of ids, holder-triggered. Explicit gas:
     // 600k base + 150k per id — the estimate trap is real (see send()).
     deliver: (ids, from) =>
