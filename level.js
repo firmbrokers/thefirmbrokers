@@ -393,7 +393,7 @@
   /// permissionless and pay only ever goes to each broker's own owner/vault).
   const COLLECT_NEED = 12_000_000_000_000_000n; // 0.012 ETH clears the 0.01 swap floor with margin
   const PAYDAY_OWED = 5_000_000_000_000_000n; // fees waiting in the splitter worth a harvest
-  const collectPay = async (bs) => {
+  const collectPay = async (bs, roundDue) => {
     const act = bs.filter((b) => b.active).map((b) => b.id);
     if (!act.length || !state.account) return;
     toast("adding up your pay…");
@@ -420,7 +420,7 @@
       // USDG-bound slice of the batch, weighted by each broker's paycheck mix
       total = mine.reduce((a, [id, p]) => a + (p * (myShare[id] ?? 10000n)) / 10000n, 0n);
       if (!ids.length) {
-        if (!ranHarvest) { toast("nothing settled to collect yet — the hour has to close first", false); return; }
+        if (!ranHarvest && !roundDue) { toast("nothing settled to collect yet — the hour has to close first", false); return; }
         // fresh pot on its way: the settle inside deliver credits everyone,
         // so start the batch from the clicker's own brokers
         ids = act.slice();
@@ -440,7 +440,7 @@
           total += c;
         }
       }
-      if (ranHarvest && ids.length < 150) {
+      if ((ranHarvest || roundDue) && ids.length < 150) {
         // fresh pot: pendings credit at the settle inside deliver, so widen
         // the batch by recency — whoever has credit gets paid
         const extraPool = (await F.rolledIds()).filter((id) => !ids.includes(id));
@@ -450,7 +450,7 @@
         }
       }
     } catch (e) { toast(humanError(e), false); return; }
-    if (!ranHarvest && total < 10_000_000_000_000_000n) {
+    if (!ranHarvest && !roundDue && total < 10_000_000_000_000_000n) {
       toast("the firm-wide pending pot is under the swap minimum right now — pay lands with the next payday", false);
       return;
     }
@@ -1791,13 +1791,18 @@
     const out = !state.account;
     const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + paydayUsdgOf(b), 0n);
     const hasActive = !out && bs.some((b) => b.active);
+    const st = state.stats || {};
+    const nowRound = Math.floor(Date.now() / 3_600_000);
+    const roundDue = hasActive && st.lastSettled !== null && st.lastSettled !== undefined
+      && nowRound > st.lastSettled && (st.potBuffer || 0n) >= 10_000_000_000_000_000n;
     const feesWaiting = hasActive && (state.owedFees || 0n) >= 5_000_000_000_000_000n;
-    const armed = collectable >= 100_000_000_000_000n || feesWaiting;
+    const armed = collectable >= 100_000_000_000_000n || feesWaiting || roundDue;
+    const mm = String(59 - new Date().getUTCMinutes()).padStart(2, "0");
     const face = armed
       ? `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${collectable >= 100_000_000_000_000n ? "YOUR BROKERS EARNED" : "FEES ACCRUED FOR PAYDAY"}</b><u>${collectable >= 100_000_000_000_000n ? fmtEth(collectable) + " ETH" : "RUN PAYDAY"}</u></div>
         <div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`
-      : `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${out ? "EVERY BROKER PAID" : "ALL COLLECTED"}</b><u>${out ? "CLOCK IN" : "COME BACK SOON"}</u></div>
-        <div class="btn dim">${out ? "CLOCK IN TO SEE PAY" : "NOTHING TO COLLECT YET"}</div>`;
+      : `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${out ? "EVERY BROKER PAID" : "ALL COLLECTED"}</b><u>${out ? "CLOCK IN" : `PAYDAY :${mm}`}</u></div>
+        <div class="btn dim">${out ? "CLOCK IN TO SEE PAY" : `NEXT PAYDAY IN ${mm} MIN`}</div>`;
     const m = prop("fb-payday" + (armed ? " armed" : ""), 386, `
       <div class="body">
         <div class="marq">PAYDAY</div>
@@ -1812,9 +1817,9 @@
     m.addEventListener("click", async () => {
       if (out) { connect(); return; }
       if (m.classList.contains("working")) return;
-      if (!armed) { toast("nothing to collect yet — pay accrues as the token trades"); return; }
+      if (!armed) { toast(`nothing to collect yet — the pot rolls at the top of the hour (:${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} to go)`); return; }
       m.classList.add("working");
-      try { await collectPay(bs); } finally { m.classList.remove("working"); }
+      try { await collectPay(bs, roundDue); } finally { m.classList.remove("working"); }
     });
   }
 
