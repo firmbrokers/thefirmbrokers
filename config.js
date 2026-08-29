@@ -20,6 +20,7 @@ window.FIRM_CFG = {
   marketApi: "https://firm-market.firmbrokersrhchain.workers.dev", // firm-market worker base URL (market/README.md); empty = listings column off, level lookup still works
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)
+  treasury: "0x30D9057f9D0439Cb772032D9DBf95c1c8A65E0ba",   // the treasury (launch.env TREASURY/TEAM); docs.html reads its $9TO5 balance for the public supply table
   deployBlock: 48370000, // scan start = the token launch (2026-08-28 14:28Z). Every broker anyone owns was minted after this except our reserve #1; keeps the owned-broker scan inside the range every public RPC serves.
 
   // ---- the mint: on OpenSea (decided 2026-08-25) ----

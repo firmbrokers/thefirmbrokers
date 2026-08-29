@@ -172,6 +172,9 @@ th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--rule-soft)
 th{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);background:var(--sunk)}
 tr:last-child td{border-bottom:0}
 td.n{font-family:"VT323",monospace;font-size:19px}
+/* the supply table carries 10-digit figures: let the label wrap so the number never clips on a phone */
+.supply td:first-child{white-space:normal}
+.supply td.n{text-align:right}
 
 /* ---------- legendary strip ---------- */
 .legends{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px;margin:24px 0 0}
@@ -366,6 +369,30 @@ footer a{color:var(--ink-2)}
   <p>Every burn shrinks the amount of $9TO5 that exists. Nothing puts it back.
     The supply only ever moves one way. That is true of every burn by every
     holder, not only yours.</p>
+
+  <h3 id="supply">How much exists</h3>
+  <p>1,000,000,000 $9TO5 were created at launch. None can ever be added.
+    Circulating is everything that is not burned and not sitting in the treasury.</p>
+  <!-- The figures below are read straight from the token contract on load
+       (totalSupply, balanceOf the burn address, balanceOf the treasury); the
+       numbers in the markup are the 2026-08-29 snapshot, shown until the read
+       lands or if it fails. Aggregators (CoinGecko) link here as the public
+       source for circulating supply, so keep the ids and this arithmetic. -->
+  <div class="tablewrap supply"><table>
+    <tbody>
+      <tr><td>Total ever created</td><td class="n" id="sup-total">1,000,000,000</td></tr>
+      <tr><td>Burned (gone for good)</td><td class="n" id="sup-burned">219,975,000</td></tr>
+      <tr><td>Treasury (not circulating)</td><td class="n" id="sup-treasury">9,368,828</td></tr>
+      <tr><td>Circulating</td><td class="n" id="sup-circ">770,656,172</td></tr>
+    </tbody>
+  </table></div>
+  <p id="sup-asof">Snapshot from 2026-08-29. Check it yourself:
+    <a id="sup-burn-link" href="https://robinhoodchain.blockscout.com/token/0x223E93B1beD7de244445dB2dea4c7900e8045Acc?a=0x000000000000000000000000000000000000dEaD" rel="noopener">burn address</a> &middot;
+    <a id="sup-treasury-link" href="https://robinhoodchain.blockscout.com/address/0x30D9057f9D0439Cb772032D9DBf95c1c8A65E0ba" rel="noopener">treasury</a> &middot;
+    <a id="sup-token-link" href="https://robinhoodchain.blockscout.com/token/0x223E93B1beD7de244445dB2dea4c7900e8045Acc" rel="noopener">token contract</a>.
+    There was no presale and no team allocation: the treasury bought its coins in the
+    launch's first buy, on the same curve as everyone else, and only ever spends them by
+    burning to hire the reserve brokers. There is no locked or vesting tranche.</p>
 </section>
 
 <section id="hire">
@@ -767,6 +794,49 @@ footer a{color:var(--ink-2)}
   }).join("");
   t.innerHTML = "<table><tbody>" + tb + "</tbody></table>";
   document.getElementById("addr-list").appendChild(t);
+})();
+// The supply table: three eth_calls on the token, tried over each RPC in turn.
+// On any failure the snapshot in the markup stays, labelled as a snapshot.
+(function () {
+  var C = window.FIRM_CFG || {};
+  var DEAD = "0x000000000000000000000000000000000000dEaD";
+  if (!C.token || !C.treasury || !C.rpcs || !C.rpcs.length) return;
+  var ex = C.explorer || "https://robinhoodchain.blockscout.com";
+  var bl = document.getElementById("sup-burn-link"), tl = document.getElementById("sup-treasury-link"), kl = document.getElementById("sup-token-link");
+  if (bl) bl.href = ex + "/token/" + C.token + "?a=" + DEAD;
+  if (tl) tl.href = ex + "/address/" + C.treasury;
+  if (kl) kl.href = ex + "/token/" + C.token;
+  function pad(a) { return "000000000000000000000000" + a.slice(2).toLowerCase(); }
+  var calls = [
+    { id: 1, data: "0x18160ddd" },
+    { id: 2, data: "0x70a08231" + pad(DEAD) },
+    { id: 3, data: "0x70a08231" + pad(C.treasury) }
+  ].map(function (c) {
+    return { jsonrpc: "2.0", id: c.id, method: "eth_call", params: [{ to: C.token, data: c.data }, "latest"] };
+  });
+  function whole(hex) { // wei string -> whole tokens (18 dec), as a BigInt-free integer string
+    var s = BigInt(hex).toString(); return s.length > 18 ? s.slice(0, -18) : "0";
+  }
+  function fmt(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+  function tryRpc(i) {
+    if (i >= C.rpcs.length) return;
+    fetch(C.rpcs[i], { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(calls) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        var by = {}; res.forEach(function (r) { if (r && r.result && /^0x[0-9a-f]{64}$/i.test(r.result)) by[r.id] = r.result; });
+        if (!by[1] || !by[2] || !by[3]) throw new Error("bad");
+        var total = BigInt(whole(by[1])), burned = BigInt(whole(by[2])), treas = BigInt(whole(by[3]));
+        var circ = total - burned - treas;
+        document.getElementById("sup-total").textContent = fmt(total);
+        document.getElementById("sup-burned").textContent = fmt(burned);
+        document.getElementById("sup-treasury").textContent = fmt(treas);
+        document.getElementById("sup-circ").textContent = fmt(circ);
+        var asof = document.getElementById("sup-asof");
+        if (asof) asof.firstChild.textContent = "Live from the chain, just now. Check it yourself: ";
+      })
+      .catch(function () { tryRpc(i + 1); });
+  }
+  if (typeof BigInt === "function") tryRpc(0);
 })();
 </script>
 </body>
