@@ -17,6 +17,7 @@ window.FIRM_CFG = {
   nft: "0x2d4dFF47ba18c89847facA0C968e073d8B70ABb4",        // EmployeeNFT — deployed 2026-08-27, block 47105759
   engine: "0x5a362FFdaB7ffA585D50f1a5c032288EF0029740",     // PayrollEngine
   vault: "0x5D792986F671b11e6C551F7C90591c61341d749e",      // PayVault
+  marketApi: "https://firm-market.firmbrokersrhchain.workers.dev", // firm-market worker base URL (market/README.md); empty = listings column off, level lookup still works
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)
   deployBlock: 48370000, // scan start = the token launch (2026-08-28 14:28Z). Every broker anyone owns was minted after this except our reserve #1; keeps the owned-broker scan inside the range every public RPC serves.

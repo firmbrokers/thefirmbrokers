@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c2026">
+  <title>The Market — Firm Brokers</title>
+  <meta name="description" content="Every Firm Broker listed on OpenSea with his real on-chain level. Levels live on-chain, not in the picture.">
+  <meta property="og:title" content="The Market — Firm Brokers">
+  <meta property="og:description" content="Check any broker's level before you decide. Levels and merges live on-chain, not in the picture.">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="market.css">
+</head>
+<body>
+  <div class="mk-ticker"><div class="tape" id="mk-tape">FIRM BROKERS · THE MARKET · LOADING THE BOOK…&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;FIRM BROKERS · THE MARKET · LOADING THE BOOK…&nbsp;&nbsp;&nbsp;·&nbsp;&nbsp;&nbsp;</div></div>
+
+  <main class="mk">
+    <a class="mk-home" href="/">← THE STREET</a>
+
+    <header class="mk-hero">
+      <div class="marq">THE MARKET</div>
+      <div class="sub">levels live on-chain · not in the picture</div>
+    </header>
+
+    <section class="mk-cab mk-look">
+      <form class="scr" id="mk-form" autocomplete="off">
+        <label for="mk-q">check a broker</label>
+        <div class="row">
+          <span class="mini">THE MARKET</span>
+          <span class="hash">#</span>
+          <input id="mk-q" inputmode="numeric" pattern="[0-9]*" placeholder="number" maxlength="4">
+          <button type="submit" class="go">CHECK</button>
+        </div>
+      </form>
+      <div id="mk-card" class="mk-cards" hidden></div>
+    </section>
+
+    <section class="mk-cab mk-board">
+      <div class="head">
+        <div class="tabs">
+          <button type="button" data-sort="price" class="on">PRICE</button><button type="button" data-sort="level">LEVEL</button><button type="button" data-sort="value">VALUE</button>
+        </div>
+        <div class="stat" id="mk-stat">LOADING…</div>
+      </div>
+      <div class="rows" id="mk-rows"></div>
+      <div class="legend"><span><i class="led on"></i>earning</span><span><i class="led off"></i>clocked out · hire once, keeps level</span><span>★ legendary ×1.5</span><span class="bv">★ best value · 30%+ pay per ETH vs floor</span></div>
+    </section>
+
+    <footer class="mk-foot">prices from <a href="https://opensea.io/collection/thefirmbrokers" rel="noopener">OpenSea</a> · levels from Robinhood Chain · not advice</footer>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="firm.js"></script>
+  <script src="market.js"></script>
+</body>
+</html>

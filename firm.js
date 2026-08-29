@@ -813,6 +813,8 @@
     call,
     callBatch,
     blockNumber,
+    rpcLogsRange,
+    TOPICS: { ACTIVATED: ACTIVATED_TOPIC, DEACTIVATED: DEACTIVATED_TOPIC, DELIVERED: DELIVERED_TOPIC },
     stats,
     tokensOf,
     assetMeta,

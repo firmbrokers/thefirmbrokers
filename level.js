@@ -414,7 +414,7 @@
         .filter(([, c]) => c > 0n);
       cand.sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
       for (const [id, c] of cand) {
-        if (total >= collectNeed() || ids.length >= 150) break;
+        if (total >= collectNeed() || ids.length >= WIDEN_MAX) break; // the clicker pays for every padded id: cap it (was 150 → $4.7 quotes once the sweeps thinned the pool)
         ids.push(id);
         total += c;
       }
@@ -464,7 +464,9 @@
       }
     } catch (e) { toast(humanError(e), false); return; }
     if (!ranHarvest && !roundDue && total < engineMinSwap()) {
-      toast("the pot is under the swap minimum right now — the machine arms when a collect can really pay", false);
+      // the face armed on an earlier read and the pot moved since (a sweep, a
+      // neighbour's collect, a different rpc node a block behind)
+      toast("the pot moved since the machine lit up — nothing to collect right now; it re-checks in a moment", false);
       return;
     }
     const mineBefore = total; // includes padding; the honest check is below
@@ -1843,6 +1845,7 @@
       <div class="crank"><i class="boss"></i><i class="arm"></i><i class="handle"></i></div>
       <i class="plinth p1"></i><i class="plinth p2"></i>`);
     m.title = "collect your brokers' pay";
+    let pooling = false;
     const setFace = (html, on) => {
       if (!document.body.contains(m)) return;
       armed = on;
@@ -1860,13 +1863,19 @@
         if (hasActive && owedFees >= PAYDAY_OWED) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
         if (hasActive) {
           const plan = await payPlan(bs.filter((b) => b.active).map((b) => b.id));
-          if (plan.total >= engineMinSwap() && plan.ids.length) {
-            // a stock-split holder can carry the batch without any USDG-bound
-            // pay of their own: arm honestly as a floor payday, not "you
-            // earned 0.0000"
-            setFace(plan.own > 0n
-              ? faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`)
-              : faceArmed("POOLED PAY IS READY", "RUN PAYDAY"), true);
+          if (plan.own > 0n && plan.total >= engineMinSwap() && plan.ids.length) {
+            setFace(faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`), true);
+            return;
+          }
+          if (collectable > 0n) {
+            // settled pay that a 40-id batch cannot swap yet: either it is in
+            // stock slots (they only swap once the whole floor's stock pot
+            // clears) or the USDG pool is thin after a sweep. Either way the
+            // keeper's hourly sweep pays it; never invite the holder to pay
+            // gas to swap other people's pay ("POOLED PAY IS READY" used to),
+            // and never tell them to wait for the hour — it is not building
+            pooling = true;
+            setFace(crt(plan.own > 0n ? "PAY IS POOLING" : "STOCK PAY IS POOLING", `${fmtEth(collectable)} ETH`) + `<div class="btn dim">THE SWEEP PAYS IT HOURLY</div>`, false);
             return;
           }
         }
@@ -1876,7 +1885,10 @@
     m.addEventListener("click", async () => {
       if (out) { connect(); return; }
       if (m.classList.contains("working")) return;
-      if (!armed) { toast(`your pay is building — it becomes collectable at the top of the hour (${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} min), when the whole floor's payday pot fills`); return; }
+      if (!armed) {
+        if (pooling) { toast("your pay is settled and waiting for the pool to be deep enough to swap; the payroll sweep pays it out once an hour. Nothing to click, nothing lost"); return; }
+        toast(`your pay is building — it becomes collectable at the top of the hour (${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} min), when the whole floor's payday pot fills`); return;
+      }
       m.classList.add("working");
       try {
         if (stranded.length) {
@@ -1887,6 +1899,9 @@
           await refreshBrokers();
         } else {
           await collectPay(bs, roundDue);
+          // whatever the click did (or refused), redraw from fresh reads so an
+          // armed face never outlives the state that armed it
+          await refreshBrokers();
         }
       } finally { m.classList.remove("working"); }
     });
