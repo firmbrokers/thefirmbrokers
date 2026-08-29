@@ -536,10 +536,14 @@
     });
   }
 
-  /// trading fees sitting in the splitter, not yet pulled into the pay pot
+  /// trading fees a harvest would ACTUALLY pull into the pay pot right now.
+  /// Simulated via eth_call of harvest() itself: distribute() runs inside the
+  /// simulation, so fees still sitting in the hook are counted. (Reading
+  /// splitter.owed(engine) was a chicken-and-egg — that slot is only written
+  /// BY distribute, so with no keeper it stayed 0 and payday stalled; found
+  /// live 2026-08-28 23:53Z.)
   async function owedEngine() {
-    if (!CFG.splitter) return 0n;
-    const r = await call(CFG.splitter, SEL.owed + word(CFG.engine));
+    const r = await call(CFG.engine, SEL.harvest);
     return r && r !== "0x" ? toBig(r) : 0n;
   }
 
