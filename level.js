@@ -1811,10 +1811,10 @@
     const faceIdle = () => (out
       ? crt("EVERY BROKER PAID", "CLOCK IN") + `<div class="btn dim">CLOCK IN TO SEE PAY</div>`
       : collectable > 0n
-        ? crt("EARNED SO FAR", `${fmtEth(collectable)} ETH`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`
+        ? crt("PAY BUILDING", `${fmtEth(collectable)} ETH`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`
         : crt("ALL COLLECTED", `PAYDAY :${mm}`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`);
     let armed = false;
-    let face = out ? faceIdle() : crt(collectable > 0n ? "EARNED SO FAR" : "PAYROLL", collectable > 0n ? `${fmtEth(collectable)} ETH` : "CHECKING…") + `<div class="btn dim">CHECKING THE POT…</div>`;
+    let face = out ? faceIdle() : crt(collectable > 0n ? "PAY BUILDING" : "PAYROLL", collectable > 0n ? `${fmtEth(collectable)} ETH` : "CHECKING…") + `<div class="btn dim">CHECKING THE POT…</div>`;
     const m = prop("fb-payday", 386, `
       <div class="body">
         <div class="marq">PAYDAY</div>
@@ -1858,7 +1858,7 @@
     m.addEventListener("click", async () => {
       if (out) { connect(); return; }
       if (m.classList.contains("working")) return;
-      if (!armed) { toast(`payday runs at the top of the hour — :${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} to go. Your pay keeps building until then`); return; }
+      if (!armed) { toast(`your pay is building — it becomes collectable at the top of the hour (${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} min), when the whole floor's payday pot fills`); return; }
       m.classList.add("working");
       try { await collectPay(bs, roundDue); } finally { m.classList.remove("working"); }
     });
@@ -1921,6 +1921,7 @@
           <div class="fig">
             <div class="tally"><span class="lab">ON PAYROLL</span><span class="num">${tally}</span></div>
             <div class="bar"><s style="width:${pct}%"></s></div>
+            <div class="alltime"></div>
           </div>
           <div class="txt"><div class="say">${say}</div>${also}</div>
         </div>
@@ -1928,6 +1929,21 @@
           extra ? `<button class="btn ${extra.cls}" type="button">${extra.label}</button>` : ""
         }</div>
       </div>`);
+    // the number that answers "was it worth it": everything this wallet's
+    // brokers have ever been paid, plus what is building right now
+    if (!out && bs.length) (async () => {
+      try {
+        const paid = await F.earnedAllTime(bs.map((b) => b.id));
+        const building = bs.reduce((a2, b) => a2 + (b.pending || 0n), 0n);
+        const totalEarned = paid + building;
+        if (totalEarned <= 0n) return;
+        const el2 = bd.querySelector(".alltime");
+        if (!el2 || !document.body.contains(el2)) return;
+        const px6 = (state.stats || {}).usdPerEth;
+        const usd = px6 ? Number((totalEarned * px6) / 10n ** 18n) / 1e6 : null;
+        el2.textContent = `earned all time: ${fmtEth(totalEarned)} ETH${usd !== null ? ` · $${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""}`;
+      } catch (e) { /* the line just stays absent */ }
+    })();
     const ha = bd.querySelector(".hireall");
     if (ha) ha.addEventListener("click", () => hireAll(unhired));
     const ca = bd.querySelector(".claimall");

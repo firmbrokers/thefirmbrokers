@@ -508,6 +508,26 @@
   /// engine's per-asset swap minimum. Recent range only; served by every rpc.
   const CREDIT_ROLLED_TOPIC = "0xc2cda032f63ebe7629abecffad35589c71515edfd5b2c2048e340b3033a536e4";
   const DELIVERED_TOPIC = "0x8110a247e3bf84088ca20c991ad431b68293ca3bdfe626df91b9744bf4d7b9ce";
+  /// every Delivered event since launch, cached: the all-time ledger.
+  /// Grows slowly (hundreds/hour at most), one bounded scan, shared cache.
+  let _paidCache = { at: 0, byId: null };
+  async function paidLedger() {
+    if (_paidCache.byId && Date.now() - _paidCache.at < 180_000) return _paidCache.byId;
+    const got = await rpcLogsRange({ address: CFG.engine, topics: [DELIVERED_TOPIC] }, CFG.deployBlock, "latest", 0, true);
+    const byId = {};
+    for (const g of got) {
+      const id = Number(BigInt(g.topics[1]));
+      byId[id] = (byId[id] || 0n) + BigInt("0x" + g.data.slice(2, 66));
+    }
+    _paidCache = { at: Date.now(), byId };
+    return byId;
+  }
+  /// all-time ETH value delivered to a set of broker ids
+  async function earnedAllTime(ids) {
+    const byId = await paidLedger();
+    return ids.reduce((a, id) => a + (byId[id] || 0n), 0n);
+  }
+
   let _rolledCache = { at: 0, ids: null };
   async function rolledIds() {
     // the pool changes slowly and the scan is the expensive part of the
@@ -711,6 +731,7 @@
     rolledIds,
     usdgShareOf,
     owedEngine,
+    earnedAllTime,
     // pull the fee pot in; fixed gas — harvest's estimate is the original trap
     harvest: (from) => send(CFG.engine, SEL.harvest, 0n, from, 1_000_000),
     upgradeTier: (id, tier, from) => send(CFG.nft, SEL.upgradeTier + word(id) + word(tier), 0n, from),

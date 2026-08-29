@@ -3925,3 +3925,6 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
 .bank2-earned b { display: block; font-family: var(--font-display); font-size: 8px; color: #ffd75e; letter-spacing: 2px; text-shadow: 0 0 8px rgba(255,215,94,.45); }
 .bank2-earned u { display: block; margin-top: 10px; text-decoration: none; font-family: var(--font-display); font-size: 28px; color: #eafff0; text-shadow: 0 0 16px rgba(126,231,135,.65), 0 0 3px rgba(126,231,135,.9); }
 .bank2-earned s { display: block; margin-top: 12px; text-decoration: none; font-family: var(--font-display); font-size: 6px; color: #67b184; }
+
+/* the floor board's all-time line */
+.floor-board .fig .alltime { margin-top: 8px; font-family: var(--font-display); font-size: 6px; color: #ffd75e; letter-spacing: 1px; min-height: 8px; }
