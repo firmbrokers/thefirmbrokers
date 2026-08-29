@@ -48,6 +48,7 @@
     tokenState: "0x9745cc3d",
     lastSettledRound: "0xfe51b955",
     minSwap: "0x59cd9031",
+    twapQuote: "0x6e3e495e",
     deliver: "0xd3dcde9a",
     harvest: "0x4641257d",
     owed: "0xdf18e047",
@@ -295,6 +296,9 @@
       { to: CFG.nft, data: SEL.mintPriceWei },       // 6 optional
       { to: CFG.engine, data: SEL.lastSettledRound }, // 7 optional
       { to: CFG.engine, data: SEL.minSwap },          // 8 optional
+      // ETH priced in USDG (6 dec): the engine's own TWAP for asset 11.
+      // Reverts while the pool's window is thin — optional, callers fall back
+      { to: CFG.engine, data: SEL.twapQuote + word(11) + word(10n ** 18n) }, // 9 optional
     ];
     const iBurn = t ? reqs.push({ to: t, data: SEL.balanceOf + word(DEAD) }) - 1 : -1;
     const iDrop = CFG.seaDrop ? reqs.push({ to: CFG.seaDrop, data: SEL.getPublicDrop + word(CFG.nft) }) - 1 : -1;
@@ -319,6 +323,7 @@
       burned: iBurn >= 0 && r[iBurn] !== null ? toBig(r[iBurn]) : null,
       lastSettled: r[7] !== null ? Number(toBig(r[7])) : null,
       minSwap: r[8] !== null ? toBig(r[8]) : null,
+      usdPerEth: r[9] !== null ? toBig(r[9]) : null,
     };
   }
 

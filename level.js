@@ -2510,6 +2510,37 @@
         <div class="leds">${[0, 1, 2, 3, 4].map((i) => `<i class="${i < Math.round((5 * (59 - mins)) / 59) ? "on" : ""}"></i>`).join("")}</div>
       </div><div class="foot"></div>`);
 
+    // the number the bank exists to show: everything the payroll has ever
+    // pulled in for the brokers, in dollars when the TWAP answers, in ETH
+    // when it does not. totalHarvested only ever rises.
+    {
+      const h = s.totalHarvested;
+      const px6 = s.usdPerEth; // USDG (6 dec) per 1 ETH
+      const usd = h != null && px6 ? Number((h * px6) / 10n ** 18n) / 1e6 : null;
+      const big = usd !== null ? `$${Math.round(usd).toLocaleString()}` : h != null ? `${fmtEth(h)} ETH` : "—";
+      const board = prop("bank2-earned", 1870, `<div class="frame">
+          <i class="scan"></i>
+          <b>EARNED BY BROKERS · ALL TIME</b>
+          <u data-usd="${usd !== null ? Math.round(usd) : ""}">${big}</u>
+          <s>in USDG and real stocks · 5,000 brokers · every hour, on-chain</s>
+        </div>`);
+      // odometer: the number rolls up on entry, because a number this good
+      // deserves a moment
+      const uEl = board.querySelector("u");
+      const target = usd !== null ? Math.round(usd) : null;
+      if (uEl && target && target > 0) {
+        const t0 = performance.now();
+        const tick = (t) => {
+          if (!document.body.contains(uEl)) return;
+          const k = Math.min(1, (t - t0) / 1200);
+          const eased = 1 - Math.pow(1 - k, 3);
+          uEl.textContent = `$${Math.round(target * eased).toLocaleString()}`;
+          if (k < 1) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }
+    }
+
     prop("bank2-office", 870, `<div class="inside">
         <div class="pin"></div><div class="cab"></div><div class="chair"></div>
         <div class="desk"></div><div class="mon"></div><div class="papers"></div><div class="lamp"></div>
