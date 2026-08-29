@@ -1441,7 +1441,7 @@
     const GRID_W = 236;
     const tile = (cls, sym) => `<i class="${cls}"><b>${sym}</b></i>`;
     // eight instruments, eight climbs, green and gold mixed across the wall
-    prop("floor3-wall grid2 mounted", 790,
+    prop("floor3-wall grid2 mounted", 510,
       tile("rise-steady", "AAPL") + tile("rise-stairs", "TSLA")
       + tile("rise-curve", "NVDA") + tile("rise-grind", "MSFT"));
     prop("floor3-wall grid2 mounted", FLOOR_W - 510 - GRID_W,
@@ -1797,7 +1797,7 @@
       ? `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${collectable >= 100_000_000_000_000n ? "YOUR BROKERS EARNED" : "FEES ACCRUED FOR PAYDAY"}</b><u>${collectable >= 100_000_000_000_000n ? fmtEth(collectable) + " ETH" : "RUN PAYDAY"}</u></div>
         <div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`
       : `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${out ? "EVERY BROKER PAID" : "ALL COLLECTED"}</b><u>${out ? "CLOCK IN" : "COME BACK SOON"}</u></div>
-        <div class="btn dim">${out ? "CLOCK IN TO SEE YOUR PAY" : "NOTHING TO COLLECT YET"}</div>`;
+        <div class="btn dim">${out ? "CLOCK IN TO SEE PAY" : "NOTHING TO COLLECT YET"}</div>`;
     const m = prop("fb-payday" + (armed ? " armed" : ""), 386, `
       <div class="body">
         <div class="marq">PAYDAY</div>
