@@ -1869,7 +1869,7 @@
           toast(`seating ${stranded.length} broker${stranded.length === 1 ? "" : "s"} on payroll…`);
           const h = await F.sync(stranded, state.account);
           await F.waitForTx(h);
-          toast("on payroll — earning from this hour on", true);
+          toast("seated — they start earning at the next payday", true);
           await refreshBrokers();
         } else {
           await collectPay(bs, roundDue);
