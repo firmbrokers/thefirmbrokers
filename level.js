@@ -133,9 +133,9 @@
       toast(label + "…");
       const hash = await fn();
       toast("sent, waiting for the block…");
-      await F.waitForTx(hash);
-      toast(label + ": done", true);
-      if (after) await after();
+      const rc = await F.waitForTx(hash);
+      toast(label.split(" · ")[0] + ": done", true);
+      if (after) await after(rc);
     } catch (e) {
       toast(humanError(e), false);
     }
@@ -392,6 +392,7 @@
   /// padded with OTHER brokers' rolled credit (they get paid too — deliver is
   /// permissionless and pay only ever goes to each broker's own owner/vault).
   const PAYDAY_OWED = 5_000_000_000_000_000n; // fees waiting in the splitter worth a harvest
+  const WIDEN_MAX = 40; // ids a click pads a fresh pot out to (payPlan needs ~6; the keeper sweeps the rest)
   const engineMinSwap = () => (state.stats && state.stats.minSwap) || 10_000_000_000_000_000n;
   const collectNeed = () => (engineMinSwap() * 12n) / 10n; // 20% over the swap floor
   /// the USDG-bound settled total a click could deliver (holder + padding).
@@ -448,12 +449,16 @@
         // so start the batch from the clicker's own brokers
         ids = act.slice();
       }
-      if ((ranHarvest || roundDue) && ids.length < 150) {
+      if ((ranHarvest || roundDue) && ids.length < WIDEN_MAX) {
         // fresh pot: pendings credit at the settle inside deliver, so widen
-        // the batch by recency — whoever has credit gets paid
+        // the batch — whoever has the most credit gets paid. Capped: the
+        // clicker pays the gas, and the wallet quotes the ceiling of the whole
+        // batch (a 150-id batch was shown as $6–$33). The keeper's starvation
+        // sweep now carries the broad distribution; the click only has to
+        // clear the floor with a margin.
         const extraPool = (await F.rolledIds()).filter((id) => !ids.includes(id));
         for (const id of extraPool) {
-          if (ids.length >= 150) break;
+          if (ids.length >= WIDEN_MAX) break;
           ids.push(id);
         }
       }
@@ -464,14 +469,23 @@
     }
     const mineBefore = total; // includes padding; the honest check is below
     const ownBefore = (await F.pendingOf(act)).reduce((a, [, p]) => a + p, 0n);
-    await txFlow("collecting pay", () => F.deliver(ids, state.account), async () => {
+    await txFlow("collecting pay · your wallet quotes the MAX fee, the real charge is usually under $1", () => F.deliver(ids, state.account), async (rc) => {
+      // what it really cost, from the receipt — the number the wallet never shows
+      let feeLine = "";
+      try {
+        const used = BigInt(rc.gasUsed), price = BigInt(rc.effectiveGasPrice || rc.gasPrice || 0);
+        const wei = used * price;
+        const px6 = (state.stats || {}).usdPerEth;
+        const usd = px6 ? Number((wei * px6) / 10n ** 18n) / 1e6 : null;
+        if (wei > 0n) feeLine = ` · network fee ${fmtEth(wei)} ETH${usd !== null ? ` ($${usd.toFixed(2)})` : ""}`;
+      } catch (e) { /* no receipt fields, no line */ }
       // a deliver can "succeed" while every credit rolls (pot under the swap
       // floor). Never tell the holder it worked without reading the result.
       const ownAfter = (await F.pendingOf(act)).reduce((a, [, p]) => a + p, 0n);
       if (ownBefore > 0n && ownAfter >= ownBefore) {
         toast("the pot is still under the swap minimum — your pay rolled forward, nothing lost. It lands with the next payday", false);
       } else {
-        toast("pay collected — check your broker's vault or wallet", true);
+        toast("pay collected — check your broker's vault or wallet" + feeLine, true);
       }
       await refreshBrokers();
       if (state.mode === "floor") rebuildRoom();

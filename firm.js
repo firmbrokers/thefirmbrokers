@@ -523,8 +523,7 @@
     if (_ledgerCache.v && Date.now() - _ledgerCache.at < 240_000) return _ledgerCache.v;
     const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
     const ZERO_WORD = "0x" + "0".repeat(64);
-    const [paid, act, deact, burns] = await Promise.all([
-      rpcLogsRange({ address: CFG.engine, topics: [DELIVERED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
+    const [act, deact, burns] = await Promise.all([
       rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
       rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
       // fuse() burns the absorbed tokens WITHOUT a Deactivated event, so a
@@ -535,11 +534,6 @@
       rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, ZERO_WORD] }, CFG.deployBlock, "latest", 0, true),
     ]);
     const burned = new Set(burns.map((g) => Number(BigInt(g.topics[3]))));
-    const paidById = {};
-    for (const g of paid) {
-      const id = Number(BigInt(g.topics[1]));
-      paidById[id] = (paidById[id] || 0n) + BigInt("0x" + g.data.slice(2, 66));
-    }
     const last = {};
     const mark = (logs, on) => {
       for (const g of logs) {
@@ -554,41 +548,62 @@
     mark(deact, false);
     let hired = 0;
     for (const id in last) if (last[id].on && !burned.has(Number(id))) hired++;
-    const v = { paidById, hired };
+    const v = { hired };
     _ledgerCache = { at: Date.now(), v };
     return v;
   }
-  /// all-time ETH value delivered to a set of broker ids
+  /// all-time ETH value delivered to a set of broker ids. Asks the node for
+  /// exactly these ids (Delivered's tokenId is indexed, and a topic slot takes
+  /// a list), so the answer is a few hundred logs at most. The previous
+  /// version pulled EVERY Delivered since launch and summed client-side; that
+  /// ledger passed the rpc's 10,000-log cap on 2026-08-29 (13,413 and growing
+  /// ~1k/h), so the one-shot query started bisecting into dozens of calls.
   async function earnedAllTime(ids) {
-    const byId = (await firmLedger()).paidById;
-    return ids.reduce((a, id) => a + (byId[id] || 0n), 0n);
+    let total = 0n;
+    for (let i = 0; i < ids.length; i += 100) {
+      const topics = [DELIVERED_TOPIC, ids.slice(i, i + 100).map((id) => "0x" + BigInt(id).toString(16).padStart(64, "0"))];
+      const logs = await rpcLogsRange({ address: CFG.engine, topics }, CFG.deployBlock, "latest", 0, true);
+      for (const g of logs) total += BigInt("0x" + g.data.slice(2, 66));
+    }
+    return total;
   }
   async function hiredCount() {
     return (await firmLedger()).hired;
   }
 
   let _rolledCache = { at: 0, ids: null };
+  /// brokers that can pad a small holder's batch over the engine's per-asset
+  /// swap floor: ids with settled-but-undelivered pay, highest first.
+  ///
+  /// Log-free on purpose. This used to scan ~4 hours of CreditRolled +
+  /// Delivered events; once the floor got busy (23,025 rolls in that window on
+  /// 2026-08-29) the query passed the rpc's 10,000-log cap, rpcLogsRange
+  /// bisected it into dozens of calls, the public node answered 429, payPlan
+  /// threw and the deliver was never sent — holders saw a harvest and no pay.
+  /// Now: a rotating window of SAMPLE token ids read straight from the engine
+  /// (pendingEth, 40 per batch, the same path brokerBundle uses). No logs, a
+  /// bounded number of calls whatever the chain does. About a third of all
+  /// brokers carry pending pay at any time, so a 600-id window yields ~200
+  /// candidates; the batch needs a handful. Same name and return shape as
+  /// before, so level.js's two callers are untouched. Cached 3 minutes; the
+  /// window rotates with the cache so repeat clicks look at fresh brokers.
+  const SAMPLE = 600;
   async function rolledIds() {
-    // the pool changes slowly and the scan is the expensive part of the
-    // pre-flight — cache it briefly so passive re-renders don't re-scan
     if (_rolledCache.ids && Date.now() - _rolledCache.at < 180_000) return _rolledCache.ids;
-    // every broker the payroll touched RECENTLY: paid or rolled within the
-    // last ~4 hours of blocks. Bounded so the scan stays fast as the chain
-    // grows (and note: it still needs the primary rpc — public fallbacks
-    // archive-gate even modest ranges).
-    const head = await blockNumber();
-    const from = Math.max(head - 150_000, CFG.deployBlock);
-    const base = { address: CFG.engine };
-    const [rolled, paid] = await Promise.all([
-      rpcLogsRange(Object.assign({ topics: [CREDIT_ROLLED_TOPIC] }, base), from, "latest", 0, true),
-      rpcLogsRange(Object.assign({ topics: [DELIVERED_TOPIC] }, base), from, "latest", 0, true),
-    ]);
-    const seen = {};
-    const out = [];
-    for (const g of rolled.concat(paid)) {
-      const id = Number(BigInt(g.topics[1]));
-      if (!seen[id]) { seen[id] = true; out.push(id); }
-    }
+    // call() may answer "0x" (a wallet parked on another chain answers the
+    // eth_call with nothing) — that must not become max = 0 and an empty pool
+    const raw = await call(CFG.nft, SEL.maxSupply);
+    let max = raw && raw !== "0x" && raw.length >= 66 ? Number(toBig(raw)) : 5000;
+    if (!(max > 0)) max = 5000;
+    const n = Math.min(SAMPLE, max);
+    const start = (Math.floor(Date.now() / 180_000) * 97) % max; // 0-based, rotates each cache window
+    const ids = [];
+    for (let i = 0; i < n; i++) ids.push(1 + ((start + i) % max));
+    const pend = await pendingOf(ids);
+    const out = pend
+      .filter(([, p]) => p > 0n)
+      .sort((a, b) => (b[1] > a[1] ? 1 : b[1] < a[1] ? -1 : 0))
+      .map(([id]) => id);
     _rolledCache = { at: Date.now(), ids: out };
     return out;
   }
@@ -639,12 +654,48 @@
   }
 
   // ------------------------------------------------------------ writes
+  /// The fee the wallet SHOWS is gasLimit × maxFeePerGas, its ceiling, not
+  /// the charge (gasUsed × the block's price, 3–10× lower on this chain).
+  /// MetaMask's own maxFeePerGas guess on RHC runs 0.1–0.8 gwei against a
+  /// 0.06–0.09 gwei effective price, so a batch that costs $0.30 was shown as
+  /// $6, and a wallet holding less than the ceiling could not confirm at all.
+  /// Suggesting the fee (2× the node's gas price, no tip — the sequencer
+  /// takes none) makes the ceiling track the real price; a wallet that
+  /// ignores dapp fees loses nothing. If the price read fails, send as before.
+  async function suggestedFees() {
+    try {
+      const j = await rpcPost({ jsonrpc: "2.0", id: 1, method: "eth_gasPrice", params: [] });
+      const gp = toBig(j.result);
+      if (gp <= 0n) return null;
+      return { maxFeePerGas: "0x" + (gp * 2n).toString(16), maxPriorityFeePerGas: "0x0" };
+    } catch (e) { return null; }
+  }
   async function send(to, data, valueWei, from, gasLimit) {
     const p = provider();
     const tx = { from, to, data };
     if (valueWei && valueWei > 0n) tx.value = "0x" + valueWei.toString(16);
     if (gasLimit) tx.gas = "0x" + gasLimit.toString(16);
+    const fees = await suggestedFees();
+    if (fees) Object.assign(tx, fees);
     return await p.request({ method: "eth_sendTransaction", params: [tx] });
+  }
+  /// gas for a payroll delivery, from what it actually costs: ≈28.7k per pay
+  /// slot (a 3-way split is 3 slots) + ≈100k per real swap, fitted over
+  /// mainnet receipts (150 ids / 230 slots / 2 swaps = 8.17M). Budgeted at
+  /// 45k per slot + 1.4M for up to ~13 swaps + 400k base — 30%+ over the
+  /// worst measured batch, a third of the old 150k-per-id figure that made
+  /// wallets quote a 23M-gas ceiling. Slots come from splitOf (count 0 = the
+  /// default single USDG slot); if that read fails every id is budgeted as 3.
+  async function deliverGas(ids) {
+    let slots = 0;
+    try {
+      const raws = await callBatch(ids.map((id) => ({ to: CFG.engine, data: SEL.splitOf + word(id) })));
+      for (const r of raws) {
+        const count = r && r.length >= 2 + 7 * 64 ? Number(toBig("0x" + r.slice(2 + 6 * 64, 2 + 7 * 64))) : 3;
+        slots += count > 0 ? count : 1;
+      }
+    } catch (e) { slots = ids.length * 3; }
+    return 400_000 + 45_000 * slots + 1_400_000;
   }
 
   // ------------------------------------------------------- many calls at once
@@ -766,15 +817,16 @@
         from,
         600_000 + 120_000 * ids.length
       ),
-    // one payroll delivery for a LIST of ids, holder-triggered. Explicit gas:
-    // 600k base + 150k per id — the estimate trap is real (see send()).
-    deliver: (ids, from) =>
+    // one payroll delivery for a LIST of ids, holder-triggered. Explicit gas
+    // (the estimate trap is real, see send()), sized per pay slot — see
+    // deliverGas() for the fit.
+    deliver: async (ids, from) =>
       send(
         CFG.engine,
         SEL.deliver + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""),
         0n,
         from,
-        600_000 + 150_000 * ids.length
+        await deliverGas(ids)
       ),
     pendingOf,
     rolledIds,
