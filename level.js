@@ -1827,6 +1827,7 @@
       <i class="plinth p1"></i><i class="plinth p2"></i>`);
     m.title = "collect your brokers' pay";
     const setFace = (html, on) => {
+      if (!document.body.contains(m)) return;
       armed = on;
       m.classList.toggle("armed", on);
       const f = m.querySelector(".face");
@@ -1842,7 +1843,12 @@
         if (hasActive) {
           const plan = await payPlan(bs.filter((b) => b.active).map((b) => b.id));
           if (plan.total >= engineMinSwap() && plan.ids.length) {
-            setFace(faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`), true);
+            // a stock-split holder can carry the batch without any USDG-bound
+            // pay of their own: arm honestly as a floor payday, not "you
+            // earned 0.0000"
+            setFace(plan.own > 0n
+              ? faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`)
+              : faceArmed("POOLED PAY IS READY", "RUN PAYDAY"), true);
             return;
           }
         }

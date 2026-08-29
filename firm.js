@@ -508,7 +508,11 @@
   /// engine's per-asset swap minimum. Recent range only; served by every rpc.
   const CREDIT_ROLLED_TOPIC = "0xc2cda032f63ebe7629abecffad35589c71515edfd5b2c2048e340b3033a536e4";
   const DELIVERED_TOPIC = "0x8110a247e3bf84088ca20c991ad431b68293ca3bdfe626df91b9744bf4d7b9ce";
+  let _rolledCache = { at: 0, ids: null };
   async function rolledIds() {
+    // the pool changes slowly and the scan is the expensive part of the
+    // pre-flight — cache it briefly so passive re-renders don't re-scan
+    if (_rolledCache.ids && Date.now() - _rolledCache.at < 180_000) return _rolledCache.ids;
     // every broker the payroll touched RECENTLY: paid or rolled within the
     // last ~4 hours of blocks. Bounded so the scan stays fast as the chain
     // grows (and note: it still needs the primary rpc — public fallbacks
@@ -526,6 +530,7 @@
       const id = Number(BigInt(g.topics[1]));
       if (!seen[id]) { seen[id] = true; out.push(id); }
     }
+    _rolledCache = { at: Date.now(), ids: out };
     return out;
   }
 
