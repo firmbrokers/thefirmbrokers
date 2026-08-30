@@ -293,7 +293,9 @@ footer a{color:var(--ink-2)}
 
   <div class="note"><b>Two different things</b>
     ETH buys the broker. $9TO5 puts him to work. You need both.
-    <a id="buy-link" href="#" target="_blank" rel="noopener" hidden>Get $9TO5 &rarr;</a></div>
+    <a id="buy-link" href="#" target="_blank" rel="noopener" hidden>Get $9TO5 &rarr;</a>
+    <span id="chart-sep" hidden>&middot;</span>
+    <a id="chart-link" href="#" target="_blank" rel="noopener" hidden>Chart on GeckoTerminal &rarr;</a></div>
 
   <!-- Swapped by the config script below: before the token exists this warning
        shows and there is NO buy link anywhere on this page; the moment
@@ -773,6 +775,14 @@ footer a{color:var(--ink-2)}
     if (b) { b.href = C.buyUrl + "token/" + C.token; b.hidden = false; }
     var w = document.getElementById("token-when");
     if (w) w.hidden = true;
+  }
+  // The chart link is the public price/volume page for the token (a dofollow
+  // link to GeckoTerminal, promised in the token-info request there).
+  if (C.token && C.chartUrl) {
+    var ch = document.getElementById("chart-link");
+    if (ch) { ch.href = C.chartUrl; ch.hidden = false; }
+    var sep = document.getElementById("chart-sep");
+    if (sep) sep.hidden = false;
   }
   var rows = [
     ["Collection (your brokers)", C.nft],

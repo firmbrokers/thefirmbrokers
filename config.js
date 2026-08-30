@@ -93,4 +93,6 @@ window.FIRM_CFG = {
 
   // letscash pool page for buying $9TO5
   buyUrl: "https://www.letscash.fun/",
+  // The token's chart on GeckoTerminal (CoinGecko's DEX screener): the 9TO5/WETH pool. docs.html shows it beside the buy link once the token exists.
+  chartUrl: "https://www.geckoterminal.com/robinhood/pools/0xc9a1f9d07c0183133ea40e22ff583af74409670073e1dc75ee4e070f2dd114d9",
 };
