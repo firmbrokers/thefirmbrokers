@@ -921,6 +921,9 @@
     // catch swallowed it, so the desk did nothing, silently, always.
     const { F, CFG, state, txFlow } = ctx;
     let data = null, timer = null, tick = null, busy = false;
+    // "we have not read the chain yet" is NOT the same as "nothing is
+    // scheduled", and the room said the second when it meant the first.
+    let loaded = false, misses = 0;
     // lotView hands back block.timestamp; hold the offset so the hammer counts
     // down against the CHAIN and not against the viewer's device clock. Inside
     // the last five minutes a skewed clock is the difference between bidding
@@ -1029,12 +1032,14 @@
 
       if (nothingScheduled(d)) {
         if (!flat) {
-          mount.tote.querySelector(".big").textContent = "NOTHING ON STAGE";
+          mount.tote.querySelector(".big").textContent = loaded ? "NOTHING ON STAGE" : "\u2014";
           mount.tote.querySelector(".hi").textContent = "—";
           mount.tote.querySelector(".next").textContent = "—";
           mount.tote.querySelector(".cd").textContent = "—";
           mount.tote.querySelector(".lad").innerHTML = "";
-          mount.stage.querySelector(".curtain").style.display = "";
+          const curt = mount.stage.querySelector(".curtain");
+          curt.style.display = "";
+          curt.innerHTML = loaded ? "NEXT BROKER<br>TOMORROW" : "READING<br>THE BOOK\u2026";
           const f = mount.stage.querySelector(".frame");
           if (f) f.remove();
           mount.stage.querySelector(".plate").textContent = "";
@@ -1153,8 +1158,17 @@
           }
           if (data.lot.endsAt > prev.lot.endsAt && ctx.toast) ctx.toast("+5 min — someone bid late");
         }
+        loaded = true;
+        misses = 0;
         paint();
-      } catch (e) { /* a poll may fail; the next one repaints */ }
+      } catch (e) {
+        // A poll may fail — RHC's public RPC rate-limits, and an announcement
+        // is exactly when it will. Count it so schedule() retries fast instead
+        // of leaving a visitor looking at NEXT BROKER TOMORROW for 20 seconds
+        // on a day when a lot is live.
+        misses++;
+        if (!loaded) paint();
+      }
       schedule();
     }
 
@@ -1167,6 +1181,9 @@
         const left = data.lot.endsAt - Math.floor(Date.now() / 1000);
         if (left > 0 && left <= HOT_WINDOW) ms = POLL_HOT;
       }
+      // never make someone wait a full idle cycle to find out the room works:
+      // 1s, 2s, 4s, 8s, capped at the idle rate
+      if (misses > 0) ms = Math.min(POLL_IDLE, 1000 * Math.pow(2, misses - 1));
       timer = setTimeout(refresh, ms);
     }
 
