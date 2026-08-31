@@ -1991,13 +1991,22 @@
       try {
         const paid = await F.earnedAllTime(bs.map((b) => b.id));
         const building = bs.reduce((a2, b) => a2 + (b.pending || 0n), 0n);
-        const totalEarned = paid + building;
-        if (totalEarned <= 0n) return;
+        if (paid.eth <= 0n && building <= 0n) return;
         const el2 = bd.querySelector(".alltime");
         if (!el2 || !document.body.contains(el2)) return;
-        const px6 = (state.stats || {}).usdPerEth;
-        const usd = px6 ? Number((totalEarned * px6) / 10n ** 18n) / 1e6 : null;
-        el2.textContent = `earned all time: ${fmtEth(totalEarned)} ETH${usd !== null ? ` · $${usd.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : ""}`;
+        // PAID is stated in the dollars that actually arrived — USDG `out`,
+        // frozen at each payment — so it can only rise. A stock payout is a
+        // share count, not a dollar, so a roster with any stock pay falls back
+        // to the ETH the payroll put in rather than inventing a valuation.
+        // BUILDING stays in ETH and is labelled separately: it has not been
+        // swapped yet, so it really does move, and folding it into one total
+        // was half of why this number used to fall.
+        const parts = [];
+        if (!paid.mixed && paid.usd6 > 0n) parts.push(`$${(Number(paid.usd6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} paid`);
+        else if (paid.eth > 0n) parts.push(`${fmtEth(paid.eth)} ETH paid`);
+        if (building > 0n) parts.push(`${fmtEth(building)} ETH building`);
+        if (!parts.length) return;
+        el2.textContent = `earned all time: ${parts.join(" · ")}`;
       } catch (e) { /* the line just stays absent */ }
     })();
     const ha = bd.querySelector(".hireall");
@@ -2595,12 +2604,18 @@
       const h = s.totalHarvested;
       const px6 = s.usdPerEth; // USDG (6 dec) per 1 ETH
       const usd = h != null && px6 ? Number((h * px6) / 10n ** 18n) / 1e6 : null;
-      const big = usd !== null ? `$${Math.round(usd).toLocaleString()}` : h != null ? `${fmtEth(h)} ETH` : "—";
+      // The HEADLINE is ETH, because totalHarvested only ever rises and a
+      // number captioned ALL TIME must never fall. It used to be dollars —
+      // totalHarvested priced at spot — so the board ticked down every time
+      // ETH did, and a holder read that as payments being taken back. The
+      // dollar figure is still here, in the caption, labelled as a conversion
+      // at today's price, which is the only honest way to show it.
+      const big = h != null ? `${fmtEth(h, 2)} ETH` : "—";
       const board = prop("bank2-earned", 1870, `<div class="frame">
           <i class="scan"></i>
           <b>EARNED BY BROKERS · ALL TIME</b>
-          <u data-usd="${usd !== null ? Math.round(usd) : ""}">${big}</u>
-          <s>in USDG and real stocks · 5,000 brokers · every hour, on-chain</s>
+          <u data-wei="${h != null ? h : ""}">${big}</u>
+          <s>in USDG and real stocks · 5,000 brokers · every hour, on-chain${usd !== null ? ` · about $${Math.round(usd).toLocaleString()} at today's ETH price` : ""}</s>
           <div class="count"></div>
         </div>`);
       // the headcount joins the money on the same board: hired == isActive,
@@ -2617,14 +2632,19 @@
       // odometer: the number rolls up on entry, because a number this good
       // deserves a moment
       const uEl = board.querySelector("u");
-      const target = usd !== null ? Math.round(usd) : null;
-      if (uEl && target && target > 0) {
+      const targetWei = h != null && h > 0n ? h : null;
+      if (uEl && targetWei) {
+        const approx = Number(targetWei); // frames only; the last one is exact
         const t0 = performance.now();
         const tick = (t) => {
           if (!document.body.contains(uEl)) return;
           const k = Math.min(1, (t - t0) / 1200);
           const eased = 1 - Math.pow(1 - k, 3);
-          uEl.textContent = `$${Math.round(target * eased).toLocaleString()}`;
+          // the final frame reads the BigInt itself: Number() on ~1e19 wei
+          // loses precision, which is fine mid-roll and not fine at rest
+          uEl.textContent = k >= 1
+            ? `${fmtEth(targetWei, 2)} ETH`
+            : `${fmtEth(BigInt(Math.round(approx * eased)), 2)} ETH`;
           if (k < 1) requestAnimationFrame(tick);
         };
         requestAnimationFrame(tick);

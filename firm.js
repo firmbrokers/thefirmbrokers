@@ -558,14 +558,22 @@
   /// version pulled EVERY Delivered since launch and summed client-side; that
   /// ledger passed the rpc's 10,000-log cap on 2026-08-29 (13,413 and growing
   /// ~1k/h), so the one-shot query started bisecting into dozens of calls.
+  const USDG_ASSET = 11; // deliberately NOT USDG_IDX: that constant has been
+  // both 11 and 11n across builds, and `11 === 11n` is false. A local Number
+  // keeps this correct whichever build it is pasted into.
   async function earnedAllTime(ids) {
-    let total = 0n;
+    let eth = 0n, usd6 = 0n, mixed = false;
     for (let i = 0; i < ids.length; i += 100) {
       const topics = [DELIVERED_TOPIC, ids.slice(i, i + 100).map((id) => "0x" + BigInt(id).toString(16).padStart(64, "0"))];
       const logs = await rpcLogsRange({ address: CFG.engine, topics }, CFG.deployBlock, "latest", 0, true);
-      for (const g of logs) total += BigInt("0x" + g.data.slice(2, 66));
+      for (const g of logs) {
+        eth += BigInt("0x" + g.data.slice(2, 66));
+        // Delivered(uint256 indexed tokenId, uint8 indexed assetIdx, uint256 ethIn, uint256 out)
+        if (Number(BigInt(g.topics[2])) === USDG_ASSET) usd6 += BigInt("0x" + g.data.slice(66, 130));
+        else mixed = true;
+      }
     }
-    return total;
+    return { eth, usd6, mixed };
   }
   async function hiredCount() {
     return (await firmLedger()).hired;
