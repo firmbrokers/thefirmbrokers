@@ -737,7 +737,7 @@
         <div class="big">&mdash;</div>
         <div class="row"><span>TOP BID</span><b class="hi">&mdash;</b></div>
         <div class="row"><span>TO BEAT</span><b class="next">&mdash;</b></div>
-        <div class="row"><span>TIME LEFT</span><b class="cd">&mdash;</b></div>
+        <div class="row"><span class="cdlab">TIME LEFT</span><b class="cd">&mdash;</b></div>
         <div class="lad"></div>
       </div>`;
     put(tote, { left: "685px", bottom: "calc(var(--ground-h) + 326px)" });
@@ -749,7 +749,7 @@
     // 820px, where the mint desk it replaced (331px) only did at 560. Every
     // line added here costs a supported window height.
     desk.innerHTML = `<h3>THE BID DESK</h3>
-      <div class="strip"><span>LOT <b class="dlot">&mdash;</b></span><span>TIME LEFT <b class="dcd">&mdash;</b></span></div>
+      <div class="strip"><span>LOT <b class="dlot">&mdash;</b></span><span><u class="dcdlab" style="text-decoration:none">TIME LEFT</u> <b class="dcd">&mdash;</b></span></div>
       <div class="amt"><input type="text" inputmode="decimal" placeholder="&mdash;"><button class="chip min" type="button">MIN</button></div>
       <button class="go" disabled>CHECKING&hellip;</button>
       <div class="echo"></div>
@@ -978,15 +978,25 @@
 
     function paintCountdown() {
       if (!data || nothingScheduled(data)) return;
-      const left = Math.max(0, data.lot.endsAt - chainNow());
+      // A lot that has not STARTED yet was counting down to its hammer, so the
+      // board read "TIME LEFT 27:31:00" beside a button saying NOT OPEN YET.
+      // A team lot always opens exactly 24h before it hammers (createLots sets
+      // startsAt = endsAt - LOT_LENGTH), so that window is a whole day on the
+      // very first lot — the day the most people are looking at it.
+      const early = data.lot.status === 0;
+      const target = early ? data.lot.startsAt : data.lot.endsAt;
+      const left = Math.max(0, target - chainNow());
       const word = data.lot.status === 3 ? outcomeWord(data.lot.outcome) : clock(left);
+      const label = early ? "OPENS IN" : "TIME LEFT";
+      for (const el of [(flat ? mount.card : mount.tote).querySelector(".cdlab"),
+        mount.desk && mount.desk.querySelector(".dcdlab")]) if (el) el.textContent = label;
       const cd = (flat ? mount.card : mount.tote).querySelector(".cd");
       if (cd) cd.textContent = word;
       // the desk repeats it, so standing the wall board down on a short window
       // costs the theatre and never the numbers
       const dcd = mount.desk && mount.desk.querySelector(".dcd");
       if (dcd) dcd.textContent = word;
-      if (!flat) mount.tote.classList.toggle("hot", left > 0 && left <= 300);
+      if (!flat) mount.tote.classList.toggle("hot", !early && left > 0 && left <= 300);
     }
 
     /// status 3 is three different endings. Saying SOLD for all of them tells a
