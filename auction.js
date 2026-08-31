@@ -640,10 +640,16 @@
     }
     const r = await F.callBatch(reqs2);
     const lot = decodeLotView(r[0]);
+    // The broker's artwork id is the only read outside the batch, and a miss
+    // used to become the NUMBER ZERO — which the stage then printed as
+    // "BROKER #0 · CLOCKED OUT" over an image src of 0.png that 404s to a
+    // black frame. A failed read must stay unknown, not become a fact.
     let art = 0;
     if (lot) {
-      const a = await F.call(CFG.nft, SEL.artworkOf + F.word(lot.tokenId));
-      art = a ? Number(F.toBig(a)) : 0;
+      try {
+        const a = await F.call(CFG.nft, SEL.artworkOf + F.word(lot.tokenId));
+        if (a) art = Number(F.toBig(a));
+      } catch (e) { /* stays 0 = unknown; the painter refuses to invent one */ }
     }
     return {
       lotId, symbol, decimals, burned, bonus, art,
@@ -1069,7 +1075,10 @@
         const img = fr.querySelector("img");
         const want = `${CFG.imageBase}/${art}.png`;
         if (art && img.getAttribute("src") !== want) img.setAttribute("src", want);
-        mount.stage.querySelector(".plate").textContent = `BROKER #${art} · CLOCKED OUT`;
+        // art 0 means WE DO NOT KNOW YET, not "broker zero". Print the lot,
+        // which we do know, rather than a broker who does not exist.
+        mount.stage.querySelector(".plate").textContent =
+          art ? `BROKER #${art} · CLOCKED OUT` : `LOT ${lot.lotId} · CLOCKED OUT`;
         mount.tote.querySelector(".big").textContent = `LOT ${lot.lotId}`;
         mount.tote.querySelector(".hi").textContent =
           lot.highest > 0n ? fmtUnits(lot.highest, dec, 0) + " " + sym : "NO BIDS YET";
@@ -1158,6 +1167,9 @@
           }
           if (data.lot.endsAt > prev.lot.endsAt && ctx.toast) ctx.toast("+5 min — someone bid late");
         }
+        // one missed artwork read must not blank a stage that was correct a
+        // second ago: keep the last known value while the lot is the same
+        if (prev && prev.lotId === data.lotId && !data.art && prev.art) data.art = prev.art;
         loaded = true;
         misses = 0;
         paint();
