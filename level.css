@@ -2661,6 +2661,24 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
 .fb-popover { flex-wrap: wrap; gap: 14px; }
 .fb-popover #pop-close { margin-left: auto; }
 
+/* ------ THE PHONE. The broker card (470) and the paycheck editor (380) sit
+   side by side above 896px of width and wrap below it. Wrapped, the stack is
+   taller than the screen and .fb-popover cannot scroll, so SAVE ON-CHAIN sat
+   307px below the fold on a 390px phone and 46px below it on an iPad in
+   portrait. A holder reported he simply could not set his broker's paycheck.
+
+   Two parts, and both are needed. align-items:center has to go: once the
+   content is taller than the box, centring pushes the TOP off the screen as
+   well, and no amount of scrolling brings it back. And max-height:none on the
+   children moves the scroll to the CONTAINER — otherwise a thumb is dragging
+   one scroller inside another, which on touch is the difference between
+   usable and infuriating. Above 900px nothing here applies and the desktop
+   layout is byte-identical. ------------------------------------------------ */
+@media (max-width: 900px) {
+  .fb-popover { align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .fb-sheet, .fb-popover .fb-broker, .fb-merge, .fb-pay { max-height: none; }
+}
+
 /* ------ every popover speaks the building's language: a graphite frame with
    a lit screen in it, the same one the desks, the roster sign and the merger
    already use, instead of the cream index card they used to be ------------ */
@@ -3929,3 +3947,8 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
 /* the floor board's all-time line */
 .floor-board .fig .alltime { margin-top: 8px; font-family: var(--font-display); font-size: 6px; color: #ffd75e; letter-spacing: 1px; min-height: 8px; }
 .bank2-earned .count { margin-top: 10px; padding-top: 8px; border-top: 2px solid #1d232c; font-family: var(--font-display); font-size: 6px; color: #ffd75e; letter-spacing: 1px; min-height: 8px; }
+
+/* a split does not hold its minority asset: the engine re-splits rolled credit,
+   so the majority asset absorbs it. Said before the holder signs, not after. */
+.fb-pay .mixwarn{margin-top:8px;padding:8px 10px;border-radius:4px;background:#3a2f16;
+  border:1px solid #6b5520;color:#ffd666;font:12px/1.45 system-ui,sans-serif}

@@ -201,7 +201,7 @@ footer a{color:var(--ink-2)}
   <nav>
     <a href="#start">Start</a><a href="#broker">Broker</a><a href="#burn">Burning</a><a href="#hire">Hire</a>
     <a href="#paid">Pay</a><a href="#more">Earn</a><a href="#merge">Merge</a>
-    <a href="#rare">Legendary</a><a href="#ranks">Ranks</a><a href="#money">Money</a><a href="#numbers">Numbers</a>
+    <a href="#rare">Legendary</a><a href="#ranks">Ranks</a><a href="#auction">Auction</a><a href="#money">Money</a><a href="#numbers">Numbers</a>
     <a href="#risks">Permanent</a><a href="#trust">Guarantees</a><a href="#words">Words</a>
     <!-- the same permanent follow link the street's bar carries, so it is on
          every page of the site rather than only the one with the zone bar.
@@ -443,6 +443,21 @@ footer a{color:var(--ink-2)}
   <p>You choose the mix. You can tell your broker to take all stocks, all dollars,
     or a blend of up to three things. You can change your mind whenever you want.</p>
 
+  <h3>What the pay is paid in</h3>
+  <p>Pay arrives as a token, and you choose which one. The default is
+    <strong>USDG</strong>, a dollar. You can pick anything on the salary menu instead
+    &mdash; a stock, or <strong>FRONG</strong> &mdash; and your broker is paid in that
+    from the next round on.</p>
+
+  <p>You are paid in exactly what you picked. Nothing is swapped twice and nothing is
+    held back. The choice is per broker, so one can earn dollars while another earns
+    FRONG.</p>
+
+  <div class="note"><b>One at a time works best</b>
+    Splitting a single broker between two assets can leave the smaller share sitting
+    unpaid, because each swap has a minimum size and a small slice may never reach it.
+    Pick one asset per broker. The editor warns you if a split would strand pay.</div>
+
   <h3>Where the pay goes</h3>
   <p>You pick one of two ways, on each broker's card.</p>
 
@@ -598,8 +613,56 @@ footer a{color:var(--ink-2)}
     Earning restarts as soon as someone hires him again.</p>
 </section>
 
-<section id="money">
+<section id="auction">
   <div class="num">11</div>
+  <h2 class="sec">The Auction House</h2>
+  <p class="plain">One broker goes on stage every day. The top bid at five o'clock takes him home.</p>
+
+  <p>Bids are in <strong>FRONG</strong>. The first bid has to reach the
+    <strong>reserve</strong>. Every bid after that has to beat the one before it by
+    <strong>10%</strong>.</p>
+
+  <p>Bid late and the clock moves. A bid in the last five minutes pushes the hammer to
+    five minutes from then, so nobody wins by sniping the last second.</p>
+
+  <h3>If someone outbids you</h3>
+  <p class="plain">You get <strong>105%</strong> of your bid back, straight away.</p>
+
+  <p>Not a credit, not a claim &mdash; the tokens are in your wallet in the same
+    transaction that beat you. Bid 2,500 and get outbid, and 2,625 comes back.</p>
+
+  <div class="note warn"><b>Where that 5% comes from</b>
+    It comes out of the winner's money, not out of thin air and not out of a pool.
+    Every rebate is paid by the bid that beat it. So the house never keeps the whole
+    final price &mdash; it keeps what is left after the rebates, which is always at
+    least half of it. Nothing here grows on its own.</div>
+
+  <h3>What happens to the winning money</h3>
+  <p>Whatever is left after the rebates is split in two. Half is
+    <strong>burned</strong>. Half goes to the <strong>bonus pool</strong>.</p>
+
+  <p>The burn is a real burn: those FRONG are sent to an address with no key and cannot
+    come back. The bonus pool can only be spent by one address, and changing that
+    address takes three days of public notice first.</p>
+
+  <div class="tablewrap"><table>
+    <tr><th>Thing</th><th class="n">Number</th></tr>
+    <tr><td>Brokers on stage</td><td class="n">1 a day</td></tr>
+    <tr><td>Hammer</td><td class="n">5:00 PM New York</td></tr>
+    <tr><td>Each bid must beat the last by</td><td class="n">10%</td></tr>
+    <tr><td>Back to you if outbid</td><td class="n">105%</td></tr>
+    <tr><td>A late bid adds</td><td class="n">5 minutes</td></tr>
+    <tr><td>Burned</td><td class="n">half of what is left</td></tr>
+    <tr><td>To the bonus pool</td><td class="n">the other half</td></tr>
+  </table></div>
+
+  <div class="note"><b>The broker you win is not working yet</b>
+    He arrives clocked out, like any broker who changes hands. Burn 25,000 $9TO5 to put
+    him to work.</div>
+</section>
+
+<section id="money">
+  <div class="num">12</div>
   <h2 class="sec">Where the money actually comes from</h2>
   <p class="plain">Every payday is funded by trading fees on $9TO5.</p>
 
@@ -631,7 +694,7 @@ footer a{color:var(--ink-2)}
 </section>
 
 <section id="numbers">
-  <div class="num">12</div>
+  <div class="num">13</div>
   <h2 class="sec">All the numbers in one place</h2>
   <p class="plain">Everything you might want to check, on one screen.</p>
 
@@ -662,7 +725,7 @@ footer a{color:var(--ink-2)}
 </section>
 
 <section id="risks">
-  <div class="num">13</div>
+  <div class="num">14</div>
   <h2 class="sec">Things that are permanent</h2>
   <p class="plain">Three actions cannot be undone. Worth knowing before you click.</p>
 
@@ -677,7 +740,7 @@ footer a{color:var(--ink-2)}
 </section>
 
 <section id="trust">
-  <div class="num">14</div>
+  <div class="num">15</div>
   <h2 class="sec">What you can count on</h2>
   <p class="plain">The important parts are guaranteed by code, and you can check every one.</p>
 
@@ -703,7 +766,7 @@ footer a{color:var(--ink-2)}
 </section>
 
 <section id="words">
-  <div class="num">15</div>
+  <div class="num">16</div>
   <h2 class="sec">Word list</h2>
   <p class="plain">Every bit of jargon on this page, explained.</p>
 
@@ -730,7 +793,7 @@ footer a{color:var(--ink-2)}
 </section>
 
 <section id="contracts">
-  <div class="num">16</div>
+  <div class="num">17</div>
   <h2 class="sec">The contracts</h2>
   <p class="plain">Everything above is enforced by these. Go and read them.</p>
   <p id="addr-note">Addresses appear here once the project is live. Until then, nothing is deployed

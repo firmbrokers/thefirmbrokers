@@ -43,7 +43,7 @@
   const GROUND = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ground-h")) || 220;
   const ZONES = [
     { id: "lobby", name: "The Lobby", short: "LOBBY", does: "start here", x: 200, w: 1350, room: null },
-    { id: "hr", name: "HR Desk", short: "HR", does: "mint a broker", x: 1700, w: 900, room: "hr" },
+    { id: "hr", name: "Auction House", short: "AUCTION", does: "broker of the day", x: 1700, w: 900, room: "hr" },
     { id: "floor", name: "Trading Floor", short: "FLOOR", does: "your brokers", x: 2750, w: 1000, room: "floor" },
     { id: "bank", name: "The Bank", short: "BANK", does: "the money", x: 3900, w: 1000, room: "bank" },
   ];
@@ -104,11 +104,33 @@
   }
   const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "");
 
+  /// The selector is not always in the MESSAGE. Anvil folds it in
+  /// ("execution reverted: custom error 0xa0d26eb6"); Robinhood Chain does not
+  /// — it sends {"message":"execution reverted","data":"0xf4d678b8"}, probed
+  /// live 2026-08-31. Reading only the message meant every arm below fell
+  /// through to the raw string on the real chain while passing on a fork.
+  function errText(e) {
+    const at = (path) => path.split(".").reduce((a, k) => (a == null ? a : a[k]), e);
+    return [e?.shortMessage, e?.message,
+      typeof e?.data === "string" ? e.data : at("data.data"),
+      at("info.error.data"), at("error.data"), at("data.originalError.data"), at("cause.data"),
+    ].filter((x) => typeof x === "string").join(" ").toLowerCase();
+  }
+
   function humanError(e) {
-    const m = String(e?.shortMessage || e?.message || e || "").toLowerCase();
+    const m = errText(e) || String(e || "").toLowerCase();
     if (m.includes("user rejected") || m.includes("denied")) return "you closed the wallet window";
     if (m.includes("insufficient funds")) return "not enough ETH in this wallet";
-    if (m.includes("chain") || m.includes("network")) return "your wallet is on the wrong network";
+    // MUST come before the network arm: firm.js throws exactly this string when
+    // a receipt returns status 0, and "chain" is a substring of it, so every
+    // mined-and-reverted transaction on this site — bid, settle, hire, promote,
+    // fuse — used to tell the user their wallet was on the wrong network. On an
+    // FCFS auction a mined revert is the ORDINARY path for a losing bidder, not
+    // an edge case, and a receipt carries no revert data, so no arm below can
+    // ever fire for it.
+    if (m.includes("failed on chain")) return "it did not go through — something changed before it landed. Try again";
+    if (m.includes("wrong network") || m.includes("chainid") || m.includes("unrecognized chain")
+      || m.includes("chain mismatch") || m.includes("network changed")) return "your wallet is on the wrong network";
     if (m.includes("soldout") || m.includes("sold out")) return "sold out. Every broker is minted";
     // custom errors reach us either decoded by the wallet or as raw selectors
     if (m.includes("notallowlisted") || m.includes("0x06fb10a9")) return "this wallet is not on the whitelist";
@@ -116,6 +138,23 @@
     if (m.includes("nothired") || m.includes("0x1f32ed20")) return "hire him first: burn 25,000 $9TO5, then promote";
     if (m.includes("walletcapreached") || m.includes("0xc2c77a0e")) return "that is more than this wallet may mint";
     if (m.includes("mintclosed") || m.includes("0x589ed34b")) return "the mint is not open";
+    // the token's own two, which are what a bidder who is simply short of
+    // FRONG hits — the most likely failure on a busy auction day, and until
+    // now it ended on the raw string "execution reverted"
+    if (m.includes("insufficientbalance") || m.includes("0xf4d678b8")) return "not enough of that token in this wallet";
+    if (m.includes("insufficientallowance") || m.includes("0x13be252b")) return "approve the token first, then bid";
+    // the auction house
+    if (m.includes("bidtoolow") || m.includes("0xa0d26eb6")) return "someone bid first — the minimum has gone up";
+    if (m.includes("notlive") || m.includes("0xbaf13b3f")) return "bidding is not open on that lot yet";
+    if (m.includes("notended") || m.includes("0xd3018d18")) return "the hammer has not fallen yet";
+    // "ended" alone also matches notended, extended, suspended and recommended,
+    // so this one is anchored on the parens the decoders emit
+    if (m.includes("ended()") || m.includes("0x477383f3")) return "that lot has already closed";
+    if (m.includes("nosuchlot") || m.includes("0x00b5a8eb")) return "there is no lot with that number";
+    if (m.includes("consignclosed") || m.includes("0xa49187d0")) return "consignments are closed";
+    if (m.includes("queuefull") || m.includes("0x8acb5f27")) return "the queue is full — try again tomorrow";
+    if (m.includes("hasbids") || m.includes("0xc8e6b38f")) return "that lot already has bids, so it cannot be pulled";
+    if (m.includes("notseller") || m.includes("0x5ec82351")) return "only the seller can do that";
     const raw = String(e?.shortMessage || e?.message || e);
     return raw.length > 90 ? "the chain refused it. Try again in a moment" : raw;
   }
@@ -396,22 +435,42 @@
   const OWN_MIN = 1_000_000_000_000_000n; // 0.001 ETH of own pay before the machine arms a collect (a click costs ≈$1 in gas)
   const engineMinSwap = () => (state.stats && state.stats.minSwap) || 10_000_000_000_000_000n;
   const collectNeed = () => (engineMinSwap() * 12n) / 10n; // 20% over the swap floor
-  /// the USDG-bound settled total a click could deliver (holder + padding).
-  /// This IS the click's pre-flight, so the machine only arms on a real plan.
+  /// The settled total a click could actually deliver (holder + padding), for
+  /// ONE asset. This IS the click's pre-flight, so the machine only arms on a
+  /// real plan.
+  ///
+  /// `deliver()` swaps PER ASSET and skips any asset whose pot in that call is
+  /// under the engine's floor. So the plan has to pick a TARGET asset — the one
+  /// the holder is owed most in — and pad the batch with other brokers holding
+  /// THAT asset. Padding with USDG brokers can never help a FRONG pot clear.
+  ///
+  /// Until 2026-08-30 this measured only the USDG slice, so a broker paid 100%
+  /// in FRONG or stocks produced own = 0, the machine never armed, and the idle
+  /// face told him "ALL COLLECTED" while he was owed money.
   async function payPlan(act) {
     const mine = await F.pendingOf(act);
-    const myShare = {};
-    for (const [id, b] of await F.usdgShareOf(act)) myShare[id] = BigInt(b);
+    const shares = {};
+    for (const [id, by] of await F.assetSharesOf(act)) shares[id] = by;
+
+    // the holder's own pending, split per asset
+    const ownBy = {};
+    for (const [id, p] of mine) {
+      if (p <= 0n) continue;
+      const by = shares[id] || { 11: 10000 };
+      for (const a in by) ownBy[a] = (ownBy[a] || 0n) + (p * BigInt(by[a])) / 10000n;
+    }
+    let target = null, own = 0n;
+    for (const a in ownBy) if (ownBy[a] > own) { target = Number(a); own = ownBy[a]; }
+
     const ids = mine.filter(([, p]) => p > 0n).map(([id]) => id);
-    let total = mine.reduce((a, [id, p]) => a + (p * (myShare[id] ?? 10000n)) / 10000n, 0n);
-    const own = total;
-    if (total < collectNeed()) {
+    let total = own;
+    if (target !== null && total < collectNeed()) {
       const pool = (await F.rolledIds(state.account)).filter((id) => !ids.includes(id)).slice(0, 600);
-      const [pend, shares] = await Promise.all([F.pendingOf(pool), F.usdgShareOf(pool)]);
-      const bpsOf = {};
-      for (const [id, b] of shares) bpsOf[id] = BigInt(b);
+      const [pend, poolShares] = await Promise.all([F.pendingOf(pool), F.assetSharesOf(pool)]);
+      const byOf = {};
+      for (const [id, by] of poolShares) byOf[id] = by;
       const cand = pend
-        .map(([id, p]) => [id, (p * (bpsOf[id] ?? 0n)) / 10000n])
+        .map(([id, p]) => [id, (p * BigInt((byOf[id] || {})[target] || 0)) / 10000n])
         .filter(([, c]) => c > 0n);
       cand.sort((x, y) => (y[1] > x[1] ? 1 : y[1] < x[1] ? -1 : 0));
       for (const [id, c] of cand) {
@@ -420,7 +479,7 @@
         total += c;
       }
     }
-    return { ids, total, own };
+    return { ids, total, own, asset: target };
   }
   const collectPay = async (bs, roundDue) => {
     const act = bs.filter((b) => b.active).map((b) => b.id);
@@ -486,7 +545,9 @@
       // floor). Never tell the holder it worked without reading the result.
       const ownAfter = (await F.pendingOf(act)).reduce((a, [, p]) => a + p, 0n);
       if (ownBefore > 0n && ownAfter >= ownBefore) {
-        toast("your pay rolled forward, nothing lost. Stock pay pools with other brokers' before it can be swapped; the payroll sweep pays it out once the pool is big enough", false);
+        // "Stock pay" was wrong the moment a non-stock asset could be the one
+        // waiting: a FRONG holder was told his pay was stock pay.
+        toast("your pay rolled forward, nothing lost. It pools with other brokers on the same asset before it can be swapped; the payroll sweep pays it out once the pool is big enough", false);
       } else {
         toast("pay collected — check your broker's vault or wallet" + feeLine, true);
       }
@@ -950,14 +1011,16 @@
     npcWalker(1600, "brunette", "stand-b").classList.add("hiring");
     npcWalker(1665, "blonde", "stand-b").classList.add("hiring");
     npcWalker(1730, "sharp", "stand").classList.add("hiring");
-    const qs = el("div", "fb-queue-sign", "HIRING LINE<br>STARTS HERE");
+    const qs = el("div", "fb-queue-sign", auctionLive() ? "TODAY'S LOT<br>VIEWING INSIDE" : "HIRING LINE<br>STARTS HERE");
     qs.appendChild(el("i", "leg g"));
     qs.appendChild(el("i", "leg r"));
     front.appendChild(px(qs, { left: "1585px" }));
 
     // the security booth: he checks clearance from behind the glass
     const booth = el("div", "fb-booth");
-    booth.innerHTML = '<div class="roof"></div><div class="plate"><span>SECURITY</span></div><div class="win"></div><div class="scr"></div>';
+    booth.innerHTML = '<div class="roof"></div><div class="plate"><span>'
+      + (auctionLive() ? "VIEWINGS" : "SECURITY")
+      + '</span></div><div class="win"></div><div class="scr"></div>';
     px(booth, { left: BOOTH_X + "px", bottom: "var(--ground-h)" });
     booth.addEventListener("click", openApply);
     booth.classList.toggle("cleared", clearanceDone());
@@ -1061,6 +1124,16 @@
     // rather than as a step they had not done. The last line now says which of
     // the three states the building is actually in.
     const st = state.stats || PRELAUNCH;
+    // The mint is finished and this building is the Auction House, so the
+    // biggest sign on the street stops advertising a supply, a price and a
+    // door that no longer opens on any of it. It was still reading
+    // "MINTING NOW / 5,000 BROKERS / 0.0035 ETH EACH / WALK RIGHT IN".
+    if (auctionLive()) {
+      wall.innerHTML = `<b>AUCTION TODAY</b>
+        <span>ONE BROKER A DAY</span><span>OUTBID PAYS YOU 105%</span>
+        <span>HAMMER AT FIVE, NY</span>`;
+      return;
+    }
     const gated = open && !st.publicOpen && !clearanceDone();
     wall.innerHTML = `<b>${open ? "MINTING NOW" : "MINT HERE"}</b>
       <span>5,000 BROKERS</span><span>0.0035 ETH EACH</span>
@@ -1304,58 +1377,100 @@
     into.appendChild(note);
   }
 
+  /// THE AUCTION HOUSE. This was the mint building until 2026-08-30; the mint
+  /// is over, so the room stops advertising it. The office shell, the windows
+  /// and the waiting area stay — an auction house inside the same firm — and the
+  /// mint furniture is either repurposed or gone:
+  ///   the handbook sign (supply, price, wallet caps) .... gone, all mint facts
+  ///   the mint desk ..................................... the BID DESK
+  ///   the queue stanchions and belt ..................... the velvet rope
+  ///                                                       around the stage
+  ///   EMPLOYEE OF THE MONTH ............................. the SOLD wall
+  ///   the receptionist .................................. the auctioneer
+  ///
+  /// ⚠️ Everything added here is anchored to `--ground-h`, never to `top`.
+  /// That variable steps 220 -> 180 -> 120 as the viewport shortens, so a piece
+  /// pinned to the top edge drifts away from every piece pinned to the floor,
+  /// and the two only line up at the one height it was drawn at.
   function buildHrRoom() {
     const s = state.stats || PRELAUNCH;
-    roomShell(2050, []);
-    glassWall(230, 400, [[20, 58, 290, "far"], [92, 56, 238, "near"], [172, 52, 300, "far"], [252, 62, 216, "near"], [330, 52, 264, "far"]]);
-    glassWall(1520, 300, [[16, 56, 284, "far"], [86, 58, 230, "near"], [162, 52, 292, "far"], [238, 50, 240, "near"]]);
-    [750, 1200].forEach((x) => prop("hr2-light", x));
-    prop("hr2-plant", 140);
-    roomLayer.appendChild(px(el("div", "hr2-rug"), { left: "270px", width: "300px" }));
-    prop("hr2-lamp", 232, "<i></i>");
-    prop("hr2-sofa", 290, '<i class="l"></i><i class="r"></i>');
-    prop("hr2-table", 470);
-    prop("hr2-snake", 910);
-    prop("hr2-sidetable", 1226);
-    prop("hr2-roomba", 1242);
-    prop("hr2-bin", 1480);
-    prop("hr2-lowplanter", 1560, "<i></i><i></i><i></i>");
-    prop("hr2-chair", 1935, '<i class="a"></i><i class="b"></i>');
-    // the right half of the room past the planter was four hundred pixels of
-    // bare wall on any monitor wide enough to see it: back office furniture
-    prop("hr2-cabinet", 1680, '<i class="d"></i><i class="d"></i><i class="d"></i>');
-    prop("hr2-copier", 1770, '<i class="lid"></i><i class="body"></i><i class="tray"></i>');
-    prop("hr2-clock", 1874);
-    prop("hr2-sign", 665, `<b>EMPLOYEE HANDBOOK</b><i class="pin l"></i><i class="pin r"></i><span>`
-      + `<u>Only ${(s.maxSupply ?? 0).toLocaleString()} will exist</u>`
-      + `<u>${fmtEth(s.priceWei)} ETH each</u>`
-      + `<u>Whitelist: ${WL_CAP} per wallet</u>`
-      + `<u>Public: ${PUBLIC_CAP} per wallet</u></span>`);
-    prop("hr2-stanchion", 600);
-    prop("hr2-stanchion", 686);
-    roomLayer.appendChild(px(el("div", "hr2-belt"), { left: "606px", width: "82px" }));
-    const rec = el("div", "room-reception");
-    rec.innerHTML = '<div class="counter"><i class="mon"></i><b>HR</b></div>';
-    // the receptionist rode on .npc-2's filter, so she needs a palette of her
-    // own now that the filters are gone, or she reverts to being the player
+    const live = !!(CFG.auction && CFG.auctionToken && window.__AUCTION && window.__AUCTION.room);
+    // ---------------------------------------------------------------
+    // THE ROOM IS LAID OUT ON A GRID. Every mounted piece is CENTRED on its
+    // section's axis, and the glazing is placed around them so nothing hangs
+    // on a window. The centre lines, measured not guessed:
+    //
+    //   A  entrance   0- 270   easel centred 200, door at 40
+    //   B  glazing  280- 640   seating + pendant centred 460
+    //   C  the stage 680-1200  stage, tote and rope centred 940
+    //   D  glazing 1250-1490   the auctioneer centred 1370
+    //   E  the desk 1520-2080  the bid desk centred 1800
+    //   F  the wall 2120-2560  hammers, notice, clock AND the floor decor,
+    //                          all centred 2340; nothing floats above this floor
+    //
+    // Nothing is pinned to `top`: --ground-h steps 220 -> 180 -> 120 and a
+    // piece hung off the ceiling drifts away from everything on the floor.
+    roomShell(2760, []);
+    glassWall(280, 360, [[16, 56, 284, "far"], [86, 58, 230, "near"], [162, 52, 292, "far"], [238, 50, 240, "near"]]);
+    glassWall(1250, 240, [[16, 54, 268, "far"], [88, 58, 224, "near"], [162, 50, 286, "far"]]);
+    // the two ceiling lights sit on the stage and desk axes, not at random
+    [940, 1800].forEach((x) => prop("hr2-light au-lit", x - 85));
+    prop("hr2-bin", 2680);
+
+    if (!live) {
+      // Nothing is configured yet, so the room cannot pretend to run an
+      // auction. It keeps the office and says so plainly rather than showing a
+      // dead stage or, worse, the mint that no longer exists.
+      prop("hr2-snake", 910);
+      prop("hr2-sidetable", 1226);
+      prop("hr2-roomba", 1242);
+      roomLayer.appendChild(px(el("div", "hr2-rug"), { left: "270px", width: "300px" }));
+      const rec0 = el("div", "room-reception");
+      rec0.innerHTML = '<div class="counter"><i class="mon"></i><b>HR</b></div>';
+      const npc0 = walkerEl("fb-walker npc " + CAST.clerk.look);
+      dress(npc0, CAST.clerk.pal);
+      npc0.dataset.frame = "stand";
+      px(npc0, { left: "40px", bottom: "0px" });
+      rec0.appendChild(npc0);
+      px(rec0, { left: "700px" });
+      roomLayer.appendChild(rec0);
+      prop("room-speech", 758, s.maxSupply > 0 && s.minted >= s.maxSupply
+        ? "Every desk is taken. The floor is where the work happens."
+        : "Nothing on stage today.");
+      const inner0 = el("div");
+      mintDesk(s, inner0, true);
+      deskCard(960, 500, inner0);
+      return;
+    }
+
+    // ---- the room, laid out left to right: doors, waiting area, STAGE,
+    // the auctioneer, the BID DESK, and the wall of past hammers.
+    // the auctioneer at her rostrum, turned toward the stage
+    const rec = el("div", "room-reception au-rostrum");
+    rec.innerHTML = '<div class="counter"><i class="mon"></i><b>LOT</b></div><i class="gavel"></i>';
     const npc = walkerEl("fb-walker npc " + CAST.clerk.look);
     dress(npc, CAST.clerk.pal);
     npc.dataset.frame = "stand";
     px(npc, { left: "40px", bottom: "0px" });
     rec.appendChild(npc);
-    px(rec, { left: "700px" });
+    px(rec, { left: "1270px" });
     roomLayer.appendChild(rec);
-    prop("hr2-poster", 710, '<div class="pic"><i class="m2"></i><i class="m1"></i><u class="sun"></u></div>');
-    prop("room-speech", 758, s.maxSupply > 0 && s.minted >= s.maxSupply ? "All full. Try the floor." : state.mintOpen ? "The mint is on OpenSea. Link's on the desk." : mintScheduled() ? `We open ${fmtUtc(CFG.mintStartsAt)}.` : "We open at launch.");
 
-    const inner = el("div");
-    mintDesk(s, inner, true);
-    deskCard(960, 500, inner);
-
-    const frame = el("div", "hr2-frame");
-    frame.innerHTML = `<div class="scr"><img src="${CFG.imageBase}/777.png" alt=""><b>EMPLOYEE OF THE MONTH</b></div>`;
-    px(frame, { left: "1860px" });
-    roomLayer.appendChild(frame);
+    // the module owns the stage, the tote board, the counters and the desk
+    let built = false;
+    try {
+      window.__AUCTION.room({
+        el, px, roomLayer, F, CFG, state, txFlow, prop, deskCard, toast, connect,
+      });
+      built = true;
+    } catch (e) { built = false; }
+    if (!built) {
+      // auction.js is present but threw. Fall back to an honest empty room
+      // rather than a half-built one; html and js sit behind separate caches.
+      prop("room-speech", 1300, "The sale room is closed for a moment.");
+      return;
+    }
+    prop("room-speech", 1300, "Bidding's open. Hammer at five, New York time.");
   }
 
   // ---------- Trading floor: three desks, and a roster behind them
@@ -1816,14 +1931,20 @@
   /// cabinet is one click target: it collects every broker you own through
   /// the same COLLECT PAY runner, and between paydays it counts down to the
   /// next hour so it is never a dead prop.
-  function paydayUsdgOf(b) {
-    const p = b.pending || 0n;
-    if (!p || !b.split || !b.split.length) return p;
-    return (p * b.split.reduce((a, sp) => a + (sp.idx === 11 ? BigInt(sp.bps) : 0n), 0n)) / 10000n;
+  /// Everything an active broker is owed, whatever asset it is bound to. A
+  /// split's bps always sum to 10,000, so the holder's real pay is simply his
+  /// pending — no asset weighting belongs here.
+  ///
+  /// This used to count only the USDG slice. For a broker paid 100% in FRONG or
+  /// stocks it returned 0, which made `collectable` 0, which sent the idle face
+  /// down its "ALL COLLECTED" branch — telling a holder he had been paid
+  /// everything while his pay sat undelivered. Never measure one asset here.
+  function paydayPayOf(b) {
+    return b.pending || 0n;
   }
   function buildPaydayMachine(bs) {
     const out = !state.account;
-    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + paydayUsdgOf(b), 0n);
+    const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + paydayPayOf(b), 0n);
     const hasActive = !out && bs.some((b) => b.active);
     const st = state.stats || {};
     const nowRound = Math.floor(Date.now() / 3_600_000);
@@ -1877,7 +1998,9 @@
           // deliver costs ≈$1 real gas, so under OWN_MIN the face pools and the
           // hourly sweep pays them for free (it pays at 0.002 anyway)
           if (plan.own >= OWN_MIN && plan.total >= engineMinSwap() && plan.ids.length) {
-            setFace(faceArmed("YOUR BROKERS EARNED", `${fmtEth(plan.own)} ETH`), true);
+            // plan.own is the TARGET asset's slice — what this click actually
+            // delivers — so the label has to say that and not imply the total.
+            setFace(faceArmed("READY TO COLLECT", `${fmtEth(plan.own)} ETH`), true);
             return;
           }
           if (collectable > 0n) {
@@ -1888,7 +2011,13 @@
             // gas to swap other people's pay ("POOLED PAY IS READY" used to),
             // and never tell them to wait for the hour — it is not building
             pooling = true;
-            setFace(crt(plan.own > 0n ? "PAY IS POOLING" : "STOCK PAY IS POOLING", `${fmtEth(collectable)} ETH`) + `<div class="btn dim">THE SWEEP PAYS IT HOURLY</div>`, false);
+            // name the asset that is waiting — "STOCK PAY" was wrong the moment
+            // a non-stock asset (FRONG) could be the one pooling.
+            const sym = plan.asset === null || plan.asset === undefined
+              ? null
+              : (state.assetMeta && state.assetMeta[plan.asset] && state.assetMeta[plan.asset].symbol);
+            const label = plan.own > 0n && sym ? `${sym} PAY IS POOLING` : plan.own > 0n ? "PAY IS POOLING" : "POOLED PAY IS WAITING";
+            setFace(crt(label, `${fmtEth(collectable)} ETH`) + `<div class="btn dim">THE SWEEP PAYS IT HOURLY</div>`, false);
             return;
           }
         }
@@ -2756,6 +2885,11 @@
   const xPinned = () => CFG.xPinned || xProfile();
   // closed beats open: once the cut is made, no endpoint reopens the booth
   const applyClosed = () => !!CFG.applyClosed;
+  /// The mint is over and the first building is the Auction House, so the booth
+  /// outside it stops being the whitelist desk and becomes the viewing desk.
+  /// Gated on the auction actually being configured: before that the street
+  /// behaves exactly as it did.
+  const auctionLive = () => !!(CFG.auction && CFG.auctionToken);
   const applyOpen = () => !applyClosed() && !!(CFG.applyUrl || CFG.applyFormUrl);
 
   /// The four steps, and the send when there is somewhere to send to. Without an
@@ -2776,6 +2910,12 @@
   /// said so. The sign states the rule and what happens if you skip it, in
   /// that order, in the shortest words that carry it.
   function agentLine() {
+    // the sale room is running: the booth points at today's lot instead of a
+    // list nobody can join any more
+    if (auctionLive()) {
+      return '<span class="hd">ONE LOT A DAY</span>' +
+        '<span class="dt">Viewing inside.<br>Hammer at five, New York time</span>';
+    }
     // after the cut the booth is the list desk: the sign says so and invites
     // the check, instead of vanishing (a silent booth reads as broken)
     if (applyClosed()) {
@@ -2837,6 +2977,13 @@
   }
 
   function openApply(onPass) {
+    // the sale room is running: the booth, the agent and the sill walk you in
+    // instead of opening a list that closed with the mint. THE LIST button in
+    // the street bar still opens the checker directly, so nothing is lost.
+    if (auctionLive()) {
+      const hr = ZONES.find((z) => z.id === "hr");
+      if (hr) return tryEnter(hr);
+    }
     // the list is closed: every door that used to open the application opens
     // THE LIST checker instead (booth, agent, sill, sign, flat page, HR gate)
     if (applyClosed()) {
@@ -3305,8 +3452,10 @@
             value="${current[i] ? current[i].bps / 100 : ""}"><em>%</em>
         </label>`).join("")}</div>
       <div class="tot"><span>TOTAL</span><b>0%</b></div>
+      <div class="mixwarn" hidden></div>
       <div class="quick">quick:
-        <button class="mini" data-q="usdg" type="button">ALL USDG</button>
+        <button class="mini" data-q="usdg" type="button">ALL USDG</button>${featIdx() === null ? "" :
+        `<button class="mini feat" data-q="feature" type="button">ALL ${featSym()}</button>`}
         <button class="mini" data-q="even" type="button">SPLIT EVENLY</button>
       </div>
       <div class="bar">
@@ -3331,6 +3480,20 @@
       totEl.className = "tot" + (ok ? " ok" : total ? " bad" : "");
       totEl.querySelector("b").textContent = dupe ? "SAME STOCK TWICE" : zero ? "A LINE IS AT 0%" : total + "%";
       save.disabled = !ok;
+      // ☠️ A SPLIT DOES NOT HOLD ITS MINORITY ASSET. deliver() zeroes the whole
+      // credit and re-splits it, rolling any part that could not be swapped back
+      // into the same untagged number — so next round the majority asset takes
+      // its share of that too. Measured on a fork: a 50/50 holder received 100%
+      // of his pay in the default asset over 15 rounds and none of the other.
+      // The holder has to know before he signs, not after fifteen paydays.
+      const warn = ed.querySelector(".mixwarn");
+      const minority = rows.length > 1 && rows.some((r) => r.pct < 100 && r.idx !== usdgIdx());
+      warn.hidden = !minority;
+      if (minority) {
+        warn.textContent = "Heads up: a split pays out in whatever it can swap first. "
+          + "A minority share of anything other than USDG tends to end up paid as USDG instead. "
+          + "Pick one asset at 100% if you want to be sure you get it.";
+      }
       return { rows, ok };
     }
     ed.addEventListener("input", check);
@@ -3338,6 +3501,9 @@
     ed.querySelectorAll(".quick .mini").forEach((q) => q.addEventListener("click", () => {
       if (q.dataset.q === "usdg") {
         lines.forEach((l, i) => { l.children[0].value = i ? "" : String(usdgIdx()); l.children[1].value = i ? "" : "100"; });
+      } else if (q.dataset.q === "feature") {
+        const f = featIdx();
+        if (f !== null) lines.forEach((l, i) => { l.children[0].value = i ? "" : String(f); l.children[1].value = i ? "" : "100"; });
       } else {
         const on = lines.filter((l) => l.children[0].value !== "");
         // 100 does not divide by three, so the first line carries the remainder
@@ -3365,6 +3531,22 @@
   function usdgIdx() {
     for (const [k, m] of Object.entries(state.assetMeta || {})) if (m.symbol === "USDG") return Number(k);
     return 0;
+  }
+  /// The partner asset we are promoting, by SYMBOL from config (CFG.featureAsset).
+  /// Resolved against what is actually on-chain, so it disappears by itself if
+  /// the asset was never registered — the button can never point at nothing.
+  /// Empty config = no button, which is the state before a partnership launches.
+  function featSym() {
+    const want = (CFG.featureAsset || "").toUpperCase();
+    if (!want) return null;
+    for (const m of Object.values(state.assetMeta || {})) if ((m.symbol || "").toUpperCase() === want) return m.symbol;
+    return null;
+  }
+  function featIdx() {
+    const want = (CFG.featureAsset || "").toUpperCase();
+    if (!want) return null;
+    for (const [k, m] of Object.entries(state.assetMeta || {})) if ((m.symbol || "").toUpperCase() === want) return Number(k);
+    return null;
   }
   // The engine pays the DEFAULT asset when a broker has no split set, and that
   // default is the first non-stock asset on the menu (PayrollEngine._defaultIdx);

@@ -30,6 +30,30 @@ window.FIRM_CFG = {
   // soon" and shows NO button. Fill it the moment the OpenSea page is live.
   // (Anti-phishing rule, same as the token: the site never links a mint page
   // that is not this exact URL.)
+  // ---- partner salary asset (PLAN 1) ----
+  // The asset the paycheck editor promotes with a one-click "ALL <SYMBOL>"
+  // button. Matched by SYMBOL against what the engine actually has registered,
+  // so a wrong or unregistered value simply hides the button. Empty = off.
+  featureAsset: "FRONG", // set to "FRONG" once addAsset has landed
+
+  // ---- the auction (PLAN 2) ----
+  // Empty = the building keeps its current content and no auction UI is built.
+  auction: "0x577dc35527c1ad0eEa02c17FCd30B6D1E6FfA55f",      // AuctionHouse address
+  bonusPool: "0xdbf59e9Cca84BCFa13A1505f9967eC8782440C05",    // BonusPool address
+  auctionToken: "0x6245e67affA44a23077f0Ea7f981a8DC743a0c47", // the bid token (FRONG). Symbol/decimals are read on-chain.
+  // The bid token's dEaD balance at the moment the house was deployed, printed
+  // by DeployFrongAuction. The room shows balanceOf(dEaD) MINUS this, so BURNED
+  // is what this house burned and not what the token's whole history left
+  // there. FRONG's is ~5.5e24; leaving this at 0 opens the room on a lie.
+  burnBaseline: "6001467830834659062971827",
+  hammerLocal: "5:00 PM New York",
+  // Which decor the sale room builds. Comma-separated, any of:
+  //   panel  wainscot + brass dado on the solid wall runs
+  //   queue  crates stencilled with the real upcoming lot numbers, and a porter
+  //   phones telephone bidding booths
+  //   settle the settlement window
+  decor: "panel,queue", // display only; the contract's endsAt is the truth
+
   mintUrl: "https://opensea.io/collection/thefirmbrokers",
   // When the PUBLIC round opens on OpenSea, unix seconds UTC. 0 = not yet.
   // Until then HR is gated on the whitelist form (listed wallets mint first);

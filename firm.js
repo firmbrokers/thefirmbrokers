@@ -558,6 +558,21 @@
   /// version pulled EVERY Delivered since launch and summed client-side; that
   /// ledger passed the rpc's 10,000-log cap on 2026-08-29 (13,413 and growing
   /// ~1k/h), so the one-shot query started bisecting into dozens of calls.
+  /// Returns { eth, usd6, mixed }:
+  ///   eth   — Σ ethIn, what the payroll put in, across every asset
+  ///   usd6  — Σ out for USDG deliveries only, 6 decimals. USDG is a dollar,
+  ///           so this is the DOLLARS ACTUALLY RECEIVED, frozen at the moment
+  ///           of each payment. It can only ever rise.
+  ///   mixed — true when any delivery was a stock, whose `out` is a share
+  ///           count and cannot be summed into a dollar figure.
+  ///
+  /// Both come out of the same log scan; usd6 costs no extra call.
+  ///
+  /// Why this exists (2026-08-31): the holder line multiplied `eth` by the
+  /// LIVE ETH price, so a holder's "earned all time" fell whenever ETH fell.
+  /// One reported it as lost payments — his own numbers, 12.80 -> 12.54 ->
+  /// 12.60, went back UP, which is the tell: a total of past payments can
+  /// never move in either direction. Never price a historical total at spot.
   const USDG_ASSET = 11; // deliberately NOT USDG_IDX: that constant has been
   // both 11 and 11n across builds, and `11 === 11n` is false. A local Number
   // keeps this correct whichever build it is pasted into.
@@ -622,22 +637,40 @@
     return out;
   }
 
-  /// how much of each broker's pay flows to USDG, in bps (0..10000).
+  /// how each broker's pay is split ACROSS ASSETS, in bps: [id, {idx: bps}].
   /// splitOf returns (uint8[3] idx, uint16[3] bps, uint8 count); count 0 means
   /// never picked, which pays 100% into the default asset — USDG, index 11.
-  const USDG_IDX = 11n;
-  async function usdgShareOf(ids) {
+  ///
+  /// 11 is safe to hardcode as the default: the engine's `_defaultIdx()` returns
+  /// the FIRST non-stock asset, USDG holds that slot, and anything added later
+  /// appends at 12/13 BEHIND it. The default cannot move.
+  ///
+  /// `deliver()` swaps PER ASSET, so a pot bound to one asset says nothing about
+  /// whether another will pay. Reading only the USDG slice (as this did until
+  /// 2026-08-30) makes a holder paid entirely in stocks or FRONG look like he is
+  /// owed nothing at all.
+  const USDG_IDX = 11;
+  async function assetSharesOf(ids) {
     const raws = await callBatch(ids.map((id) => ({ to: CFG.engine, data: SEL.splitOf + word(id) })));
     return ids.map((id, i) => {
       const r = raws[i];
-      if (!r || r.length < 2 + 64 * 7) return [id, 10000];
+      if (!r || r.length < 2 + 64 * 7) return [id, { [USDG_IDX]: 10000 }];
       const wAt = (j) => BigInt("0x" + r.slice(2 + 64 * j, 2 + 64 * (j + 1)));
       const count = Number(wAt(6));
-      if (count === 0) return [id, 10000];
-      let bps = 0n;
-      for (let j = 0; j < count && j < 3; j++) if (wAt(j) === USDG_IDX) bps += wAt(3 + j);
-      return [id, Number(bps)];
+      if (count === 0) return [id, { [USDG_IDX]: 10000 }];
+      const by = {};
+      for (let j = 0; j < count && j < 3; j++) {
+        const a = Number(wAt(j));
+        by[a] = (by[a] || 0) + Number(wAt(3 + j));
+      }
+      return [id, by];
     });
+  }
+
+  /// the default-asset slice only, in bps. Kept for callers that genuinely mean
+  /// "USDG"; anything deciding whether a click will PAY must use assetSharesOf.
+  async function usdgShareOf(ids) {
+    return (await assetSharesOf(ids)).map(([id, by]) => [id, by[USDG_IDX] || 0]);
   }
 
   /// trading fees a harvest would ACTUALLY pull into the pay pot right now.
@@ -860,6 +893,7 @@
     pendingOf,
     rolledIds,
     usdgShareOf,
+    assetSharesOf,
     owedEngine,
     earnedAllTime,
     hiredCount,
