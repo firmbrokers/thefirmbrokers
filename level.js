@@ -1994,19 +1994,27 @@
         if (paid.eth <= 0n && building <= 0n) return;
         const el2 = bd.querySelector(".alltime");
         if (!el2 || !document.body.contains(el2)) return;
-        // PAID is stated in the dollars that actually arrived — USDG `out`,
-        // frozen at each payment — so it can only rise. A stock payout is a
-        // share count, not a dollar, so a roster with any stock pay falls back
-        // to the ETH the payroll put in rather than inventing a valuation.
-        // BUILDING stays in ETH and is labelled separately: it has not been
-        // swapped yet, so it really does move, and folding it into one total
-        // was half of why this number used to fall.
-        const parts = [];
-        if (!paid.mixed && paid.usd6 > 0n) parts.push(`$${(Number(paid.usd6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} paid`);
-        else if (paid.eth > 0n) parts.push(`${fmtEth(paid.eth)} ETH paid`);
-        if (building > 0n) parts.push(`${fmtEth(building)} ETH building`);
-        if (!parts.length) return;
-        el2.textContent = `earned all time: ${parts.join(" · ")}`;
+        // ONE total, in ETH, exactly as before: delivered plus still-building.
+        // That figure was never the bug — pending converts into delivered wei
+        // for wei, so it only ever rises. The bug was pricing it at the LIVE
+        // ETH rate, which made it fall whenever ETH did.
+        //
+        // Splitting it into "paid" and "building" (2026-08-31, first attempt at
+        // this fix) was a mistake and was reverted the same night: the total
+        // was unchanged, but the larger half now led the line, so a holder on
+        // 0.5262 saw 0.5153 and reported his earnings going down again. Fixing
+        // a number people watch must never make it read smaller.
+        //
+        // The dollar figure is the USDG that actually arrived — `out`, frozen
+        // at each payment — so it cannot fall either. It is shown only when
+        // every payment was USDG: a stock payout is a share count, and pricing
+        // that would be the same mistake a third time.
+        const total = paid.eth + building;
+        if (total <= 0n) return;
+        const cash = !paid.mixed && paid.usd6 > 0n
+          ? ` · $${(Number(paid.usd6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} received`
+          : "";
+        el2.textContent = `earned all time: ${fmtEth(total)} ETH${cash}`;
       } catch (e) { /* the line just stays absent */ }
     })();
     const ha = bd.querySelector(".hireall");
