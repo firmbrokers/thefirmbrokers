@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Be the paycheck &middot; Firm Brokers</title>
+<meta name="description" content="Firm Brokers has ~3,000 workers earning a wage every hour, and their owners choose which token it arrives in. Fund a campaign and your token becomes one of the choices.">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="canonical" href="https://thefirmbrokers.com/payroll">
+<meta property="og:url" content="https://thefirmbrokers.com/payroll">
+<meta property="og:title" content="Be the paycheck">
+<meta property="og:description" content="A few thousand people each hold a switch that decides what gets bought on their behalf. Fund a campaign and become one of the answers.">
+<meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
+<meta property="og:type" content="article">
+<style>
+@font-face{font-family:"Press Start 2P";src:url("fonts/press-start-2p.woff2") format("woff2");font-display:swap}
+@font-face{font-family:"VT323";src:url("fonts/vt323.woff2") format("woff2");font-display:swap}
+
+:root{
+  --paper:#F4F3EF; --card:#FFFFFF; --sunk:#EAE8E2;
+  --rule:#D8D5CC; --rule-soft:#E7E4DC;
+  --ink:#1A1C20; --ink-2:#4E535A; --ink-3:#878C93;
+  --gold:#8A6410; --gold-bright:#C9A237;
+  --green:#2C7A4B; --red:#A32B2B;
+  --shade:0 1px 2px rgba(26,22,10,.05), 0 10px 30px rgba(26,22,10,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#15171A; --card:#1D2024; --sunk:#101215;
+    --rule:#2D3136; --rule-soft:#24272B;
+    --ink:#E9EAEC; --ink-2:#A3A9B0; --ink-3:#6E747B;
+    --gold:#D9B44A; --gold-bright:#F0CE6A;
+    --green:#4FB07A; --red:#D9706C;
+    --shade:0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#15171A; --card:#1D2024; --sunk:#101215;
+  --rule:#2D3136; --rule-soft:#24272B;
+  --ink:#E9EAEC; --ink-2:#A3A9B0; --ink-3:#6E747B;
+  --gold:#D9B44A; --gold-bright:#F0CE6A;
+  --green:#4FB07A; --red:#D9706C;
+  --shade:0 1px 2px rgba(0,0,0,.4), 0 12px 34px rgba(0,0,0,.45);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:17px;line-height:1.65;-webkit-font-smoothing:antialiased;
+}
+.pixel{font-family:"Press Start 2P",monospace;line-height:1.5;letter-spacing:.02em}
+.data{font-family:"VT323",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.wrap{max-width:760px;margin:0 auto;padding:0 22px}
+img{max-width:100%;image-rendering:pixelated}
+
+/* ---------- top bar ---------- */
+.bar{position:sticky;top:0;z-index:30;background:color-mix(in srgb,var(--paper) 88%,transparent);
+     backdrop-filter:blur(10px);border-bottom:1px solid var(--rule)}
+/* The bar gets a wider container than the article: prose wants a 760px measure,
+   navigation does not, and squeezing 12 links into it forced a scrollbar. */
+.bar .wrap{max-width:1180px}
+/* the horizontal value must be repeated: this shorthand lands after .wrap's
+   `padding:0 22px` at equal specificity, so `11px 0` would silently zero it */
+.bar-in{display:flex;align-items:center;gap:12px;padding:11px 22px}
+.bar a.home{font-family:"Press Start 2P",monospace;font-size:10px;color:var(--ink);
+            text-decoration:none;white-space:nowrap;flex:none}
+@media (max-width:640px){
+  /* wrapped rows would eat a third of a phone screen if the bar stayed stuck */
+  .bar{position:static}
+  .bar a.home{font-size:8px}
+  .bar-in{gap:8px;flex-wrap:wrap}
+  .bar nav{margin-left:0;justify-content:flex-start;gap:5px 11px}
+  .bar nav a{font-size:12px}
+  body{font-size:16px}
+}
+.bar a.home:hover{color:var(--gold)}
+/* wrap onto a second row rather than scroll sideways, so every link stays
+   reachable at any width */
+.bar nav{margin-left:auto;display:flex;flex-wrap:wrap;justify-content:flex-end;
+         gap:6px 11px;min-width:0}
+.bar nav a{font-size:12px;color:var(--ink-2);text-decoration:none;white-space:nowrap}
+.bar nav a:hover{color:var(--gold)}
+/* the logo sits on the type's own baseline row and takes the link colour, so
+   it lights up with its neighbours instead of carrying a colour of its own */
+.bar nav a.xlink{display:inline-flex;align-items:center}
+
+/* ---------- hero ---------- */
+header.hero{padding:64px 0 40px;border-bottom:1px solid var(--rule)}
+.eyebrow{font-family:"Press Start 2P",monospace;font-size:9px;color:var(--gold);
+         letter-spacing:.14em;text-transform:uppercase}
+/* sized to keep "The Employee Handbook" on ONE line at every width */
+/* Press Start 2P advances exactly 1em per glyph, so 21 characters need 21x the
+   font size. The 716px content box therefore caps at ~34px; 32px keeps a margin. */
+h1{font-family:"Press Start 2P",monospace;font-size:clamp(11px,3.05vw,32px);
+   line-height:1.4;margin:18px 0 0;white-space:nowrap}
+.lede{font-size:20px;color:var(--ink-2);margin:20px 0 0;max-width:60ch}
+.lede b{color:var(--ink);font-weight:600}
+
+/* ---------- the 30-second box ---------- */
+.tldr{background:var(--card);border:1px solid var(--rule);border-radius:12px;
+      padding:26px 26px 8px;margin:34px 0 0;box-shadow:var(--shade)}
+.tldr h2{font-family:"Press Start 2P",monospace;font-size:11px;margin:0 0 18px;color:var(--gold)}
+.tldr ol{margin:0;padding:0;list-style:none;counter-reset:s}
+.tldr li{counter-increment:s;display:flex;gap:14px;padding:0 0 18px;align-items:flex-start}
+.tldr li::before{content:counter(s);font-family:"VT323",monospace;font-size:26px;line-height:1.1;
+  color:var(--gold);flex:none;width:24px;text-align:center}
+/* label and text stack; without this wrapper they become sibling flex items and
+   any label that wraps to two lines drags its description out of alignment */
+.tldr li > div{min-width:0}
+.tldr li b{display:block;font-weight:650}
+.tldr li span{display:block;color:var(--ink-2);font-size:16px;margin-top:2px}
+
+/* ---------- sections ---------- */
+section{padding:52px 0;border-bottom:1px solid var(--rule-soft)}
+section:last-of-type{border-bottom:0}
+.num{font-family:"VT323",monospace;font-size:15px;color:var(--gold);letter-spacing:.16em}
+h2.sec{font-family:"Press Start 2P",monospace;font-size:clamp(13px,2.8vw,17px);
+       margin:10px 0 0;line-height:1.5;text-wrap:balance}
+.plain{font-size:19px;color:var(--gold);margin:16px 0 0;font-weight:550;
+       border-left:3px solid var(--gold);padding-left:16px}
+p{margin:18px 0 0;max-width:66ch}
+h3{font-size:17px;margin:30px 0 0;font-weight:650}
+ul.plainlist{margin:16px 0 0;padding-left:22px;max-width:66ch}
+ul.plainlist li{margin:8px 0}
+strong{font-weight:650}
+a{color:var(--gold);text-underline-offset:2px}
+
+/* ---------- fact cards ---------- */
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:26px 0 0}
+.fact{background:var(--sunk);border:1px solid var(--rule-soft);border-radius:10px;padding:14px 16px}
+.fact .k{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3)}
+.fact .v{font-family:"VT323",monospace;font-size:27px;line-height:1.15;margin-top:2px}
+.fact .v.gold{color:var(--gold)}
+
+/* ---------- callouts ---------- */
+.note{border-radius:10px;padding:16px 18px;margin:26px 0 0;font-size:16px;
+      border:1px solid var(--rule);background:var(--card)}
+.note.warn{border-color:color-mix(in srgb,var(--red) 45%,var(--rule));
+           background:color-mix(in srgb,var(--red) 7%,var(--card))}
+.note.good{border-color:color-mix(in srgb,var(--green) 45%,var(--rule));
+           background:color-mix(in srgb,var(--green) 7%,var(--card))}
+.note b{display:block;margin-bottom:4px;color:var(--gold)}
+.note.warn b{color:var(--red)}
+.note.good b{color:var(--green)}
+
+/* ---------- pictures of the machines ---------- */
+figure.shot{margin:26px 0 0;max-width:100%;
+  border:1px solid var(--rule);border-radius:10px;overflow:hidden;
+  background:var(--sunk);box-shadow:var(--shade)}
+figure.shot img{display:block;width:100%;height:auto;image-rendering:pixelated}
+figure.shot figcaption{font-size:13px;color:var(--ink-2);padding:9px 14px;
+  border-top:1px solid var(--rule-soft)}
+
+/* ---------- money flow ---------- */
+.flow{margin:26px 0 0;border:1px solid var(--rule);border-radius:12px;overflow:hidden;background:var(--card)}
+.flow .row{display:flex;align-items:baseline;gap:12px;padding:13px 18px;border-top:1px solid var(--rule-soft)}
+.flow .row:first-child{border-top:0;background:var(--sunk)}
+.flow .amt{font-family:"VT323",monospace;font-size:25px;min-width:82px;color:var(--gold)}
+.flow .lbl{font-size:15px;color:var(--ink-2)}
+.flow .lbl b{color:var(--ink)}
+
+/* ---------- tables ---------- */
+.tablewrap{overflow-x:auto;margin:26px 0 0;border:1px solid var(--rule);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:15px;background:var(--card)}
+th,td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--rule-soft);white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--ink-3);background:var(--sunk)}
+tr:last-child td{border-bottom:0}
+td.n{font-family:"VT323",monospace;font-size:19px}
+/* the supply table carries 10-digit figures: let the label wrap so the number never clips on a phone */
+.supply td:first-child{white-space:normal}
+.supply td.n{text-align:right}
+
+/* ---------- legendary strip ---------- */
+.legends{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:10px;margin:24px 0 0}
+.legends figure{margin:0;text-align:center}
+.legends img{width:100%;border-radius:8px;border:1px solid var(--rule);display:block;background:var(--sunk)}
+.legends figcaption{font-size:11px;color:var(--ink-2);margin-top:6px;line-height:1.35}
+
+/* ---------- glossary ---------- */
+dl{margin:22px 0 0}
+dt{font-weight:650;margin-top:16px}
+dd{margin:4px 0 0;color:var(--ink-2);max-width:64ch}
+
+footer{padding:44px 0 70px;color:var(--ink-3);font-size:14px}
+footer a{color:var(--ink-2)}
+.legal{margin-top:22px;padding-top:16px;border-top:1px solid var(--rule-soft);
+       font-size:11.5px;line-height:1.6;color:var(--ink-3);max-width:70ch}
+:focus-visible{outline:2px solid var(--gold);outline-offset:3px;border-radius:4px}
+</style>
+<body>
+
+<div class="bar"><div class="wrap bar-in">
+  <a class="home" href="/">&larr; FIRM BROKERS</a>
+  <nav>
+    <a href="#what">What it is</a><a href="#how">How it works</a><a href="#money">The money</a>
+    <a href="#long">How long</a><a href="#match">We match</a><a href="#today">Already running</a><a href="#start">Start one</a>
+    <a href="/docs">Handbook</a>
+    <a class="xlink" href="https://x.com/thefirmbrokers" target="_blank" rel="noopener"
+       title="Firm Brokers on X" aria-label="Firm Brokers on X"><svg viewBox="0 0 24 24" width="12" height="12"
+       fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a>
+  </nav>
+</div></div>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">For projects</div>
+  <h1>Be the paycheck</h1>
+  <p class="lede">Firm Brokers has <b>4,766 workers</b>. About <b>3,000 of them clock in and earn a wage every hour</b>.
+    Their owner chooses which token that wage arrives in.
+    <b>Fund a campaign and your token becomes one of the choices.</b></p>
+
+  <div class="tldr">
+    <h2>THE 30-SECOND VERSION</h2>
+    <ol>
+      <li><div><b>You fund a budget in ETH</b><span>$1,000 to $2,000 is a normal place to start.</span></div></li>
+      <li><div><b>Your token becomes a payout option</b><span>It appears in the paycheck screen every broker owner already uses.</span></div></li>
+      <li><div><b>People choose it</b><span>Anyone who picks it is choosing to be paid in your token for as long as the campaign runs.</span></div></li>
+      <li><div><b>We buy your token on the open market, every day</b><span>A slice of the budget, daily, for the length of the campaign. Spent buying, not moved out of your treasury.</span></div></li>
+      <li><div><b>It runs until the budget is spent</b><span>Then it stops. Top it up any time. No lockup, no token allocation.</span></div></li>
+    </ol>
+  </div>
+</header>
+
+<section id="what">
+  <div class="num">01</div>
+  <h2 class="sec">What this actually is</h2>
+  <p class="plain">A broker is a little pixel office worker that somebody owns. When his owner puts him to
+    work, he earns a wage every hour, paid out of real trading-fee revenue.</p>
+  <p>The unusual part is the last step. <b>The holder picks which token the wage arrives in.</b>
+    The money is earned either way. The only open question is what it gets turned into on the way out.</p>
+  <p>So there are a few thousand people, each holding a small switch that decides what gets bought on their behalf. A campaign makes your token one of the answers.</p>
+  <p class="plain"><b>An airdrop arrives once and is usually sold the same day. A wage keeps arriving,
+    to somebody who chose to receive it.</b></p>
+</section>
+
+<section id="how">
+  <div class="num">02</div>
+  <h2 class="sec">How a campaign works</h2>
+  <h3>1. You send a budget in ETH</h3>
+  <p>Not your own token, and this is the whole design: the budget gets <b>spent buying your token on the
+    open market</b>, so the campaign is a funded buyback that ends with your token in real wallets.</p>
+  <p class="plain"><b>We can take your own tokens instead if ETH is hard.</b> The machinery is the same
+    either way. But we would rather say plainly that it is the weaker version: sending tokens is a
+    giveaway with no buying attached, and the buying is most of what makes this worth doing.</p>
+  <h3>2. Your token becomes selectable</h3>
+  <p>It shows up in the paycheck screen alongside the permanent ones, marked with the date the campaign
+    ends. Nobody has to learn anything new.</p>
+  <h3>3. Owners choose it</h3>
+  <p>The people who pick it are opting in. That is the cohort you are paying for: not a snapshot list,
+    but people who actively chose to hold your token and watched it arrive, payout after payout.</p>
+  <h3>4. We buy, every day</h3>
+  <p><b>Once a day</b> the campaign takes a slice of the budget and buys your token on the open market.
+    Those tokens are then paid out to the brokers who chose you, as they earn. Every buy and every payout
+    is a transaction you can look at.</p>
+  <p class="plain">We buy daily rather than all at once on purpose. If the whole budget were spent on day
+    one, there would be a single candle and then weeks of people receiving tokens with nothing buying
+    alongside them. Spreading the buying across the campaign means it happens <b>in the same window as the
+    distribution</b>, which is the difference between a campaign that supports a chart and one that
+    quietly leans on it.</p>
+</section>
+
+<section id="money">
+  <div class="num">03</div>
+  <h2 class="sec">Where the money goes</h2>
+  <p>Each campaign gets <b>its own address</b>, published before you send anything. That address does one
+    thing: buy your token and pay it out as wages. You can watch it spend in real time.</p>
+  <p><b>90% of every budget is spent buying your token.</b> The other 10% is what we charge to build and
+    run the campaign: setting it up, deploying it, watching it, and reporting back.</p>
+  <p>No token allocation, no lockup, no minimum commitment. If you stop, it stops.</p>
+</section>
+
+<section id="long">
+  <div class="num">04</div>
+  <h2 class="sec">How long it lasts</h2>
+  <p class="plain">Campaigns are short and loud. You set the daily rate, so you set the length.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Budget</th><th>Daily rate</th><th>Runs for</th></tr></thead>
+    <tbody>
+      <tr><td>$500</td><td>$250 / day</td><td>2 days</td></tr>
+      <tr><td>$1,000</td><td>$250 / day</td><td>4 days</td></tr>
+      <tr><td>$2,000</td><td>$500 / day</td><td>4 days</td></tr>
+      <tr><td>$2,000</td><td>$250 / day</td><td>8 days</td></tr>
+    </tbody>
+  </table></div>
+  <p><b>Short is the point.</b> The same budget stretched over six weeks is fifty dollars a day, which
+    disappears into the noise of any chart. Spent over a few days it is a real, visible bid that people
+    can see arriving, and a deadline that makes broker owners switch their paycheck to you <i>now</i>
+    rather than meaning to.</p>
+  <p>It is also a smaller thing to say yes to. A few days is a test, not a commitment, and if it works you
+    already know before you decide whether to run it again.</p>
+  <p>When the budget runs out it simply stops, and anyone still set to your token gets paid in something
+    else. Nothing breaks and nobody is stranded. <b>We will tell you before it empties, not after.</b>
+    Topping up goes to the same address, any time, any amount.</p>
+</section>
+
+<section id="match">
+  <div class="num">05</div>
+  <h2 class="sec">What we put in</h2>
+  <p class="plain">Brokers, on the auction stage, priced in your token.</p>
+  <p>Every day one broker goes up for auction. We can put brokers from our own stock on that stage with
+    <b>the bidding denominated in your token</b>, so anyone who wants one has to go and buy your
+    token to bid for it.</p>
+  <p>And then <b>half of what the house keeps from those sales is burned. Forever. In your token.</b>
+    The rest funds the community pool. That is a real burn at a dead address that anyone can go and
+    check, not a number we report to you.</p>
+  <p class="plain">The auction contract takes its bid token at the moment it is deployed, so your token
+    gets <b>its own auction house</b> rather than sharing one. That is exactly how the FRONG auction runs
+    today, and standing another one up costs about a cent in gas.</p>
+  <p>How many brokers we put up is agreed per campaign, out of the <b>91</b> the project still holds.</p>
+</section>
+
+<section id="today">
+  <div class="num">06</div>
+  <h2 class="sec">What is already running</h2>
+  <p class="plain">The machine a campaign runs on is already turning.</p>
+  <h3>The payroll is live</h3>
+  <p>Around <b>3,000 brokers are clocked in and earning right now</b>, and their owners are already
+    choosing which token their wages arrive in. <b>FRONG</b> is one of those choices today: set a
+    paycheck to it and the wages land in FRONG.</p>
+  <h3>The auction is live</h3>
+  <p>One broker goes on stage <b>every day, hammer at 5pm New York</b>, with the bidding in FRONG. The
+    first sale burned <b>3,864 FRONG</b> forever and returned <b>77,637 FRONG</b> to the bidders who were
+    outbid. Every number there is a transaction you can pull up.</p>
+  <h3>Campaigns</h3>
+  <p>We are setting up <b>the first campaigns now</b>, which is the opportunity in this: the earliest
+    partners get a stage nobody else is standing on, and a launch we will make noise about rather than
+    slot into a queue. Come in later and you are one of many.</p>
+</section>
+
+<section id="start">
+  <div class="num">07</div>
+  <h2 class="sec">Starting one</h2>
+  <p class="plain">Three things and we can set it up.</p>
+  <ol class="plainlist">
+    <li>Your token address and its main liquidity pool</li>
+    <li>A budget, and the daily rate you want it spent at</li>
+    <li>A start date</li>
+  </ol>
+  <p>Talk to us on X at <a href="https://x.com/thefirmbrokers" target="_blank" rel="noopener"><b>@thefirmbrokers</b></a>.</p>
+  <p class="plain">Everything above is checkable. The brokers, the payroll, the auction and the burns are
+    all on Robinhood Chain, and the <a href="/docs">handbook</a> explains the rest of how the world works.</p>
+</section>
+
+</div>
+</body>
+</html>
