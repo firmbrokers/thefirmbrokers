@@ -597,6 +597,29 @@
 
   // ------------------------------------------------------------------ core
   /// One batched read of everything the room shows.
+  // ☠️ artworkOf WAS RE-READ ON EVERY POLL, un-batched, with no retry. Any single
+  // RPC miss set art = 0 and the stage went black — every 4 to 20 seconds, all
+  // day, on the busiest surface we have. Fixing the LABEL (BROKER #0 -> LOT n)
+  // treated the symptom; the portrait still vanished.
+  //
+  // The artwork id is drawn at mint and NEVER changes (EmployeeNFT: "The artwork
+  // mapping is drawn at mint and never changes"), so it is read ONCE per broker
+  // and remembered. A later miss can no longer blank a portrait we already know,
+  // and the poll stops making a redundant call against a rate-limited RPC.
+  const ART_KEY = "firmbrokers.art.v1";
+  const ART = new Map();
+  try {
+    const raw = localStorage.getItem(ART_KEY);
+    if (raw) for (const [k, v] of Object.entries(JSON.parse(raw))) if (v) ART.set(String(k), Number(v));
+  } catch (e) { /* private window, cleared storage, blocked cookies: cache simply starts empty */ }
+  function artRemember(tokenId, art) {
+    if (!art) return;
+    ART.set(String(tokenId), art);
+    try {
+      localStorage.setItem(ART_KEY, JSON.stringify(Object.fromEntries(ART)));
+    } catch (e) { /* memory cache still works for this session */ }
+  }
+
   async function readAll(F, CFG, account) {
     const A = CFG.auction;
     const tok = CFG.auctionToken;
@@ -646,10 +669,15 @@
     // black frame. A failed read must stay unknown, not become a fact.
     let art = 0;
     if (lot) {
-      try {
-        const a = await F.call(CFG.nft, SEL.artworkOf + F.word(lot.tokenId));
-        if (a) art = Number(F.toBig(a));
-      } catch (e) { /* stays 0 = unknown; the painter refuses to invent one */ }
+      const key = String(lot.tokenId);
+      if (ART.has(key)) {
+        art = ART.get(key);            // immutable — never ask again
+      } else {
+        try {
+          const a = await F.call(CFG.nft, SEL.artworkOf + F.word(lot.tokenId));
+          if (a) { art = Number(F.toBig(a)); artRemember(key, art); }
+        } catch (e) { /* stays 0 = unknown; the painter refuses to invent one */ }
+      }
     }
     return {
       lotId, symbol, decimals, burned, bonus, art,
@@ -675,6 +703,7 @@
       const lots = views.map(decodeLotView).filter((v) => v && v.outcome === SOLD);
       if (!lots.length) return [];
       const arts = await F.callBatch(lots.map((v) => ({ to: CFG.nft, data: SEL.artworkOf + F.word(v.tokenId) })));
+      lots.forEach((v, i) => { try { const a = arts[i]; if (a) artRemember(v.tokenId, Number(F.toBig(a))); } catch (e) {} });
       return lots.map((v, i) => ({ ...v, art: arts[i] ? Number(F.toBig(arts[i])) : 0 }));
     } catch (e) { return []; }
   }
