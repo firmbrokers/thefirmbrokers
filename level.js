@@ -3,6 +3,10 @@
 // the Bank (the money). Vanilla JS on purpose: the site stays a static folder.
 (function () {
   const CFG = window.FIRM_CFG;
+  // Declared HERE, above ZONES, because ZONES reads it: putting it beside
+  // WORLD_W further down threw "Cannot access 'CASHCAT_LIVE' before
+  // initialization" and took the whole street with it.
+  const CASHCAT_LIVE = !!(CFG && CFG.cashcatLive);
   const F = window.Firm;
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, html) => {
@@ -11,7 +15,23 @@
     if (html !== undefined) n.innerHTML = html;
     return n;
   };
-  const px = (node, styles) => { Object.assign(node.style, styles); return node; };
+  // Object.assign against a CSSStyleDeclaration SILENTLY DROPS custom
+  // properties. An unknown key like "--range" is not a CSS property, so it
+  // becomes a plain JS property hanging off the style object and never reaches
+  // the inline style at all — no error, no warning, nothing in the attribute.
+  // Three walking cats shipped that way on an identical fallback duration,
+  // marching in perfect formation directly beneath a comment explaining that
+  // three cats on one clock is the one thing cats never do.
+  // Custom properties go through setProperty; every other key keeps direct
+  // assignment so camelCase (backgroundColor) still works, which setProperty
+  // would not accept.
+  const px = (node, styles) => {
+    for (const k of Object.keys(styles)) {
+      if (k.charCodeAt(0) === 45 && k.charCodeAt(1) === 45) node.style.setProperty(k, styles[k]);
+      else node.style[k] = styles[k];
+    }
+    return node;
+  };
 
   const DEPLOYED = !!CFG.nft;
   // mirrors EmployeeNFT.WL_MAX_PER_WALLET / PUBLIC_MAX_PER_WALLET, which are
@@ -46,8 +66,13 @@
     { id: "hr", name: "Auction House", short: "AUCTION", does: "broker of the day", x: 1700, w: 900, room: "hr" },
     { id: "floor", name: "Trading Floor", short: "FLOOR", does: "your brokers", x: 2750, w: 1000, room: "floor" },
     { id: "bank", name: "The Bank", short: "BANK", does: "the money", x: 3900, w: 1000, room: "bank" },
-  ];
-  const WORLD_W = 5300;
+    // the fifth address. Their contract says Cash Cat was the original name for
+    // Robinhood, so on this street theirs is the OLDER building.
+    { id: "cashcat", name: "Cash Cat", short: "CASH CAT", does: "the first office", x: 5100, w: 1000, room: "cashcat" },
+  ].filter((z) => z.id !== "cashcat" || CASHCAT_LIVE);
+  // Held features must not leave a hole in the world: without Cash Cat the
+  // street ends after the bank, as it did before that building existed.
+  const WORLD_W = CASHCAT_LIVE ? 6500 : 5300;
   /// THE ONE PLACE THE STARTING MARK IS WRITTEN DOWN. It was a literal in three
   /// places and moving it to the billboard's centre only updated two: warpTo
   /// still sent you to 290 when you pressed 1, so the zone bar's own button put
@@ -883,16 +908,36 @@
     });
 
     const FACADES = {
-      hr: { w: 300, h: 560, wtc: true, statusTop: 168, cueY: 226 }, // the FIRM BROKERS plate sits 380..404, so the prompt stays above the lower band
-      floor: { w: 540, h: 340, exchange: true, statusTop: -128, noLintel: true },
+      // ☠️ `statusTop` USED TO BE SET HERE AND WAS READ NOWHERE. Three buildings
+      // carried it (hr 168, floor -128, cashcat) and the only property the door
+      // prompt actually reads is `cueY` (see z.cueY below and DOOR_AT's caller).
+      // So anyone who tuned statusTop and decided the prompt "just does that"
+      // was tuning a value with no effect. Removed so it cannot mislead again.
+      // NOTE for floor: its statusTop was -128, i.e. somebody once wanted this
+      // prompt raised and never got it. It still has no cueY and still sits at
+      // the default. If it looks wrong, cueY is the knob.
+      hr: { w: 300, h: 560, wtc: true, cueY: 226 }, // the FIRM BROKERS plate sits 380..404, so the prompt stays above the lower band
+      floor: { w: 540, h: 340, exchange: true, noLintel: true },
       bank: { w: 400, h: 320, bank2: true, noLintel: true },
+      // the first office: older and narrower than the rest of the block
+      // 270 -> 360 -> 460: the user's read at each step was that the front was
+      // too crowded, and they were right both times. 460 is still narrower than
+      // the trading floor's 540 and reads as the tall narrow old building it is
+      // meant to be. 520 tall makes it clip its roof at the same viewport height
+      // hr already does, and no lower.
+      cashcat: { w: 460, h: 520, cashcat: true, noLintel: true, cueY: 542 },
     };
     for (const z of ZONES) {
       if (!z.room) continue;
       const cfg = FACADES[z.id] || {};
-      const d = el("div", `fb-door theme-${z.id === "floor" ? "navy" : z.id === "bank" ? "steel" : "marble"}` + (cfg.wtc ? " fb-wtc" : ""));
+      const theme = z.id === "floor" ? "navy" : z.id === "bank" ? "steel" : z.id === "cashcat" ? "cashcat" : "marble";
+      const d = el("div", `fb-door theme-${theme}` + (cfg.wtc ? " fb-wtc" : ""));
       d.dataset.zone = z.id;
       px(d, { left: DOOR_AT(z) - (cfg.w || 190) / 2 + "px", width: (cfg.w || 190) + "px", height: (cfg.h || 210) + "px" });
+
+      if (cfg.cashcat && window.__CASHCAT && window.__CASHCAT.facade) {
+        try { window.__CASHCAT.facade(d, el, px); } catch (e) { /* plain box rather than half a building */ }
+      }
 
       if (cfg.bank2) {
         d.classList.add("fb-bank2");
@@ -1240,7 +1285,7 @@
   }
 
   // ------------------------------------------------------------ interiors
-  const ROOM_THEMES = { hr: "room-hr", floor: "room-floor", bank: "room-bank" };
+  const ROOM_THEMES = { hr: "room-hr", floor: "room-floor", bank: "room-bank", cashcat: "room-cashcat" };
 
   function enterRoom(id) {
     exitRoom();
@@ -1334,6 +1379,28 @@
     if (id === "hr") buildHrRoom();
     else if (id === "floor") buildFloorRoom();
     else if (id === "bank") buildBankRoom();
+    else if (id === "cashcat") buildCashcatRoom();
+  }
+
+  // ---------- Cash Cat: the first office
+  /// Their own contract calls Cash Cat the original name for Robinhood, so this
+  /// is the founding address rather than a themed room. Built by cashcat.js the
+  /// same way auction.js builds the sale room: guarded, so a missing or broken
+  /// file leaves an honest empty room rather than half of one.
+  function buildCashcatRoom() {
+    roomShell(2900, [470, 1180, 2120, 2650]);
+    let built = false;
+    try {
+      if (window.__CASHCAT && window.__CASHCAT.room) {
+        window.__CASHCAT.room({ el, px, roomLayer, F, CFG, state, txFlow, prop, deskCard, toast, connect });
+        built = true;
+      }
+    } catch (e) { built = false; }
+    if (!built) {
+      prop("room-speech", 1100, "The first office is closed for a moment.");
+      return;
+    }
+    prop("room-speech", 1180, "Cash Cat. The original name for Robinhood.");
   }
 
   // ---------- HR: the mint desk inside the tower lobby
@@ -1883,7 +1950,7 @@
           ? `<div class="row"><span>LEVEL ${t.level} OF ${MAX_LEVEL}</span><i>${(b.weight / 100).toFixed(2)}x</i></div>
              ${state3}`
           : `<div class="row">nobody here</div>
-             <div class="row">click to hire <u>→</u></div>`}
+             <div class="row">${state.account && state.brokers.length ? "click to hire" : "buy a broker"} <u>→</u></div>`}
         ${state.account && state.brokers.length ? '<button class="swap" type="button">⇄</button>' : ""}
       </div>
       <div class="desk">
@@ -1913,7 +1980,21 @@
       // while a broker is picked in the roster, every seat is somewhere to put him
       if (state.rosterPick !== null) { postToDesk(state.rosterPick, i); return; }
       if (b) { openBrokerPopover(b); return; }
-      goHire();
+      // An empty desk used to warp EVERYONE to the auction, holders included:
+      // you owned a broker, the desk said "click to hire", and it threw you out
+      // of the room instead of seating him. The only way to seat was the small
+      // swap glyph in the corner of the same card. A holder reported it as the
+      // floor sending him to the auction, and he was right.
+      // Same condition the swap button uses, so this can only reach a state
+      // that button could already reach.
+      if (state.account && state.brokers.length) {
+        state.rosterSlot = i;
+        state.rosterOpen = true;
+        state.rosterPick = null;
+        rebuildRoom();
+        return;
+      }
+      goHire();   // nothing to seat: the auction is where you get one
     });
     px(d, { left: x + "px" });
     roomLayer.appendChild(d);
@@ -1965,7 +2046,13 @@
         : crt("ALL COLLECTED", `PAYDAY :${mm}`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`);
     let armed = false;
     let face = out ? faceIdle() : crt(collectable > 0n ? "PAY BUILDING" : "PAYROLL", collectable > 0n ? `${fmtEth(collectable)} ETH` : "CHECKING…") + `<div class="btn dim">CHECKING THE POT…</div>`;
-    const m = prop("fb-payday", 386, `
+    // 386 put this cabinet's left edge inside the window behind it (WIN_L 250,
+    // WIN_W 200, so the window runs to 450) and its base into the low planter,
+    // which is the 21-combination failure test/ui/audit.mjs has been reporting.
+    // 460 is the only value that clears both: the planter ends at 460 and the
+    // walker starts at 668, so a 200-wide cabinet has 8px of room on the right.
+    // Measured by the other session at 1600x900; do not nudge without re-measuring.
+    const m = prop("fb-payday", 460, `
       <div class="body">
         <div class="marq">PAYDAY</div>
         <div class="face">${face}</div>
@@ -3761,7 +3848,9 @@
       return;
     }
     if (document.querySelector(".fb-panel.open")) return;
-    if (/^[1-4]$/.test(e.key)) { warpTo(ZONES[Number(e.key) - 1]); return; }
+    // bound to the LENGTH of ZONES, not a literal: adding the fifth building
+    // left key 5 dead because this said [1-4]
+    if (/^[1-9]$/.test(e.key) && ZONES[Number(e.key) - 1]) { warpTo(ZONES[Number(e.key) - 1]); return; }
     if (e.key === "e" || e.key === "E" || e.key === "Enter") {
       if (state.mode !== "street") { if (state.nearZone === "exit") exitRoom(); return; }
       if (state.nearZone) tryEnter(state.nearZone);

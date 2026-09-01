@@ -130,9 +130,9 @@
   function setProvider(p) { chosenProvider = p; }
   function hasChosen() { return !!chosenProvider; }
 
-  async function call(to, data) {
+  async function call(to, data, noWallet) {
     if (!to) return null;
-    const p = provider();
+    const p = noWallet ? null : provider();
     if (p) {
       try {
         return await p.request({ method: "eth_call", params: [{ to, data }, "latest"] });
@@ -213,6 +213,30 @@
     return Number(BigInt(j.result));
   }
 
+  /// "Too many requests" and "range too large" are OPPOSITE instructions, and
+  /// this file used to treat them identically: rpcLogs turned both into a plain
+  /// Error and rpcLogsRange split the range on either. So the code's answer to
+  /// being throttled was to make twice as many requests, then four times, then
+  /// eight, to depth 12 -- up to 4,096 leaf ranges at five attempts each, and
+  /// firmLedger started it three-wide through Promise.all.
+  ///
+  /// That, not any query being too big, is why the market card never rendered
+  /// and the bank's headcount never appeared. Measured 2026-09-01 against a
+  /// quiet RPC, each in ONE request: firmLedger's full-range Activated scan
+  /// returns 4,046 logs in 2.1s, and market.js's 120,000-block engine scan
+  /// returns 4 logs in 4.3s. Neither needs splitting at all. It also explains
+  /// the intermittency -- on a quiet page the scans go through first time, and
+  /// under contention one 429 starts a cascade that can never recover, because
+  /// every level makes the next 429 likelier.
+  /// THERE IS A THIRD ERROR CLASS and the split below handles it correctly by
+  /// accident of being conservative, which is worth stating so nobody "tidies"
+  /// it. "log query timed out" is neither a rate limit nor a range complaint --
+  /// it means the query was too EXPENSIVE. It is not matched here, so it still
+  /// bisects, and bisecting is exactly right for it: a smaller range is a
+  /// cheaper query. Only a rate limit must never be split.
+  const RATE_LIMITED = /\b429\b|too many requests|rate.?limit/i;
+  const isRateLimited = (e) => !!(e && (e.rateLimited || RATE_LIMITED.test((e && e.message) || "")));
+
   async function rpcLogs(params, noWallet) {
     const p = provider();
     // the wallet's answer is only trusted when the wallet is actually ON this
@@ -245,7 +269,10 @@
         return j.result;
       } catch (e) {
         last = e;
-        if (attempt < 4) await sleep(500 * (attempt + 1));
+        // a throttled request wants a LONGER wait and the SAME range; anything
+        // else keeps the original backoff
+        if (RATE_LIMITED.test((e && e.message) || "")) last.rateLimited = true;
+        if (attempt < 4) await sleep((last.rateLimited ? 1200 : 500) * (attempt + 1));
       }
     }
     throw last;
@@ -260,6 +287,9 @@
     try {
       return await rpcLogs(params, noWallet);
     } catch (e) {
+      // NEVER split on a rate limit: splitting is what caused it. Everything
+      // else keeps the old bisect, so only the pathological case changes.
+      if (isRateLimited(e)) throw e;
       if (depth > 12) throw e;
       if (to === "latest") to = await blockNumber();
       if (to - from < 2) throw e;
@@ -353,8 +383,17 @@
     // A glitching wallet RPC returns [] without erroring; balanceOf is one
     // cheap read through OUR rpc, and a mismatch retries with the wallet
     // bypassed entirely.
+    //
+    // The third argument is load-bearing and was missing until 2026-09-01.
+    // call() routes through the wallet's provider first and, unlike rpcLogs,
+    // does NOT verify eth_chainId, so this check was asking the very wallet it
+    // exists to catch: a glitching provider answered [] to the scan and 0 to
+    // the balance, the mismatch never fired, and the floor read "0 of 0" for a
+    // holder who owned a hired broker. Reported by a holder of #4817, and the
+    // same symptom is recorded against rpcLogs from mint day -- that fix added
+    // a chain check to rpcLogs and never reached call().
     if (!got.length) {
-      const bal = toBig(await call(CFG.nft, SEL.balanceOf + word(addr)));
+      const bal = toBig(await call(CFG.nft, SEL.balanceOf + word(addr), true));
       if (bal && bal > 0n) {
         got = await rpcLogsRange(
           { address: CFG.nft, topics: [TRANSFER_TOPIC, null, padded] },
@@ -523,16 +562,41 @@
     if (_ledgerCache.v && Date.now() - _ledgerCache.at < 240_000) return _ledgerCache.v;
     const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
     const ZERO_WORD = "0x" + "0".repeat(64);
-    const [act, deact, burns] = await Promise.all([
-      rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
-      rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true),
-      // fuse() burns the absorbed tokens WITHOUT a Deactivated event, so a
-      // fused broker's last Activated/Deactivated event stays Activated and
-      // the last-wins ledger would count him hired forever. A burn is
-      // terminal, so burned ids are a hard exclusion, immune to ordering.
-      // NB Transfer's tokenId is the THIRD indexed arg: topics[3].
-      rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, ZERO_WORD] }, CFG.deployBlock, "latest", 0, true),
-    ]);
+    // Serial, not Promise.all. Three concurrent full-range scans were the
+    // Bank opening three-wide on a rate-limited endpoint, which is the worst
+    // possible opening move. Each of these is one request when it is allowed
+    // to be, so the happy path costs a few seconds and never stampedes.
+    //
+    // DO NOT MERGE THE FIRST TWO with an OR array in topics[0]. It looks like a
+    // free saving -- three requests become two -- and it is measured to be
+    // worse: over four runs the merged [Activated OR Deactivated] query failed
+    // TWICE with "log query timed out" while the separate Activated scan
+    // succeeded four times out of four. The wider topic filter is a more
+    // expensive query, not a cheaper one. (Measured 2026-09-01; one earlier
+    // single run of the merge SUCCEEDED, which is exactly the trap this whole
+    // file taught us today -- one observation of a load-dependent backend
+    // proves nothing.)
+    //
+    // WHY THIS IS STILL CLIENT-SIDE. The Bank's first visit costs ~30s, and
+    // almost none of it is these queries: timed individually against a quiet
+    // RPC they are 2.0s + 0.8s + 0.4s = 3.2s. The rest is this page queueing
+    // behind its own room-entry reads. It is cached for 240s and the stat is
+    // decorative -- it hides rather than lying when it fails -- so nobody is
+    // blocked and tuning the backoff to shave it would trade a real safety
+    // margin for a number no one is waiting on.
+    //
+    // The honest argument for precomputing this server-side is NOT that the
+    // chain cannot serve it -- it serves all three in one request each. It is
+    // that these scans move ~5,900 log entries across the wire to produce a
+    // single integer. If that ever matters, that ratio is the reason.
+    const act = await rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true);
+    const deact = await rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true);
+    // fuse() burns the absorbed tokens WITHOUT a Deactivated event, so a
+    // fused broker's last Activated/Deactivated event stays Activated and
+    // the last-wins ledger would count him hired forever. A burn is
+    // terminal, so burned ids are a hard exclusion, immune to ordering.
+    // NB Transfer's tokenId is the THIRD indexed arg: topics[3].
+    const burns = await rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, ZERO_WORD] }, CFG.deployBlock, "latest", 0, true);
     const burned = new Set(burns.map((g) => Number(BigInt(g.topics[3]))));
     const last = {};
     const mark = (logs, on) => {

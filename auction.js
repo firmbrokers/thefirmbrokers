@@ -931,6 +931,14 @@
   }
 
   // ------------------------------------------------------------- flat card
+  // NOTHING CALLS THIS YET — the phone has no auction. Whoever wires it up:
+  // the `.fine` div below is load-bearing and is not decoration. start() does
+  // an unguarded `deskEl.querySelector(".fine")` and paintFine() then writes to
+  // it on EVERY paint, on both paths (nothing-scheduled and live). Without the
+  // div that is a TypeError on the first paint, and the catch around paint()
+  // counts it as a failed RPC poll — so the card would sit on its "—"
+  // placeholders forever while silently retrying at the fast error cadence.
+  // That is the txFlow bug again: a desk that does nothing, silently, always.
   function flatCard(ctx) {
     injectCss();
     const { el, host, F, CFG } = ctx;
@@ -942,6 +950,7 @@
       <div class="au-desk"><div class="amt"><input type="text" inputmode="decimal" placeholder="—"><button class="chip min" type="button">MIN</button></div>
       <button class="go" disabled>CHECKING…</button>
       <div class="echo"></div>
+      <div class="fine"></div>
       <div class="bal"></div></div>`;
     host.appendChild(card);
     const mount = { card, tote: card, desk: card.querySelector(".au-desk"), stage: null, root: host };

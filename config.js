@@ -11,6 +11,12 @@ window.FIRM_CFG = {
     // ranges need a token there, which is why deployBlock moved to the launch).
     "https://robinhood-rpc.publicnode.com",
   ],
+  // The Cash Cat building is built, tested and committed, but the street is
+  // public and the partnership is not announced yet, so the zone stays OFF in
+  // production until the user has shown it to the Cash Cat team. Flip to true
+  // to open it. test/ui/harness.mjs forces it TRUE so the suite still covers
+  // the building while it is held.
+  cashcatLive: false,
   explorer: "https://robinhoodchain.blockscout.com",
 
   // ---- fill these at launch ----

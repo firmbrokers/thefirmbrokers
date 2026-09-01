@@ -1494,6 +1494,25 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
     linear-gradient(180deg, #454c55, #333941);
 }
 
+/* ---- Cash Cat: the first office. Every other room is grey concrete and
+   graphite; theirs is older and warmer, so walking in reads as stepping
+   somewhere the street was named after. Colours are their logo's own: cream,
+   and the cat's warm grey-brown. Without this the room falls through to the
+   base wall and floor, which are a sunset and sand. ---------------------- */
+.room-cashcat .room-wall {
+  background:
+    linear-gradient(#2a241c, #2a241c) left bottom / 100% 8px no-repeat,
+    repeating-linear-gradient(0deg, transparent 0 90px, #00000010 90px 94px),
+    repeating-linear-gradient(90deg, transparent 0 236px, #0000000e 236px 240px),
+    linear-gradient(180deg, #fbf8f2, #ece7db);
+}
+.room-cashcat .room-floorstrip {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 116px, #00000033 116px 120px),
+    linear-gradient(180deg, #6b6355, #524b40);
+}
+.room-cashcat .room-ceiling { background: linear-gradient(#2a241c, #1d1913); }
+
 .room-exit {
   position: absolute; bottom: var(--ground-h); width: 100px; height: 150px; cursor: pointer;
 }
@@ -2295,7 +2314,7 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
 .floor-roster .key i.live { background: #6fe08c; }
 .floor-roster .key i.soon { background: #ffc933; }
 
-.floor-roster .foot { display: flex; align-items: center; gap: 14px; padding: 9px 2px 0; }
+.floor-roster .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 9px 2px 0; }
 .floor-roster .foot .pg {
   cursor: pointer; font-family: var(--font-display); font-size: 8px; color: #221a06;
   background: var(--gold); border: 3px solid var(--ink); padding: 7px 10px;
@@ -2303,6 +2322,14 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
 .floor-roster .foot .pg[disabled] { background: #4a545e; color: #1c1f24; cursor: default; }
 .floor-roster .foot .of { font-family: var(--font-display); font-size: 8px; color: #c6d1da; }
 .floor-roster .foot .hint { margin-left: auto; font-size: 17px; color: #7d8b98; }
+/* On a narrow screen the hint takes its own line instead of being pushed off
+   the end of one. It is the sentence telling you what the surface is FOR, on
+   the surface you reach by tapping an empty desk, so losing it on phones is
+   closer to "I could not work out how to do this on mobile" than its being
+   only an instruction suggests. */
+@media (max-width: 900px) {
+  .floor-roster .foot .hint { margin-left: 0; width: 100%; }
+}
 .floor-roster .empty { padding: 26px 12px; text-align: center; font-size: 19px; color: #8fa0b0; }
 /* carrying a broker: the menu folds to its title bar so the floor it is
    telling you to click is actually there to be clicked */
@@ -2675,7 +2702,20 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
    usable and infuriating. Above 900px nothing here applies and the desktop
    layout is byte-identical. ------------------------------------------------ */
 @media (max-width: 900px) {
-  .fb-popover { align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .fb-popover {
+    align-items: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    /* AND THE SCROLL HAS TO END SOMEWHERE A THUMB CAN REACH. The fix above got
+       SAVE ON-CHAIN onto the screen and a second holder still could not press
+       it, because "on the screen" was measured in a headless browser that has
+       no browser. Fully scrolled to the very end there was 32px between the
+       button and the bottom of the layout viewport, and Safari's bottom bar is
+       44-83px, so the last control sat UNDER the chrome with no scroll left to
+       rescue it. Identical at 360x640, 390x844 and 414x896, which is what gave
+       it away: a real clipping bug varies with height, a constant does not.
+       The padding is what buys the scroll, so it has to clear the tallest
+       chrome we can be shown, plus the home indicator. */
+    padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  }
   .fb-sheet, .fb-popover .fb-broker, .fb-merge, .fb-pay { max-height: none; }
 }
 
