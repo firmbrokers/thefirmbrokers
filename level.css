@@ -3992,3 +3992,20 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
    so the majority asset absorbs it. Said before the holder signs, not after. */
 .fb-pay .mixwarn{margin-top:8px;padding:8px 10px;border-radius:4px;background:#3a2f16;
   border:1px solid #6b5520;color:#ffd666;font:12px/1.45 system-ui,sans-serif}
+
+/* ---------------------------------------------------------- reduced motion
+   The one thing "prefers-reduced-motion" asks for, and until 2026-09-01 this
+   stylesheet answered it with nothing at all — the site instead handed those
+   visitors the flat page, which still animated. Blanket, because every
+   animation here is decoration: the tape sits at the start of its run and
+   stays readable, indicators sit lit instead of blinking, and the five
+   keyframes that begin at opacity 0 (coin pops, flaps, puffs, steam) simply
+   never appear, which is the correct outcome for particles when someone has
+   asked for less movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

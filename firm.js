@@ -640,12 +640,52 @@
   const USDG_ASSET = 11; // deliberately NOT USDG_IDX: that constant has been
   // both 11 and 11n across builds, and `11 === 11n` is false. A local Number
   // keeps this correct whichever build it is pasted into.
-  async function earnedAllTime(ids) {
+  /// The block at which `addr` most recently acquired each token.
+  ///
+  /// A total of what SOMEBODY earned is not a total of what YOU earned.
+  /// Brokers change hands constantly -- there is a resale market and the
+  /// auction house hands one to a new owner every single day -- and the
+  /// previous owner already claimed everything delivered before the sale.
+  /// The LAST transfer in wins, because a token can leave and come back.
+  let _sinceFor = { addr: null, map: null };
+  async function ownedSince(addr) {
+    const key = String(addr).toLowerCase();
+    if (_sinceFor.addr === key && _sinceFor.map) return _sinceFor.map;
+    const logs = await rpcLogsRange(
+      { address: CFG.nft, topics: [TRANSFER_TOPIC, null, "0x" + word(addr)] },
+      CFG.deployBlock, "latest", 0, true
+    );
+    const map = {};
+    for (const g of logs) {
+      const id = Number(BigInt(g.topics[3]));
+      const blk = Number(BigInt(g.blockNumber));
+      if (!(id in map) || blk > map[id]) map[id] = blk;
+    }
+    _sinceFor = { addr: key, map };
+    return map;
+  }
+
+  async function earnedAllTime(ids, owner) {
+    // Without an owner this is the token's whole history, which is what it
+    // used to be for everybody. Reported 2026-09-01 by a holder whose line
+    // read "$30.88 received" while $1.42 had arrived: he had bought three
+    // brokers second-hand and was being shown $29.46 the seller had already
+    // claimed. The money was never missing; the number was.
+    const since = owner ? await ownedSince(owner) : null;
     let eth = 0n, usd6 = 0n, mixed = false;
     for (let i = 0; i < ids.length; i += 100) {
       const topics = [DELIVERED_TOPIC, ids.slice(i, i + 100).map((id) => "0x" + BigInt(id).toString(16).padStart(64, "0"))];
       const logs = await rpcLogsRange({ address: CFG.engine, topics }, CFG.deployBlock, "latest", 0, true);
       for (const g of logs) {
+        if (since) {
+          const tid = Number(BigInt(g.topics[1]));
+          const from = since[tid];
+          // No transfer-in found: fall back to the whole history rather than
+          // hiding real earnings. Reserve #1 was minted before deployBlock, so
+          // the treasury's own token takes this path -- which is the right way
+          // round to be wrong, and it affects one wallet.
+          if (from !== undefined && Number(BigInt(g.blockNumber)) < from) continue;
+        }
         eth += BigInt("0x" + g.data.slice(2, 66));
         // Delivered(uint256 indexed tokenId, uint8 indexed assetIdx, uint256 ethIn, uint256 out)
         if (Number(BigInt(g.topics[2])) === USDG_ASSET) usd6 += BigInt("0x" + g.data.slice(66, 130));

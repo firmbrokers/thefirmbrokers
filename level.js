@@ -2205,7 +2205,7 @@
     // brokers have ever been paid, plus what is building right now
     if (!out && bs.length) (async () => {
       try {
-        const paid = await F.earnedAllTime(bs.map((b) => b.id));
+        const paid = await F.earnedAllTime(bs.map((b) => b.id), state.account);
         const building = bs.reduce((a2, b) => a2 + (b.pending || 0n), 0n);
         if (paid.eth <= 0n && building <= 0n) return;
         const el2 = bd.querySelector(".alltime");
@@ -2230,7 +2230,7 @@
         const cash = !paid.mixed && paid.usd6 > 0n
           ? ` · $${(Number(paid.usd6) / 1e6).toLocaleString(undefined, { maximumFractionDigits: 2 })} received`
           : "";
-        el2.textContent = `earned all time: ${fmtEth(total)} ETH${cash}`;
+        el2.textContent = `you have earned: ${fmtEth(total)} ETH${cash}`;
       } catch (e) { /* the line just stays absent */ }
     })();
     const ha = bd.querySelector(".hireall");
@@ -3972,9 +3972,20 @@
     // the wallet browsers people arrive in are phones, so the thing the whole
     // build is for was the thing they never saw. Panning is pointer-driven, so
     // a finger drags the camera exactly as a mouse does, and the zone bar under
-    // it goes to each door without walking. Reduced motion still opts out —
-    // that one is a stated preference rather than a guess about the device.
-    return matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // it goes to each door without walking.
+    //
+    // Reduced motion USED to opt out here too, and that was wrong twice over.
+    // "Reduce motion" asks for less movement, not for a different and smaller
+    // site — answering it with a layout swap is over-reading a stated
+    // preference. And it did not even deliver: measured 2026-09-01, a reduced
+    // motion visitor got the flat page with FORTY elements still animating on
+    // it, because level.css carried no prefers-reduced-motion rules at all. So
+    // they lost the street and kept the movement. The stylesheet now honours
+    // the preference properly and everyone gets the same site.
+    //
+    // Reported by the user, who opened it on a Mac with Reduce Motion on and
+    // found the page instead of the street.
+    return false;
   }
   function setFlat(on, remember) {
     const wasFlat = document.body.classList.contains("flat-mode");
