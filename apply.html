@@ -10,7 +10,7 @@
 <meta property="og:title" content="Build a campaign">
 <meta property="og:description" content="Configure, fund on chain, and we review. Your token becomes an extra paycheck brokers can opt into.">
 <meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
-<link rel="stylesheet" href="campaign.css?v=1788364233">
+<link rel="stylesheet" href="campaign.css">
 <style>
 .form{display:grid;gap:14px}
 .form label{display:grid;gap:5px;font-size:14px;color:var(--ink-2)}
@@ -93,7 +93,7 @@
   <div class="form">
     <div class="two">
       <label><b>Budget in ETH</b><input id="budget" type="number" step="0.01" min="0" placeholder="1.2"><span id="usd" class="msg"></span></label>
-      <label><b>Distribution length</b><select id="days"><option value="3">3 days</option><option value="5">5 days</option><option value="7" selected>7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="21">21 days</option><option value="30">30 days</option></select></label>
+      <label><b>Distribution length</b><select id="days"><option value="1">1 day</option><option value="2">2 days</option><option value="3">3 days</option><option value="5">5 days</option><option value="7" selected>7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="21">21 days</option><option value="30">30 days</option></select></label>
     </div>
     <div class="two">
       <label><b>Rolling release delay</b><select id="delay"><option value="0">none, unlocks as earned</option><option value="3">3 days</option><option value="7" selected>7 days</option><option value="14">14 days</option></select></label>
@@ -138,8 +138,8 @@
 <p class="plain" style="margin-top:28px">Questions first? <a href="https://x.com/thefirmbrokers" target="_blank" rel="noopener"><b>@thefirmbrokers</b></a> on X. The mechanics are in the <a href="/payroll">payroll page</a> and the <a href="/docs">handbook</a>.</p>
 </div>
 
-<script src="config.js?v=1788364233"></script>
-<script src="campaign-pages.js?v=1788364233"></script>
+<script src="config.js"></script>
+<script src="campaign-pages.js"></script>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
