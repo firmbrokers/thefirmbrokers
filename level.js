@@ -666,6 +666,9 @@
       // SeaDrop answered: the chain decides. It did not: config decides.
       s.publicOpen = s.publicOpen === null || s.publicOpen === undefined ? publicByConfig() : !!s.publicOpen;
       state.stats = s;
+      // every broker minted: THE LIST button and the flat page's chip point at
+      // a whitelist nobody can use any more
+      if (soldOutNow()) { $("fb-wlbtn")?.remove(); $("fh-wlchip")?.remove(); }
       // the token is on chain the moment config.js names it; the burned read is
       // a number for the HUD, not the door key — one flaky eth_call must never
       // show the bank as "locked" (seen 2026-08-29 in the user's own tab)
@@ -908,7 +911,7 @@
       <div class="post l"></div><div class="post r"></div>
       <div class="glass"></div>
       <div class="poster"><b>THE DEAL</b>
-        <span>1. Mint a broker</span>
+        <span>1. Buy a broker on OpenSea</span>
         <span>2. Burn $9TO5 to hire him</span>
         <span>3. He earns stocks hourly</span></div>
       <div class="bench"><i></i><i></i></div>`;
@@ -942,7 +945,12 @@
       // the trading floor's 540 and reads as the tall narrow old building it is
       // meant to be. 520 tall makes it clip its roof at the same viewport height
       // hr already does, and no lower.
-      cashcat: { w: 460, h: 520, cashcat: true, noLintel: true, cueY: 542 },
+      // cueY 542 put the prompt 53px ABOVE the roof of a 520-tall building, so
+      // on any viewport under ~800 (a 13" laptop) a player at the door saw no
+      // prompt at all (measured 2026-09-02: off-screen at 780, 700, 640 while
+      // the bank's and HR's stayed on). 168 sits it on the marquee band over
+      // the awning, which is always on screen when the shopfront is.
+      cashcat: { w: 460, h: 520, cashcat: true, noLintel: true, cueY: 168 },
     };
     for (const z of ZONES) {
       if (!z.room) continue;
@@ -1073,7 +1081,10 @@
     npcWalker(1600, "brunette", "stand-b").classList.add("hiring");
     npcWalker(1665, "blonde", "stand-b").classList.add("hiring");
     npcWalker(1730, "sharp", "stand").classList.add("hiring");
-    const qs = el("div", "fb-queue-sign", auctionLive() ? "TODAY'S LOT<br>VIEWING INSIDE" : "HIRING LINE<br>STARTS HERE");
+    // three signs on this front used to say "one a day / hammer at five" in
+    // three ways; this one labels the LINE, which is what a pole sign by a
+    // queue is for
+    const qs = el("div", "fb-queue-sign", auctionLive() ? "LINE FOR<br>TODAY'S LOT" : "HIRING LINE<br>STARTS HERE");
     qs.appendChild(el("i", "leg g"));
     qs.appendChild(el("i", "leg r"));
     front.appendChild(px(qs, { left: "1585px" }));
@@ -1128,6 +1139,7 @@
     state.shadowEl = el("div", "fb-shadow");
     actors.appendChild(state.shadowEl);
     state.playerEl = walkerEl("fb-walker " + WALKER_DEFAULT);
+    state.playerEl.addEventListener("mouseenter", () => nudgeThought(4000));
     state.playerEl.dataset.frame = "stand";
     state.playerEl.addEventListener("click", tapWalker);
     actors.appendChild(state.playerEl);
@@ -1252,6 +1264,10 @@
     const left = Math.max(6, Math.round(centreX - state.cueW / 2));
     c.style.left = left + "px";
     c.style.bottom = bottom + "px";
+    // and never off the TOP of the viewport either: a tall facade's cue is
+    // placed by height above the ground, which a short window cannot show
+    const top = c.getBoundingClientRect().top;
+    if (top < 6) c.style.bottom = Math.round(bottom - (6 - top)) + "px";
     // when the box has to be clamped, the tail still points at the door
     const tail = c.firstElementChild && c.querySelector(".tail");
     if (tail) tail.style.left = Math.max(15, Math.min(state.cueW - 15, Math.round(centreX - left))) + "px";
@@ -1269,11 +1285,20 @@
     document.querySelectorAll(".fb-zonebtn").forEach((b) => b.classList.toggle("is-here", b.dataset.zone === here.id));
   }
 
+  /// The bubble shows for a few seconds, then fades; a room change or a hover
+  /// on the walker brings it back briefly. Before this it followed the player
+  /// everywhere for as long as no wallet was connected.
+  function nudgeThought(ms) {
+    state.thoughtUntil = Date.now() + ms;
+    if (state.thoughtEl) state.thoughtEl.classList.remove("faded");
+  }
+
   function updateThought() {
     if (state.account) {
       state.thoughtEl.style.display = "none";
     } else {
       state.thoughtEl.style.display = "";
+      nudgeThought(6000);
       // Both branches point at the next step. The visitor with no extension used
       // to be told only what they lacked, in the biggest bubble on the opening
       // screen, which is a poor first sentence to read.
@@ -1318,6 +1343,15 @@
     state.x = 200;
     state.wheelVel = 0;
     markHere();
+    // the room's name in the bar (phone widths hide the zone buttons in here)
+    const bar0 = $("fb-zonebar");
+    if (bar0) {
+      const z = ZONES.find((zz) => zz.id === id);
+      const rn = el("div", "fb-roomname", z ? z.name.toUpperCase() : "");
+      const back0 = $("fb-back");
+      bar0.insertBefore(rn, back0 && back0.parentElement === bar0 ? back0 : null);
+    }
+    nudgeThought(3000);
   }
   /// The roster hangs off the stage rather than the room layer, so that it
   /// holds still while the floor scrolls behind it. That also means nothing
@@ -1339,10 +1373,12 @@
     front.style.display = "";
     fg.style.display = "";
     document.body.classList.remove("paneled");
+    for (const n of document.querySelectorAll(".fb-roomname")) n.remove();
     state.x = state.streetX;
     state.wheelVel = 0;
     closePopover();
     markHere();
+    nudgeThought(3000);
   }
   function rebuildRoom() {
     if (state.mode === "street" || !roomLayer) return;
@@ -1417,7 +1453,10 @@
       prop("room-speech", 1100, "The first office is closed for a moment.");
       return;
     }
-    prop("room-speech", 1180, "Cash Cat. The original name for Robinhood.");
+    // the greeting is the door cat's, drawn by cashcat.js: the line at 1180
+    // used to land on the RECEPTION cat, which is asleep, so it read as a cat
+    // talking in its sleep -- and it stated the lore flatly while every sign on
+    // the wall is careful to quote it
   }
 
   // ---------- HR: the mint desk inside the tower lobby
@@ -1437,7 +1476,7 @@
   function mintDesk(s, into, withTitle) {
     const pct = Math.min(100, (100 * (s.minted || 0)) / (s.maxSupply || 1));
     const soldOut = (s.maxSupply || 0) > 0 && (s.minted || 0) >= s.maxSupply;
-    into.innerHTML = `${withTitle ? "<h2>MINT A BROKER</h2>" : ""}
+    into.innerHTML = `${withTitle ? (soldOut ? "<h2>THE BROKERS</h2>" : "<h2>MINT A BROKER</h2>") : ""}
       <div class="big">${(s.minted ?? 0).toLocaleString()} / ${(s.maxSupply ?? 0).toLocaleString()}</div>
       <div class="fb-progress"><i style="width:${pct}%"></i></div>
       <p style="margin-top:10px">${fmtEth(s.priceWei)} ETH each, minted on OpenSea. Art is on-chain and revealed the moment you mint.</p>`;
@@ -2057,7 +2096,9 @@
     const crt = (label, big) => `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${label}</b><u>${big}</u></div>`;
     const faceArmed = (label, big) => crt(label, big) + `<div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`;
     const faceIdle = () => (out
-      ? crt("EVERY BROKER PAID", "CLOCK IN") + `<div class="btn dim">CLOCK IN TO SEE PAY</div>`
+      // no wallet: the machine tells the time, and YOUR BROKERS is the one
+      // place in this room that asks you to connect (it used to be four)
+      ? crt("PAYROLL", "EVERY HOUR") + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`
       : collectable > 0n
         ? crt("PAY BUILDING", `${fmtEth(collectable)} ETH`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`
         : crt("ALL COLLECTED", `PAYDAY :${mm}`) + `<div class="btn dim">NEXT PAYDAY IN ${mm} MIN</div>`);
@@ -2995,6 +3036,9 @@
   /// behaves exactly as it did.
   const auctionLive = () => !!(CFG.auction && CFG.auctionToken);
   const applyOpen = () => !applyClosed() && !!(CFG.applyUrl || CFG.applyFormUrl);
+  /// every broker is minted (28 Aug 2026): the whitelist surfaces are dead ends
+  /// after this, and the paperwork must stop promising a mint
+  const soldOutNow = () => { const s = state.stats; return !!(s && (s.maxSupply || 0) > 0 && (s.minted || 0) >= s.maxSupply); };
 
   /// The four steps, and the send when there is somewhere to send to. Without an
   /// endpoint the steps alone are the clearance, or nobody could ever get in.
@@ -3017,8 +3061,10 @@
     // the sale room is running: the booth points at today's lot instead of a
     // list nobody can join any more
     if (auctionLive()) {
-      return '<span class="hd">ONE LOT A DAY</span>' +
-        '<span class="dt">Viewing inside.<br>Hammer at five, New York time</span>';
+      // the tower wall already says one a day / 105% / hammer at five; this
+      // board says the two things it does not
+      return '<span class="hd">TODAY\'S LOT</span>' +
+        '<span class="dt">Viewing inside.<br>Bid at the desk, in FRONG</span>';
     }
     // after the cut the booth is the list desk: the sign says so and invites
     // the check, instead of vanishing (a silent booth reads as broken)
@@ -3457,6 +3503,13 @@
     const payRow = act("", "CHOOSE HIS PAYCHECK",
       "He earns ETH. Pick which stocks it turns into, up to three.",
       () => openSplitEditor(b, pop, payRow));
+    // Sponsored campaigns: an extra paycheck in a partner's token, on top of
+    // his wage. campaign.js registers window.__CAMPAIGN and is called guarded,
+    // like the auction; nothing renders until config.js names a factory.
+    if (CFG.campaignFactory && window.__CAMPAIGN) {
+      window.__CAMPAIGN.brokerRows({ F, CFG, state, txFlow }, b, pop, card).catch(() => {});
+      window.__CAMPAIGN.holderCard({ F, CFG, state, txFlow }, card).catch(() => {});
+    }
     // The vault only exists because pay has to land somewhere. With this on,
     // PayrollEngine.deliver pays the owner directly and there is nothing to
     // claim, ever — which is why hiring turns it on. Off is the chain's own
@@ -3770,6 +3823,7 @@
       const clash = barkUp && tl < ar && tr > al && tb < at && tt > ab;
       state.thoughtEl.style.visibility = clash ? "hidden" : "";
     }
+    if (state.thoughtUntil && Date.now() > state.thoughtUntil) state.thoughtEl.classList.add("faded");
     const sh = state.shadowEl;
     sh.style.left = state.x - 23 + "px";
     sh.style.bottom = g - 3 + "px";
@@ -3962,8 +4016,13 @@
       host.appendChild(head);
     }
     const items = [
-      ["The brokers", "5,000 pixel brokers. " + fmtEth((state.stats || PRELAUNCH).priceWei) + " ETH each. Mint one and you meet him right away — his picture is yours the second the mint goes through. And the collection only ever gets smaller."],
-      ["The token", "$9TO5 is born on launch day, right before the mint opens — until then it does not exist. Its job is to be burned: 25k puts a broker to work, more promotes him, 50–150k merges two into one. Every burn is gone forever, so the token only gets scarcer."],
+      ["The brokers", soldOutNow()
+        ? "5,000 pixel brokers, every one of them minted. Buy one on The Market or OpenSea; the level he already holds lives on-chain and comes with him. And the collection only ever gets smaller."
+        : "5,000 pixel brokers. " + fmtEth((state.stats || PRELAUNCH).priceWei) + " ETH each. Mint one and you meet him right away — his picture is yours the second the mint goes through. And the collection only ever gets smaller."],
+      ["The token", (state.tokenLive
+        ? "$9TO5 is live, and its job is to be burned: "
+        : "$9TO5 is born on launch day, right before the mint opens — until then it does not exist. Its job is to be burned: ")
+        + "25k puts a broker to work, more promotes him, 50–150k merges two into one. Every burn is gone forever, so the token only gets scarcer."],
       ["The pay", "Every $9TO5 trade feeds the payroll pot, and the split is locked in a contract nobody can change — not even us. Once an hour, the pot turns into real tokenized stocks and lands with every working broker."],
       ["The vault", "Pay belongs to the broker, not the wallet. Sell him and his savings go with him. Claiming is free, and nobody but his owner can ever touch it."],
     ];
@@ -4051,7 +4110,7 @@
       host.appendChild(note);
     }
 
-    flatSection(host, "HR Desk", zoneLive(ZONES[1]) ? "mint a broker" : "locked", (room) => {
+    flatSection(host, "HR Desk", !zoneLive(ZONES[1]) ? "locked" : soldOutNow() ? "the brokers" : "mint a broker", (room) => {
       if (!zoneLive(ZONES[1])) { room.appendChild(el("div", "fb-card", `<p>Opens at launch.</p>`)); return; }
       const s = state.stats || PRELAUNCH;
       // The street has a security booth; the flat page had no door to the
@@ -4059,8 +4118,10 @@
       // press MINT and be turned away. Same form, same clearance, and the
       // wording is the popover's own so the gate says the same thing
       // everywhere. Gone once the mint is public, same as the booth.
-      if (applyClosed() && !s.publicOpen) {
-        // the cut is made: the phone page offers the check, never the form
+      if (applyClosed() && !s.publicOpen && !soldOutNow()) {
+        // the cut is made: the phone page offers the check, never the form.
+        // Once every broker is minted there is no list to be on: the card sat
+        // directly above a 5,000 / 5,000 SOLD OUT card until 2026-09-02
         const wl = el("div", "fb-card");
         wl.innerHTML = `<h2>The Whitelist</h2><p>Applications are closed. Paste your wallet to see if you are on the list. Whitelist wallets mint first, on OpenSea, before the doors open to everyone.</p>`;
         const cb = el("button", "fb-btn", "AM I ON THE LIST?");

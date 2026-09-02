@@ -418,6 +418,17 @@ button { font-family: inherit; cursor: pointer; }
   content: ""; position: absolute; top: 100%; left: 12px; width: 8px;
   height: 8px; background: #fff; border: 3px solid var(--ink); margin-top: 4px;
 }
+/* The bubble used to follow the player forever and sat on whatever was behind
+   it in every room (the chalkboard, the desk plates, the treasury). It now
+   fades after a few seconds and comes back briefly on each room change, or on
+   hovering the walker. Opacity, so nothing behind it re-flows. */
+.fb-thought { transition: opacity .5s; }
+.fb-thought.faded { opacity: 0; }
+/* the room's name in the bar, phone widths only, where the five zone buttons
+   are hidden inside a room to keep the bar at two rows */
+.fb-roomname { display: none; align-items: center; justify-content: center; flex: 1 1 auto;
+  font-family: var(--font-display); font-size: 8px; color: var(--gold); letter-spacing: .06em;
+  text-shadow: 0 0 8px #ffc93370; padding: 10px 8px; }
 /* The prompt over a door. Same language as every other sign on this street: a
    dark screen behind a steel frame, scanlines, and a tail pointing at the door
    it belongs to. Deliberately small, so it labels the door without shouting. */
@@ -679,7 +690,13 @@ body.flat-mode .fb-stage, body.flat-mode .fb-controls { display: none; }
      One row each, then: the zones split the width four ways, and the buttons
      that carry sentences take the row under them. */
   .fb-zonebar { flex-wrap: wrap; }
-  .fb-zonebtn { flex: 1 1 calc(25% - 8px); }
+  /* equal shares of ONE row however many zones there are: calc(25% - 8px)
+     assumed four, and a fifth (Cash Cat) wrapped the bar to three rows */
+  .fb-zonebtn { flex: 1 1 0; }
+  /* inside a room the zones give their row up: STREET takes you back, and the
+     room's name says where you are. Measured 3 rows at 390/360 before this. */
+  body.paneled .fb-zonebtn { display: none; }
+  body.paneled .fb-roomname { display: flex; }
   .fb-hudbtn {
     flex: 1 1 auto; justify-content: center;
     padding: 10px 8px; font-size: 7px;

@@ -121,6 +121,11 @@ window.FIRM_CFG = {
   // other way round rejects every real application in between.
   turnstileSiteKey: "0x4AAAAAAEWvDl5U8HWeyUVp",
 
+  // ---- sponsored campaigns (SPONSORED_CAMPAIGN_PLAN.md) ----
+  // The CampaignFactory. Empty = no campaign UI anywhere. Fill it after
+  // script/DeployCampaign.s.sol --sig "factory()" has landed and is verified.
+  campaignFactory: "0x876FF78cAD7DF65CE990c1733eE8a39d28c83aA0", // deployed 2026-09-02 by the operator wallet; owner = operator
+
   // letscash pool page for buying $9TO5
   buyUrl: "https://www.letscash.fun/",
   // The token's chart on GeckoTerminal (CoinGecko's DEX screener): the 9TO5/WETH pool. docs.html shows it beside the buy link once the token exists.

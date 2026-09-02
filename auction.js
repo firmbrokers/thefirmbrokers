@@ -784,7 +784,7 @@
     // 820px, where the mint desk it replaced (331px) only did at 560. Every
     // line added here costs a supported window height.
     desk.innerHTML = `<h3>THE BID DESK</h3>
-      <div class="strip"><span>LOT <b class="dlot">&mdash;</b></span><span><u class="dcdlab" style="text-decoration:none">TIME LEFT</u> <b class="dcd">&mdash;</b></span></div>
+      <div class="strip"><span>LOT <b class="dlot">&mdash;</b></span><span>TOP <b class="dhi">&mdash;</b></span><span><u class="dcdlab" style="text-decoration:none">TIME LEFT</u> <b class="dcd">&mdash;</b></span></div>
       <div class="amt"><input type="text" inputmode="decimal" placeholder="&mdash;"><button class="chip min" type="button">MIN</button></div>
       <button class="go" disabled>CHECKING&hellip;</button>
       <div class="echo"></div>
@@ -1144,6 +1144,10 @@
       paintCountdown();
       const dlot = deskEl.querySelector(".dlot");
       if (dlot) dlot.textContent = String(lot.lotId);
+      // the tote hides under 792px, so a laptop bidder never saw the top bid;
+      // the desk carries it at every height
+      const dhi = deskEl.querySelector(".dhi");
+      if (dhi) dhi.textContent = lot.highest > 0n ? fmtUnits(lot.highest, dec, 0) : "none";
       const elot = mount.root.querySelector(".au-easel .elot");
       if (elot) elot.textContent = art ? "#" + art : "\u2014";
 

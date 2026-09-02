@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Campaigns &middot; Firm Brokers</title>
+<meta name="description" content="Sponsored payroll campaigns on Robinhood Chain: what was deposited, spent, bought, streamed and claimed, live from the contract.">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta property="og:title" content="Campaigns">
+<meta property="og:description" content="A partner's token, bought on the open market and paid to brokers hour by hour. Every number is on chain.">
+<meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
+<link rel="stylesheet" href="campaign.css?v=1788357504">
+<style>
+.list{display:grid;gap:12px}
+.card{border:1px solid var(--rule);border-radius:8px;padding:14px 16px;background:var(--card);display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center;text-decoration:none;color:inherit}
+.card:hover{border-color:var(--gold)}
+.card b{font-size:16px}
+.card .sub{font-size:13px;color:var(--ink-2)}
+.state{display:inline-block;padding:3px 9px;border-radius:999px;background:var(--sunk);font-size:12px;font-weight:700;letter-spacing:.04em;white-space:nowrap}
+.state.live{background:#dff3e6;color:var(--green)}
+.counters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0}
+.counter{background:var(--sunk);border-radius:8px;padding:12px 14px}
+.counter .k{font-size:11px;letter-spacing:.06em;color:var(--ink-3);text-transform:uppercase}
+.counter .v{font-size:18px;font-weight:700;margin-top:4px}
+.counter .v small{font-size:12px;font-weight:400;color:var(--ink-2)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font-size:14px}
+.kv span{color:var(--ink-2)}
+.addr{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all}
+.btn{font:inherit;font-weight:700;padding:10px 16px;border-radius:6px;border:1px solid var(--gold);background:var(--gold);color:#fff;cursor:pointer;text-decoration:none;display:inline-block}
+.btn.ghost{background:transparent;color:var(--gold)}
+.btn:disabled{opacity:.5}
+.msg{font-size:14px;color:var(--ink-2);margin-top:8px}
+.msg.bad{color:var(--red)}
+.msg.good{color:var(--green)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
+.tl{display:grid;gap:4px;font-family:ui-monospace,Menlo,monospace;font-size:13px;background:var(--sunk);padding:12px 14px;border-radius:8px}
+</style>
+</head>
+<body>
+<div class="bar"><div class="bar-in">
+  <a class="home" href="/payroll">&larr; PAYROLL</a>
+  <nav><a href="/apply">Build a campaign</a><a href="/">The street</a><a href="/docs">Handbook</a></nav>
+</div></div>
+
+<div class="wrap">
+<div id="app"><p class="plain">Loading from the chain…</p></div>
+</div>
+
+<script src="config.js?v=1788357504"></script>
+<script src="campaign-pages.js?v=1788357504"></script>
+<script>
+(async function () {
+  const app = document.getElementById("app");
+  const q = new URLSearchParams(location.search);
+  const target = (q.get("c") || "").trim();
+  const meta = {};
+  if (CP.CAMPAIGN_API) {
+    try { const r = await fetch(CP.CAMPAIGN_API + "/api/campaigns"); const j = await r.json(); (j.campaigns || []).forEach((m) => { meta[m.campaign.toLowerCase()] = m; }); } catch (e) {}
+  }
+  if (!CP.FACTORY) { app.innerHTML = '<p class="plain">Campaigns are not open yet.</p>'; return; }
+
+  if (!/^0x[0-9a-fA-F]{40}$/.test(target)) return list();
+  return one(target);
+
+  async function list() {
+    const addrs = await CP.campaigns();
+    const cs = await Promise.all(addrs.map((a) => CP.campaign(a).catch(() => null)));
+    const shown = cs.filter((c) => c && c.approved);
+    app.innerHTML = `<header class="hero"><div class="eyebrow">Sponsored payroll</div><h1>Campaigns</h1>
+      <p class="lede">A partner's token, <b>bought on the open market in small windows every day</b> and paid to the brokers who opted in, hour by hour. Every number on these pages is read from the contract.</p></header>
+      <div class="list">${shown.length ? shown.map(card).join("") : '<p class="plain">No approved campaign yet. <a href="/apply">Build the first one.</a></p>'}</div>
+      <p class="plain" style="margin-top:22px"><a class="btn ghost" href="/apply">BUILD A CAMPAIGN</a></p>`;
+  }
+
+  function card(c) {
+    const m = meta[c.address.toLowerCase()] || {};
+    return `<a class="card" href="/campaign?c=${c.address}"><div><b>${m.name ? m.name + " · " : ""}${c.symbol}</b><div class="sub">${CP.eth(c.deposited)} ETH deposited · ${CP.units(c.totalTokensBought)} ${c.symbol} bought · ${Number(c.optedCount)} brokers in · ${CP.delayText(c.delay)}</div></div><span class="state ${c.status === 2 ? "live" : ""}">${CP.STATUS[c.status]}</span></a>`;
+  }
+
+  async function one(a) {
+    let c;
+    try { c = await CP.campaign(a); } catch (e) { app.innerHTML = '<p class="plain">That is not a campaign.</p>'; return; }
+    const isC = CP.u(await CP.call(CP.FACTORY, CP.SEL.isCampaign + CP.addrWord(a)), 0) === 1n;
+    if (!isC) { app.innerHTML = '<p class="plain">That address is not a campaign from our factory.</p>'; return; }
+    const m = meta[a.toLowerCase()] || {};
+    const title = (m.name ? m.name + " · " : "") + c.symbol;
+    const share = encodeURIComponent(`${c.symbol} is an extra paycheck on Firm Brokers: bought on the open market ${Number(c.buysPerDay)}x a day, paid to brokers by the hour, ${CP.delayText(c.delay)}. ${location.origin}/campaign?c=${a}`);
+    const links = [m.website && `<a href="${m.website}" target="_blank" rel="noopener">website</a>`, m.x && `<a href="https://x.com/${String(m.x).replace(/^@/, "")}" target="_blank" rel="noopener">X</a>`].filter(Boolean).join(" · ");
+    app.innerHTML = `<header class="hero"><div class="eyebrow">Sponsored payroll · <span class="state ${c.status === 2 ? "live" : ""}">${CP.STATUS[c.status]}${c.paused ? " · buys paused" : ""}</span></div>
+      <h1>${title}</h1>
+      <p class="lede">${c.symbol} arrives as <b>an extra paycheck</b> to every broker whose owner opted in, on top of the wage. ${CP.delayText(c.delay)}. ${links}</p></header>
+      <div class="counters">
+        ${counter("Deposited", CP.eth(c.deposited) + " ETH", "on the contract now, plus what it already spent")}
+        ${counter("Spent buying", CP.eth(c.totalEthSpent) + " ETH", "fee to the house " + CP.eth(c.totalFees) + " ETH")}
+        ${counter("Bought", CP.units(c.totalTokensBought) + " " + c.symbol, "at the market, in windows")}
+        ${counter("Streamed to brokers", CP.units(c.streamed) + " " + c.symbol, c.remainder > 0n ? CP.units(c.remainder) + " still streaming from the last buy" : "")}
+        ${counter("Claimed", CP.units(c.totalClaimed) + " " + c.symbol, "")}
+        ${counter("Unclaimed", CP.units(c.unclaimed) + " " + c.symbol, "locked plus claimable, across every holder")}
+        ${counter("Brokers in", String(Number(c.optedCount)), "total weight " + Number(c.totalWeight))}
+      </div>
+      <h2 class="sec">Schedule</h2>
+      <div class="kv">
+        <span>Start</span><b>${c.approved ? CP.date(c.startAt) : "requested " + CP.date(c.requestedStart) + " · pending review"}</b>
+        <span>Distribution</span><b>${Number(c.days_)} days · ${Number(c.buysPerDay)} buys a day${c.approved ? " · ends " + CP.date(c.distributionEnd) : ""}</b>
+        <span>Release</span><b>${CP.delayText(c.delay)}${c.approved ? " · last unlock " + CP.date(c.lastUnlock) : ""}</b>
+        ${c.status === 2 ? `<span>Next buy window</span><b>${c.buysToday < c.buysPerDay ? "opens " + CP.date(c.nextWindow) : "tomorrow"} · about ${CP.eth(c.sliceNow)} ETH</b>` : ""}
+        ${c.minHold > 0n ? `<span>Holding requirement</span><b>${CP.units(c.minHold)} ${c.symbol} to opt in and to claim</b>` : ""}
+        <span>Buy floor</span><b>30-minute average price minus ${Number(c.slippageBps) / 100}%; pool liquidity at least ${CP.units(c.minLiquidity)}</b>
+        <span>Campaign</span><b class="addr"><a href="${CP.explorer(a)}" target="_blank" rel="noopener">${a}</a></b>
+        <span>Token</span><b class="addr"><a href="${CP.explorer(c.token)}" target="_blank" rel="noopener">${c.token}</a></b>
+        <span>Pool</span><b class="addr"><a href="${CP.explorer(c.pool)}" target="_blank" rel="noopener">${c.pool}</a> (${Number(c.fee) / 10000}%)</b>
+        <span>Sponsor</span><b class="addr">${c.sponsor}</b>
+      </div>
+      <h2 class="sec">Your brokers</h2>
+      <p class="plain">Opting in, and claiming, happens in each broker's file on <a href="/">the street</a>: open a broker, and the campaign row is under his paycheck. One click opts your whole roster in.</p>
+      <div class="actions">
+        <a class="btn" href="/">OPEN THE STREET</a>
+        <a class="btn ghost" href="https://x.com/intent/post?text=${share}" target="_blank" rel="noopener">SHARE ON X</a>
+        <button class="btn ghost" id="wallet">CONNECT TO SEE YOURS</button>
+      </div>
+      <div id="mine" class="msg"></div>
+      <div id="sponsorBox"></div>`;
+    document.getElementById("wallet").addEventListener("click", async () => {
+      try {
+        const acct = await CP.connect();
+        const s = await CP.summary(a, acct, []);
+        const bal = CP.u(await CP.call(c.token, CP.SEL.balanceOf + CP.addrWord(acct)), 0);
+        document.getElementById("mine").innerHTML = `Closed positions for ${CP.short(acct)}: earned ${CP.units(s.earned)} ${c.symbol}, unlocked ${CP.units(s.unlocked)}, claimable ${CP.units(s.claimable)}. Live brokers show on the street. You hold ${CP.units(bal)} ${c.symbol}.`;
+        if (acct.toLowerCase() === c.sponsor.toLowerCase()) sponsorPanel(acct);
+      } catch (e) { document.getElementById("mine").textContent = String(e.message || e); }
+    });
+    function sponsorPanel(acct) {
+      const now = Math.floor(Date.now() / 1000);
+      const canRefund = !c.approved && c.balance > 0n;
+      const canUnspent = c.approved && now >= Number(c.distributionEnd) && c.balance > 0n;
+      document.getElementById("sponsorBox").innerHTML = `<h2 class="sec">Sponsor</h2><p class="plain">This is your campaign. Balance on it: <b>${CP.eth(c.balance)} ETH</b>.</p>
+        <div class="actions">${canRefund ? '<button class="btn" id="refund">WITHDRAW EVERYTHING (not approved yet)</button>' : ""}${canUnspent ? '<button class="btn" id="unspent">WITHDRAW UNSPENT</button>' : ""}<button class="btn ghost" id="topup">TOP UP</button></div><div id="sMsg" class="msg"></div>`;
+      const go = async (data, label, value) => {
+        try { document.getElementById("sMsg").textContent = "confirm in your wallet…"; await CP.send({ to: a, data, value, gas: "0x" + (120_000).toString(16) }); document.getElementById("sMsg").className = "msg good"; document.getElementById("sMsg").textContent = label + " done. Reload to see the numbers."; }
+        catch (e) { document.getElementById("sMsg").className = "msg bad"; document.getElementById("sMsg").textContent = String(e.message || e).slice(0, 200); }
+      };
+      const b1 = document.getElementById("refund"); if (b1) b1.addEventListener("click", () => go("0x590e1ae3", "refund"));
+      const b2 = document.getElementById("unspent"); if (b2) b2.addEventListener("click", () => go("0x3c50c426", "withdraw"));
+      document.getElementById("topup").addEventListener("click", () => {
+        const amt = Number(prompt("ETH to add", "0.1") || 0);
+        if (amt > 0) go("0x", "top-up", "0x" + (BigInt(Math.round(amt * 1e6)) * 10n ** 12n).toString(16));
+      });
+    }
+  }
+
+  function counter(k, v, sub) {
+    return `<div class="counter"><div class="k">${k}</div><div class="v">${v}${sub ? `<br><small>${sub}</small>` : ""}</div></div>`;
+  }
+})();
+</script>
+</body>
+</html>

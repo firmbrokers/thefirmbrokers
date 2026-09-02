@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Build a campaign &middot; Firm Brokers</title>
+<meta name="description" content="Create a sponsored payroll campaign on Robinhood Chain: your token becomes an extra paycheck brokers can opt into, bought on the open market and released hour by hour.">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="canonical" href="https://thefirmbrokers.com/apply">
+<meta property="og:title" content="Build a campaign">
+<meta property="og:description" content="Configure, fund on chain, and we review. Your token becomes an extra paycheck brokers can opt into.">
+<meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
+<link rel="stylesheet" href="campaign.css?v=1788357504">
+<style>
+.form{display:grid;gap:14px}
+.form label{display:grid;gap:5px;font-size:14px;color:var(--ink-2)}
+.form label b{color:var(--ink);font-size:13px;letter-spacing:.02em}
+.form input,.form select,.form textarea{font:inherit;font-size:15px;padding:9px 11px;border:1px solid var(--rule);border-radius:6px;background:var(--card);color:var(--ink)}
+.form input:focus,.form select:focus,.form textarea:focus{outline:2px solid var(--gold-bright);border-color:var(--gold)}
+.form .two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media (max-width:640px){.form .two{grid-template-columns:1fr}}
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+@media (max-width:640px){.tiers{grid-template-columns:1fr}}
+.tier{border:1px solid var(--rule);border-radius:8px;padding:14px 16px;background:var(--card);cursor:pointer}
+.tier.on{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold-bright) inset}
+.tier b{display:block;font-size:15px}
+.tier .price{color:var(--gold);font-weight:700;margin:4px 0}
+.tier p{margin:6px 0 0;font-size:13px;color:var(--ink-2)}
+.btn{font:inherit;font-weight:700;padding:11px 18px;border-radius:6px;border:1px solid var(--gold);background:var(--gold);color:#fff;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:default}
+.btn.ghost{background:transparent;color:var(--gold)}
+.steps{counter-reset:s;display:grid;gap:22px}
+.step{border-top:1px solid var(--rule);padding-top:18px}
+.step h3{margin:0 0 10px;font-size:15px}
+.step h3::before{counter-increment:s;content:counter(s) ". ";color:var(--gold)}
+.step.locked{opacity:.45;pointer-events:none}
+.summary{display:grid;grid-template-columns:1fr auto;gap:6px 18px;font-size:14px;background:var(--sunk);padding:12px 14px;border-radius:8px}
+.summary b{text-align:right}
+.msg{font-size:14px;margin-top:8px;color:var(--ink-2)}
+.msg.bad{color:var(--red)}
+.msg.good{color:var(--green)}
+.addr{font-family:ui-monospace,Menlo,monospace;font-size:13px;word-break:break-all}
+.pools{font-size:13px;color:var(--ink-2)}
+.pools .pick{font-weight:700;color:var(--ink)}
+.state{display:inline-block;padding:3px 9px;border-radius:999px;background:var(--sunk);font-size:12px;font-weight:700;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="bar"><div class="bar-in">
+  <a class="home" href="/payroll">&larr; PAYROLL</a>
+  <nav><a href="/campaign">Campaigns</a><a href="/docs">Handbook</a></nav>
+</div></div>
+
+<div class="wrap">
+<header class="hero">
+  <div class="eyebrow">For projects</div>
+  <h1>Build a campaign</h1>
+  <p class="lede">Configure it, fund it on chain, and we review it. <b>Your token becomes an extra paycheck brokers can opt into</b>, bought on the open market in small windows every day and released hour by hour after the delay you choose.</p>
+  <p class="note"><b>Funding does not guarantee approval.</b> Until we approve, every wei you sent can be withdrawn by you, by you alone, at any time. Nothing is spent before approval.</p>
+</header>
+
+<section id="tier">
+  <h2 class="sec">Choose a level</h2>
+  <div class="tiers">
+    <div class="tier on" data-tier="self"><b>Self-service</b><div class="price">$2,000 to $5,000</div><p>Apply, configure and fund here. Reviewed activation within 48 hours of approval. Recurring market buys, rolling hourly unlocks, a public campaign page, share cards.</p></div>
+    <div class="tier" data-tier="featured"><b>Featured partnership</b><div class="price">above $5,000</div><p>Everything in self-service plus treasury brokers on the auction stage in your token, dedicated launch content, and custom reporting. Configure here, then we talk.</p></div>
+  </div>
+</section>
+
+<div class="steps">
+<section class="step" id="s-project">
+  <h3>Your project</h3>
+  <div class="form">
+    <label><b>Token contract</b><input id="token" placeholder="0x…" autocomplete="off"><span id="tokenInfo" class="msg"></span></label>
+    <div id="poolBox" class="pools" hidden></div>
+    <div class="two">
+      <label><b>Project name</b><input id="pname" placeholder="Cash Cat"></label>
+      <label><b>Website</b><input id="website" placeholder="https://"></label>
+    </div>
+    <div class="two">
+      <label><b>X account</b><input id="xacct" placeholder="@handle"></label>
+      <label><b>Telegram or Discord</b><input id="chat" placeholder="link"></label>
+    </div>
+    <div class="two">
+      <label><b>Your contact</b><input id="contact" placeholder="X DM, Telegram, or email"></label>
+      <label><b>Proof you represent the project</b><input id="proof" placeholder="a post from the project account, or the deployer wallet"></label>
+    </div>
+  </div>
+</section>
+
+<section class="step" id="s-config">
+  <h3>Configure</h3>
+  <div class="form">
+    <div class="two">
+      <label><b>Budget in ETH</b><input id="budget" type="number" step="0.01" min="0" placeholder="1.2"><span id="usd" class="msg"></span></label>
+      <label><b>Distribution length</b><select id="days"><option value="3">3 days</option><option value="5">5 days</option><option value="7" selected>7 days</option><option value="10">10 days</option><option value="14">14 days</option><option value="21">21 days</option><option value="30">30 days</option></select></label>
+    </div>
+    <div class="two">
+      <label><b>Rolling release delay</b><select id="delay"><option value="0">none, unlocks as earned</option><option value="3">3 days</option><option value="7" selected>7 days</option><option value="14">14 days</option></select></label>
+      <label><b>Buys per day</b><select id="buys"><option value="2">2</option><option value="4" selected>4</option><option value="6">6</option><option value="8">8</option></select></label>
+    </div>
+    <div class="two">
+      <label><b>Requested start</b><input id="start" type="datetime-local"></label>
+      <label><b>Holding requirement (optional)</b><input id="minhold" type="number" min="0" step="1" placeholder="0"><span class="msg">tokens a wallet must hold to opt in and to claim; 0 = none</span></label>
+    </div>
+  </div>
+</section>
+
+<section class="step" id="s-summary">
+  <h3>Review</h3>
+  <div class="summary" id="summary"></div>
+  <p class="msg">Every hour's pay unlocks separately, the delay later. There is never a campaign-wide cliff. A buy that would fill below the 30-minute average price minus 3% is skipped and retried; what is not spent by the end returns to you.</p>
+</section>
+
+<section class="step" id="s-create">
+  <h3>Create it on chain</h3>
+  <p class="msg">One transaction from the wallet that will own the campaign's money. It costs gas only; the route is checked on chain and a token without a usable pool is refused right here.</p>
+  <button class="btn" id="create">CONNECT AND CREATE</button>
+  <div id="createMsg" class="msg"></div>
+</section>
+
+<section class="step locked" id="s-fund">
+  <h3>Fund it</h3>
+  <p class="msg">Send the budget to the campaign address. Any amount, any time, more later if you like. Withdrawable by you until we approve.</p>
+  <div class="form"><label><b>Amount in ETH</b><input id="fundAmt" type="number" step="0.01" min="0"></label></div>
+  <button class="btn" id="fund">SEND</button>
+  <div id="fundMsg" class="msg"></div>
+</section>
+
+<section class="step locked" id="s-submit">
+  <h3>Tell us who you are</h3>
+  <p class="msg">The details above go to our review queue with the campaign address. We check the token, the pool, the project and the timing, then approve with a start date, or tell you why not.</p>
+  <button class="btn" id="submit">SUBMIT FOR REVIEW</button>
+  <div id="submitMsg" class="msg"></div>
+</section>
+</div>
+
+<p class="plain" style="margin-top:28px">Questions first? <a href="https://x.com/thefirmbrokers" target="_blank" rel="noopener"><b>@thefirmbrokers</b></a> on X. The mechanics are in the <a href="/payroll">payroll page</a> and the <a href="/docs">handbook</a>.</p>
+</div>
+
+<script src="config.js?v=1788357504"></script>
+<script src="campaign-pages.js?v=1788357504"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const st = { tier: "self", token: null, tokenInfo: null, pools: [], pool: null, ethUsd: null, campaign: null };
+
+  document.querySelectorAll(".tier").forEach((t) => t.addEventListener("click", () => {
+    document.querySelectorAll(".tier").forEach((x) => x.classList.remove("on"));
+    t.classList.add("on");
+    st.tier = t.dataset.tier;
+    render();
+  }));
+
+  // default start: two days from now, on the hour
+  const d = new Date(Date.now() + 2 * 86400e3); d.setMinutes(0, 0, 0);
+  $("start").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+
+  CP.ethUsd().then((v) => { st.ethUsd = v; render(); });
+
+  async function onToken() {
+    const t = $("token").value.trim();
+    st.token = null; st.pools = []; st.pool = null; $("poolBox").hidden = true;
+    if (!/^0x[0-9a-fA-F]{40}$/.test(t)) { $("tokenInfo").textContent = t ? "that is not an address" : ""; render(); return; }
+    $("tokenInfo").textContent = "reading the token…";
+    try {
+      const info = await CP.tokenInfo(t);
+      if (!info.hasCode) throw new Error("no contract at that address on Robinhood Chain");
+      if (info.decimals !== 18) throw new Error("the token has " + info.decimals + " decimals; campaigns need 18");
+      st.token = t; st.tokenInfo = info;
+      $("tokenInfo").textContent = info.name + " (" + info.symbol + ")";
+      const pools = await CP.poolsFor(t);
+      st.pools = pools;
+      if (!pools.length) { $("tokenInfo").textContent += " · no WETH pool on the canonical Uniswap V3 factory; a campaign cannot buy it"; render(); return; }
+      st.pool = pools[0];
+      $("poolBox").hidden = false;
+      $("poolBox").innerHTML = "Buys will route through " + pools.map((p, i) => `<span class="${i === 0 ? "pick" : ""}">${p.fee / 10000}% pool ${CP.short(p.pool)} (liquidity ${CP.units(p.liquidity, 18)})</span>`).join(" · ") + " — the deepest is used.";
+    } catch (e) {
+      $("tokenInfo").textContent = String(e.message || e);
+    }
+    render();
+  }
+  $("token").addEventListener("change", onToken);
+  $("token").addEventListener("blur", onToken);
+  ["budget", "days", "delay", "buys", "start", "minhold"].forEach((id) => $(id).addEventListener("input", render));
+
+  function cfg() {
+    const budget = Number($("budget").value || 0);
+    const days = Number($("days").value);
+    const delay = Number($("delay").value);
+    const buys = Number($("buys").value);
+    const start = Math.floor(new Date($("start").value).getTime() / 1000) || 0;
+    const minHold = Number($("minhold").value || 0);
+    return { budget, days, delay, buys, start, minHold };
+  }
+
+  function render() {
+    const c = cfg();
+    const usd = st.ethUsd ? " ≈ $" + (c.budget * st.ethUsd).toLocaleString("en-US", { maximumFractionDigits: 0 }) : "";
+    $("usd").textContent = st.ethUsd ? `1 ETH ≈ $${st.ethUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}${usd}` : "";
+    const fee = c.budget * 0.1, buy = c.budget * 0.9;
+    const perWindow = c.days && c.buys ? buy / (c.days * c.buys) : 0;
+    const rows = [
+      ["Deposit", c.budget ? c.budget.toFixed(4) + " ETH" + usd : "—"],
+      ["Operating fee (10%, taken at each buy)", c.budget ? fee.toFixed(4) + " ETH" : "—"],
+      ["Spent buying your token", c.budget ? buy.toFixed(4) + " ETH" : "—"],
+      ["Per buy, about", perWindow ? perWindow.toFixed(4) + " ETH · " + c.buys + " buys a day for " + c.days + " days" : "—"],
+      ["Release", CP.delayText(c.delay * 86400)],
+      ["Earliest unlock", c.start ? CP.date(c.start + c.delay * 86400) : "—"],
+      ["Last unlock", c.start ? CP.date(c.start + (c.days + 1 + c.delay) * 86400) : "—"],
+      ["Holding requirement", c.minHold ? c.minHold.toLocaleString("en-US") + " " + (st.tokenInfo ? st.tokenInfo.symbol : "tokens") : "none"],
+      ["Level", st.tier === "self" ? "self-service" : "featured partnership (we will contact you)"],
+    ];
+    $("summary").innerHTML = rows.map(([k, v]) => `<span>${k}</span><b>${v}</b>`).join("");
+    const ok = st.token && st.pool && c.days && c.start > Date.now() / 1000;
+    $("create").disabled = !ok || !!st.campaign;
+    $("fundAmt").value = $("fundAmt").value || (c.budget ? c.budget.toFixed(4) : "");
+  }
+
+  $("create").addEventListener("click", async () => {
+    const c = cfg();
+    $("create").disabled = true;
+    try {
+      $("createMsg").textContent = "connecting…";
+      const acct = await CP.connect();
+      $("createMsg").textContent = "confirm in your wallet…";
+      const data = CP.createData({ token: st.token, pool: st.pool.pool, slippageBps: 300, minLiquidity: 10n ** 21n, minHold: BigInt(Math.round(c.minHold)) * 10n ** 18n, requestedStart: c.start, days: c.days, delay: c.delay * 86400, buysPerDay: c.buys });
+      const rc = await CP.send({ to: CP.FACTORY, data, gas: "0x" + (2_600_000).toString(16) });
+      // the new campaign: the last one in the registry whose sponsor is this wallet
+      const list = await CP.campaigns();
+      let mine = null;
+      for (let i = list.length - 1; i >= 0; i--) {
+        const s = CP.addr(await CP.call(list[i], CP.SEL.sponsor), 0);
+        if (s && s.toLowerCase() === acct.toLowerCase()) { mine = list[i]; break; }
+      }
+      if (!mine) throw new Error("created, but not found in the registry yet; reload in a minute");
+      st.campaign = mine;
+      $("createMsg").className = "msg good";
+      $("createMsg").innerHTML = `Created. Your campaign address: <span class="addr">${mine}</span> · <a href="${CP.explorer(mine)}" target="_blank" rel="noopener">explorer</a> · <a href="/campaign?c=${mine}">its page</a>`;
+      $("s-fund").classList.remove("locked");
+      $("s-submit").classList.remove("locked");
+    } catch (e) {
+      $("createMsg").className = "msg bad";
+      $("createMsg").textContent = String(e.message || e).slice(0, 220);
+      $("create").disabled = false;
+    }
+  });
+
+  $("fund").addEventListener("click", async () => {
+    const amt = Number($("fundAmt").value || 0);
+    if (!st.campaign || !(amt > 0)) return;
+    $("fund").disabled = true;
+    try {
+      await CP.connect();
+      $("fundMsg").textContent = "confirm in your wallet…";
+      const wei = BigInt(Math.round(amt * 1e6)) * 10n ** 12n;
+      await CP.send({ to: st.campaign, value: "0x" + wei.toString(16), gas: "0x" + (60_000).toString(16) });
+      $("fundMsg").className = "msg good";
+      $("fundMsg").innerHTML = `Funded. <span class="state">FUNDED · PENDING REVIEW</span> You can withdraw it from the campaign page until we approve.`;
+    } catch (e) {
+      $("fundMsg").className = "msg bad";
+      $("fundMsg").textContent = String(e.message || e).slice(0, 220);
+    }
+    $("fund").disabled = false;
+  });
+
+  $("submit").addEventListener("click", async () => {
+    if (!st.campaign) return;
+    const body = { campaign: st.campaign, tier: st.tier, name: $("pname").value.trim(), ticker: st.tokenInfo ? st.tokenInfo.symbol : "", website: $("website").value.trim(), x: $("xacct").value.trim(), chat: $("chat").value.trim(), contact: $("contact").value.trim(), proof: $("proof").value.trim() };
+    if (!CP.CAMPAIGN_API) {
+      $("submitMsg").innerHTML = `The review queue is not online yet. Send the campaign address <span class="addr">${st.campaign}</span> and your contact to <a href="https://x.com/thefirmbrokers" target="_blank" rel="noopener">@thefirmbrokers</a> and we take it from there.`;
+      return;
+    }
+    $("submit").disabled = true;
+    try {
+      const r = await fetch(CP.CAMPAIGN_API + "/api/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || "submit failed");
+      $("submitMsg").className = "msg good";
+      $("submitMsg").textContent = "In the queue. We reply on the contact you gave, usually within a day.";
+    } catch (e) {
+      $("submitMsg").className = "msg bad";
+      $("submitMsg").textContent = String(e.message || e).slice(0, 220);
+      $("submit").disabled = false;
+    }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

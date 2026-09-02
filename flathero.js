@@ -333,7 +333,7 @@
     const deal = el("div", "fb-card fh-deal");
     deal.innerHTML = `<h2>THE DEAL</h2>
       <ol>
-        <li><b>1.</b>Mint a broker</li>
+        <li><b>1.</b>Buy a broker</li>
         <li><b>2.</b>Burn $9TO5 to hire him</li>
         <li><b>3.</b>He earns stocks hourly</li>
       </ol>
@@ -353,7 +353,9 @@
     // pressed, not when built.
     const chipSec = el("section", "fh-sec");
     const chips = el("div", "fh-chips");
-    [["MINT A BROKER", 0], ["YOUR BROKERS", 1], ["THE MONEY", 2], ["THE HANDBOOK", 3]].forEach(([label, i]) => {
+    // "MINT A BROKER" until 2026-09-02: the mint sold out on 28 August, and a
+    // chip that promises a mint to a newcomer is a broken promise
+    [["GET A BROKER", 0], ["YOUR BROKERS", 1], ["THE MONEY", 2], ["THE HANDBOOK", 3]].forEach(([label, i]) => {
       const b = el("button", null, label);
       b.type = "button";
       b.addEventListener("click", () => {

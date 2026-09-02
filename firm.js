@@ -89,6 +89,9 @@
 
   // ------------------------------------------------------------ transport
   let rpcBase = null;
+  // the endpoint that answered last time in this tab goes first, so a page
+  // load does not start with a request the official RPC is going to refuse
+  try { const m = sessionStorage.getItem("fb-rpc"); if (m && CFG.rpcs.includes(m)) rpcBase = m; } catch (e) { /* storage blocked */ }
   async function rpcPost(body) {
     const all = CFG.rpcs.filter((u, i, a) => u && a.indexOf(u) === i);
     const order = rpcBase ? [rpcBase, ...all.filter((u) => u !== rpcBase)] : all;
@@ -103,6 +106,7 @@
         if (!r.ok) throw new Error("http " + r.status);
         const j = await r.json();
         rpcBase = url;
+        try { sessionStorage.setItem("fb-rpc", url); } catch (e) { /* storage blocked */ }
         return j;
       } catch (e) {
         last = e;

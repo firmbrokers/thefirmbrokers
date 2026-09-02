@@ -226,7 +226,7 @@ footer a{color:var(--ink-2)}
   <div class="tldr">
     <h2>THE 30-SECOND VERSION</h2>
     <ol>
-      <li><div><b>Mint a broker on OpenSea</b><span>5,000 exist. Each one is a pixel office worker you own.</span></div></li>
+      <li><div><b>Buy a broker</b><span>5,000 exist and every one is minted. Pick one up on <a href="market.html">The Market</a> or OpenSea.</span></div></li>
       <li><div><b>Hire him</b><span>Burn 25,000 $9TO5 tokens. Now he works for you.</span></div></li>
       <li><div><b>He gets paid every hour</b><span>Real tokenized stocks and dollars, sent to him automatically.</span></div></li>
       <li><div><b>The money is real</b><span>It comes from trading fees on the $9TO5 token. 80% of that stream goes to payroll.</span></div></li>
@@ -238,56 +238,32 @@ footer a{color:var(--ink-2)}
 <section id="start">
   <div class="num">01</div>
   <h2 class="sec">How to start</h2>
-  <p class="plain">Five steps. About ten minutes.</p>
+  <p class="plain">Four steps. About ten minutes.</p>
 
   <h3>1. Get a wallet</h3>
   <p>A wallet is an app that holds your coins and your brokers. Phantom or MetaMask both work.
     Install it, write down your secret phrase on paper, and keep that paper safe.
     <strong>Anyone who sees that phrase can take everything.</strong> Never type it into a website.</p>
 
-  <div class="note"><b>Minting happens on OpenSea</b>
-    The HR desk sends you to our official OpenSea page, and that is where you mint.
-    Use a normal wallet with ETH on Robinhood Chain &mdash; MetaMask, Phantom and Rabby all work.
-    Smart-account wallets, multisigs and OpenSea&rsquo;s &ldquo;pay from another chain&rdquo; option do not work for this mint:
-    the contract only mints to the wallet that signed.
-    We never link any other mint page: a &ldquo;Firm Brokers mint&rdquo; that is not on opensea.io is fake.</div>
-
   <h3>2. Put some ETH on Robinhood Chain</h3>
   <p>ETH is the coin used to pay for things here. Robinhood Chain is the network we live on.
     You need a small amount of ETH on that network to buy a broker and to pay tiny network fees.</p>
 
-  <h3>3. Get past the front desk</h3>
-  <p>A guard stands outside the HR building. The whitelist applications are <strong>closed</strong>
-    (27 August). If you applied, walk up to his booth (or press <strong>THE LIST</strong>) and paste
-    your wallet address: it tells you whether you are on the <strong>GTD</strong> list (guaranteed,
-    you mint first), the <strong>FCFS</strong> list (first come, first served, right after), or neither.</p>
-  <p>Whitelist wallets mint first, on OpenSea. The public round follows for everyone else.</p>
+  <h3>3. Buy a broker</h3>
+  <p>All 5,000 were minted on 28 August, so today you buy one from another owner. Two ways:</p>
+  <p><a href="market.html"><strong>The Market</strong></a> lists every broker for sale with the level he
+    already holds &mdash; levels live on-chain and never show in the picture, so a broker who was promoted
+    keeps that pay bump for whoever buys him. Sort by <strong>value</strong> to see pay per ETH against the floor.
+    The buy itself happens on OpenSea; the Market just shows you what you are getting.</p>
+  <p>Or go straight to <a id="os-link" href="https://opensea.io/collection/thefirmbrokers" target="_blank" rel="noopener">our OpenSea collection &rarr;</a>.
+    That is the only place we link. A &ldquo;Firm Brokers mint&rdquo; anywhere else is fake &mdash; there is nothing left to mint.</p>
 
-  <figure class="shot" style="width:430px"><img src="art/docs/booth.png" alt="The hiring line and the security booth" loading="lazy" decoding="async">
-    <figcaption>The hiring line and the front desk. The booth now answers one question: are you on the list?</figcaption></figure>
+  <div class="note"><b>How the mint went</b>
+    5,000 brokers at 0.0035 ETH, minted on OpenSea on Friday 28 August: team round, then the GTD and FCFS
+    whitelists, then public, 3 per wallet across the rounds. Sold out. The whitelist and the front-desk
+    booth are history now; the HR building is the auction house.</div>
 
-  <div class="note"><b>The door is open</b>
-    The guard no longer asks for a form. Anyone can walk into HR; minting itself happens on
-    OpenSea, round by round: GTD, then FCFS, then public. Per-wallet limits count across the
-    rounds, so a wallet that used its whitelist limit is done.</div>
-
-  <h3>4. Mint a broker</h3>
-  <p>Walk to the HR desk. It has one button, <strong>MINT ON OPENSEA</strong>, which opens our
-    official OpenSea page &mdash; the mint happens there. Each broker costs <strong>0.0035 ETH</strong>.
-    You see exactly which broker you got right away. No waiting, no reveal day.</p>
-  <p><strong>Mint day: Friday 28 August (UTC).</strong> Team round 15:00, GTD whitelist 15:20, FCFS whitelist 16:20,
-    public 17:20 until Saturday 17:20. Limits count across the rounds: 3 per wallet, total.</p>
-  <div class="note"><b>Use a regular wallet account</b>
-    The mint only works from a normal wallet account that signs for itself. If MetaMask upgraded your
-    account to a <em>smart account</em>, switch it back to a regular account before you mint (Account details
-    &rarr; switch back), or the transaction is refused. Smart-contract wallets and OpenSea&rsquo;s
-    &ldquo;pay from another chain&rdquo; option do not work for this mint either.</div>
-
-  <!-- mint.png bakes the price and caps into pixels: re-capture it if they ever change -->
-  <figure class="shot" style="width:552px"><img src="art/docs/mint.png" alt="The HR desk's mint panel" loading="lazy" decoding="async">
-    <figcaption>The HR desk. The button goes to OpenSea, where minting happens.</figcaption></figure>
-
-  <h3>5. Hire him</h3>
+  <h3>4. Hire him</h3>
   <p>Buying a broker is like hiring nobody yet. He is sitting at home.
     To put him to work you burn <strong>25,000 $9TO5</strong>. After that, he earns every hour.</p>
 
@@ -446,12 +422,12 @@ footer a{color:var(--ink-2)}
   <h3>What the pay is paid in</h3>
   <p>Pay arrives as a token, and you choose which one. The default is
     <strong>USDG</strong>, a dollar. You can pick anything on the salary menu instead
-    &mdash; a stock, or <strong>FRONG</strong> &mdash; and your broker is paid in that
-    from the next round on.</p>
+    &mdash; a stock, <strong>FRONG</strong> or <strong>CASHCAT</strong> &mdash; and your
+    broker is paid in that from the next round on.</p>
 
   <p>You are paid in exactly what you picked. Nothing is swapped twice and nothing is
     held back. The choice is per broker, so one can earn dollars while another earns
-    FRONG.</p>
+    FRONG or CASHCAT.</p>
 
   <div class="note"><b>One at a time works best</b>
     Splitting a single broker between two assets can leave the smaller share sitting
@@ -702,9 +678,7 @@ footer a{color:var(--ink-2)}
     <tbody>
       <tr><td>Brokers</td><td class="n">5,000</td></tr>
       <tr><td>Price each</td><td class="n">0.0035 ETH</td></tr>
-      <tr><td>Max per wallet (whitelist)</td><td class="n">3</td></tr>
-      <tr><td>Max per wallet (public)</td><td class="n">3</td></tr>
-      <tr><td>Max per wallet (whitelist + public)</td><td class="n">6</td></tr>
+      <tr><td>Max per wallet at the mint (all rounds together; the mint is over)</td><td class="n">3</td></tr>
       <tr><td>Burn to hire</td><td class="n">25,000 $9TO5</td></tr>
       <tr><td>Burn to reach CEO</td><td class="n">850,000 $9TO5</td></tr>
       <tr><td>Burn to merge two</td><td class="n">50,000 $9TO5</td></tr>
@@ -812,7 +786,7 @@ footer a{color:var(--ink-2)}
 
 </div>
 
-<script src="config.js?v=1788315583"></script>
+<script src="config.js?v=1788357504"></script>
 <script>
 // Addresses come from config.js (window.FIRM_CFG), never hardcoded here, so this
 // page cannot drift out of sync with the rest of the site or show a stale address.
