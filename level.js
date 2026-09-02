@@ -108,6 +108,18 @@
   };
 
   // ------------------------------------------------------------ formatting
+  /// THIS HOUR'S POT = what the engine has pulled in this round PLUS what a
+  /// harvest would pull in right now. The keeper runs admission-only, so fees
+  /// only move splitter -> engine when a holder clicks payday; between the
+  /// top of the hour and the first click the buffer alone read "0 ETH" while
+  /// the hour's fees sat one step upstream (seen 2026-09-02 09:16Z: buffer 0,
+  /// 0.128 ETH waiting on the splitter). A harvest moves value from the second
+  /// term to the first, so the sum never double-counts. Null stays null: with
+  /// no chain the machine shows a dash, not a number.
+  function hourPot(s) {
+    if (!s || s.potBuffer === null || s.potBuffer === undefined) return null;
+    return s.potBuffer + (typeof state.owedFees === "bigint" ? state.owedFees : 0n);
+  }
   function fmtEth(wei, dp) {
     if (wei === null || wei === undefined) return "—";
     return (Number(wei) / 1e18).toLocaleString(undefined, { maximumFractionDigits: dp ?? 4 });
@@ -2917,7 +2929,7 @@
     const atm = el("div", "bank2-atm");
     atm.innerHTML = `<div class="hood"></div>
       <div class="body">
-        <div class="scr"><b>THIS HOUR'S POT</b><u>${fmtEth(s.potBuffer)} ETH</u></div>
+        <div class="scr"><b>THIS HOUR'S POT</b><u>${fmtEth(hourPot(s))} ETH</u></div>
         <div class="pad">${"<i></i>".repeat(12)}</div>
         <div class="slot"></div><div class="led"></div>
       </div>`;
@@ -4126,7 +4138,7 @@
     flatSection(host, "The Bank", zoneLive(ZONES[3]) ? "the money" : "locked", (room) => {
       if (!zoneLive(ZONES[3])) { room.appendChild(el("div", "fb-card", `<p>${DEPLOYED ? "Opens with the token." : "Opens at launch."}</p>`)); return; }
       const s = state.stats || PRELAUNCH;
-      room.appendChild(el("div", "fb-card dark", `<div class="big">${fmtEth(s.totalHarvested, 3)} ETH</div><p>paid into payroll · pot this hour: ${fmtEth(s.potBuffer)} ETH · burned: ${s.burned !== null ? fmtCompact(s.burned) : "—"} $9TO5</p>`));
+      room.appendChild(el("div", "fb-card dark", `<div class="big">${fmtEth(s.totalHarvested, 3)} ETH</div><p>paid into payroll · pot this hour: ${fmtEth(hourPot(s))} ETH · burned: ${s.burned !== null ? fmtCompact(s.burned) : "—"} $9TO5</p>`));
       if (DEPLOYED && state.tokenLive && CFG.token) {
         const c = el("div", "fb-card", `<h2>Buy $9TO5</h2><p>Trades on letscash.fun. The fee on every trade pays the salaries here.</p>`);
         const a = el("a", "fb-btn", "OPEN THE EXCHANGE →");
