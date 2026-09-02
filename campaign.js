@@ -49,18 +49,24 @@
   };
 
   const CSS = `
-.fb-camp{margin-top:8px;border:3px solid var(--ink);background:rgba(255,255,255,.06);padding:8px 10px;font-size:11px}
-.fb-camp header{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
-.fb-camp header b{letter-spacing:.06em}
-.fb-camp header span{opacity:.75}
-.fb-camp .line{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;border-top:1px dashed rgba(255,255,255,.18)}
+/* the campaign panel: a highlighted box in the broker's file, in the data
+   font at a size a child can read, one thing per line */
+.fb-camp{margin-top:12px;border:4px solid var(--gold-deep,#c9a237);background:rgba(201,162,55,.10);padding:12px 14px;
+  font-family:var(--font-data,"VT323",monospace);font-size:22px;line-height:1.15;box-shadow:0 0 0 2px rgba(0,0,0,.35) inset}
+.fb-camp header{display:grid;gap:4px;margin-bottom:10px;padding-bottom:8px;border-bottom:2px dashed rgba(201,162,55,.55)}
+.fb-camp header b{font-family:var(--font-display,"Press Start 2P",monospace);font-size:10px;letter-spacing:.06em;color:var(--gold-deep,#c9a237)}
+.fb-camp header span{font-size:20px;opacity:.9}
+.fb-camp .line{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px dashed rgba(255,255,255,.18)}
 .fb-camp .line:first-of-type{border-top:0}
-.fb-camp .line i{font-style:normal;opacity:.8}
+.fb-camp .line i{font-style:normal;font-size:26px;font-weight:700}
+.fb-camp .line b{font-size:22px}
 .fb-camp .line b.on{color:#9be36d}
-.fb-camp .line b.off{opacity:.6}
+.fb-camp .line b.off{opacity:.7}
 .fb-camp .line b.no{color:#e0a15a}
-.fb-camp .sub{opacity:.7;font-size:10px;margin-top:2px}
-.fb-camp .lockd{opacity:.85}
+.fb-camp .line b.lockd{opacity:.9}
+.fb-camp .sub{opacity:.8;font-size:19px;margin-top:3px}
+.fb-camp .fb-btn.small{font-size:11px;padding:10px 14px}
+.fb-camp .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 `;
 
   let cssDone = false;
@@ -109,9 +115,9 @@
   const STATUS = ["pending review", "starts soon", "distributing", "releasing", "done"];
   function delayText(sec) {
     const s = Number(sec);
-    if (s === 0) return "unlocks as it is earned";
+    if (s === 0) return "yours the moment it is earned";
     const d = Math.round(s / 86400);
-    return `each hour's pay unlocks ${d} day${d === 1 ? "" : "s"} later`;
+    return `each hour's pay is yours ${d} day${d === 1 ? "" : "s"} later`;
   }
 
   // ---------------------------------------------------------------- reads
@@ -205,7 +211,7 @@
     if (!running.length) return;
     const box = document.createElement("div");
     box.className = "fb-camp";
-    box.innerHTML = `<header><b>CAMPAIGNS</b><span>an extra paycheck in a partner's token, on top of his wage</span></header>`;
+    box.innerHTML = `<header><b>EXTRA PAYCHECK</b><span>A partner pays him in their token, on top of his wage. Free to join.</span></header>`;
     card.appendChild(box);
     for (const c of running) {
       const line = document.createElement("div");
@@ -218,35 +224,35 @@
       const status = document.createElement("b");
       if (mine) {
         status.className = "on";
-        status.textContent = b.active ? "EARNING" : "OPTED IN · not clocked in";
+        status.textContent = b.active ? "HE IS IN, EARNING" : "IN, BUT NOT CLOCKED IN";
       } else {
         status.className = "off";
-        status.textContent = "NOT OPTED IN";
+        status.textContent = "NOT IN YET";
       }
       info.innerHTML = `<i>${esc(c.symbol)}</i> `;
       info.appendChild(status);
       const sub = document.createElement("div");
       sub.className = "sub";
-      sub.textContent = (mine && st ? `earned ${fmtUnits(st.earned)} ${c.symbol}, ${fmtUnits(st.released)} unlocked · ` : "") + lockTxt + (c.minHold > 0n ? ` · hold ≥ ${fmtUnits(c.minHold)} ${c.symbol} to join and to claim` : "");
+      sub.textContent = (mine && st ? `earned ${fmtUnits(st.earned)} ${c.symbol} so far · ` : "") + lockTxt + (c.minHold > 0n ? ` · you must hold ${fmtUnits(c.minHold)} ${c.symbol} to join and to claim` : "");
       info.appendChild(sub);
       line.appendChild(info);
       if (!state.account || (b.owner && state.account.toLowerCase() !== String(b.owner).toLowerCase())) continue;
       if (mine && st) {
         const cardBtn = document.createElement("button");
         cardBtn.className = "fb-btn small";
-        cardBtn.textContent = "HIS CARD";
+        cardBtn.textContent = "SHARE CARD";
         cardBtn.addEventListener("click", () => openCard(ctx, c, b, st).catch(() => {}));
         line.appendChild(cardBtn);
       }
       const btn = document.createElement("button");
       btn.className = "fb-btn small";
-      btn.textContent = mine ? "OPT OUT" : "OPT IN";
+      btn.textContent = mine ? "LEAVE" : "JOIN";
       btn.addEventListener("click", async () => {
         btn.disabled = true;
         if (mine) {
-          await txFlow(`opt out of ${c.symbol}`, () => optOutTx(F, c, b.id, state.account), () => brokerRows(ctx, b, pop, card));
+          await txFlow(`leave ${c.symbol}`, () => optOutTx(F, c, b.id, state.account), () => brokerRows(ctx, b, pop, card));
         } else {
-          await txFlow(`opt into ${c.symbol}`, () => optInTx(F, c, b.id, state.account), () => brokerRows(ctx, b, pop, card));
+          await txFlow(`join ${c.symbol}`, () => optInTx(F, c, b.id, state.account), () => brokerRows(ctx, b, pop, card));
         }
         box.remove();
       });
@@ -265,7 +271,7 @@
     const ids = (state.brokers || []).map((x) => x.id);
     const box = document.createElement("div");
     box.className = "fb-camp";
-    box.innerHTML = `<header><b>YOUR CAMPAIGN PAY</b><span>bought on the open market, paid by weight, released hour by hour</span></header>`;
+    box.innerHTML = `<header><b>YOUR EXTRA PAY</b><span>What your brokers earned from partners. Claim it any time it is unlocked.</span></header>`;
     let any = false;
     for (const c of list) {
       const hs = await holderState(F, c, state.account, ids).catch(() => null);
@@ -275,8 +281,8 @@
       const line = document.createElement("div");
       line.className = "line";
       const info = document.createElement("div");
-      info.innerHTML = `<i>${esc(c.symbol)}</i> <b class="${hs.claimable > 0n ? "on" : "lockd"}">${fmtUnits(hs.claimable)} ${esc(c.symbol)} claimable</b>
-        <div class="sub">earned ${fmtUnits(hs.earned)} · still locked ${fmtUnits(hs.locked)} · ${STATUS[c.status]} · ${delayText(c.delay)}${c.minHold > 0n && hs.balance < c.minHold ? ` · <b class="no">hold ≥ ${fmtUnits(c.minHold)} ${esc(c.symbol)} to claim</b>` : ""}</div>`;
+      info.innerHTML = `<i>${esc(c.symbol)}</i> <b class="${hs.claimable > 0n ? "on" : "lockd"}">${fmtUnits(hs.claimable)} ready to claim</b>
+        <div class="sub">earned ${fmtUnits(hs.earned)} · still locked ${fmtUnits(hs.locked)} · ${delayText(c.delay)}${c.minHold > 0n && hs.balance < c.minHold ? ` · <b class="no">you must hold ${fmtUnits(c.minHold)} ${esc(c.symbol)} to claim</b>` : ""}</div>`;
       line.appendChild(info);
       // one signature for every hired broker of theirs that is not in yet
       if (c.status === 2 && !(c.minHold > 0n && hs.balance < c.minHold)) {
@@ -286,10 +292,10 @@
         if (out.length > 1) {
           const all = document.createElement("button");
           all.className = "fb-btn small";
-          all.textContent = `OPT IN ALL ${out.length}`;
+          all.textContent = `JOIN WITH ALL ${out.length}`;
           all.addEventListener("click", async () => {
             all.disabled = true;
-            await txFlow(`opt ${out.length} brokers into ${c.symbol}`, () => optInManyTx(F, c, out.map((x) => x.id), state.account), () => { box.remove(); holderCard(ctx, container); });
+            await txFlow(`join ${c.symbol} with ${out.length} brokers`, () => optInManyTx(F, c, out.map((x) => x.id), state.account), () => { box.remove(); holderCard(ctx, container); });
           });
           line.appendChild(all);
         }
@@ -392,5 +398,5 @@
     document.body.appendChild(wrap);
   }
 
-  window.__CAMPAIGN = { load, brokerRows, holderCard, brokerState, holderState, fmtUnits, renderCard, openCard };
+  window.__CAMPAIGN = { load, brokerRows, holderCard, brokerState, holderState, fmtUnits, renderCard, openCard, ensureCss };
 })();
