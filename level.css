@@ -69,7 +69,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .fb-zonebar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
-  display: flex; gap: 8px; align-items: stretch;
+  display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap;
   background: linear-gradient(180deg, #3a4148, #262b33);
   border-top: 4px solid var(--ink);
   box-shadow: inset 0 3px 0 #4b555f;
@@ -79,7 +79,7 @@ button { font-family: inherit; cursor: pointer; }
   /* Each zone is a lit screen in a steel ring — the signpost recipe, not the
      billboard one. No scanlines: at 7-8px type the 3px stripe rules the
      glyphs, which is why the street's own signs do not carry them either. */
-  flex: 1; min-width: 0;
+  flex: 1; min-width: max-content;
   background: linear-gradient(#10151d, #0a0e14);
   border: 3px solid #06080c;
   box-shadow: 0 0 0 3px #3a4148, inset 0 0 20px rgba(0, 0, 0, 0.45);
@@ -671,7 +671,14 @@ body.flat-mode .fb-stage, body.flat-mode .fb-controls { display: none; }
    than 711: three pixels of slack is not slack, and the pixel font arrives
    after the first measurement. Below this the bar wraps and the labels shorten,
    which is the same trade it has always made, just made sooner. */
-@media (max-width: 750px) {
+/* 1024, not 750: a phone in landscape (reported 2026-09-02 from Discord, a
+   ~900px-wide Samsung screen) sat above the old breakpoint and got four
+   77-114px zone buttons with "2 AUCTION HOUSE" clipped in each, and a browser
+   that enlarges small type made the labels overlap outright. Below 1024 the
+   bar uses the one-word labels; and at every width the bar may wrap and a
+   zone button never shrinks under its own label, so enlarged type wraps to
+   a second row instead of printing over its neighbour. */
+@media (max-width: 1024px) {
   /* 49px buttons at 390px: neither "1 THE LOBBY" nor a 17px sentence fits,
      so the button becomes one short word instead of an ellipsis */
   .fb-zonebtn small { display: none; }
