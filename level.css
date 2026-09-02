@@ -278,66 +278,72 @@ button { font-family: inherit; cursor: pointer; }
 }
 .fb-billboard::before { left: 16%; }
 
-/* ---- the hiring sign, chained under the billboard (2026-09-02) ----
-   Second cut, same day: the user wants customers caught, so this is now the
-   loudest object on the street short of the billboard itself. Marquee bulbs
-   chase round the frame, the APPLY pill breathes, and it is 400 wide. */
+/* ---- the hiring sign, under the billboard (2026-09-02, third cut) ----
+   The user's brief: bigger, and lit like a good sign, not like a fairground.
+   So: 520 wide on two steel rods, a neon tube round the frame that breathes
+   slowly the way real neon does, two lamp heads on top washing the face with
+   light, no bulbs chasing and nothing bouncing. It is a link; the arrow says
+   so quietly. */
 .fb-hire {
-  /* the billboard's box ends 260px above the ground (measured); 100px hang from there */
-  position: absolute; bottom: calc(var(--ground-h) + 160px); width: 400px; height: 100px;
-  display: block; text-decoration: none; transform-origin: 50% -4px; z-index: 3;
-  animation: fb-sway 7s ease-in-out infinite alternate;
+  /* the billboard's box ends 260px above the ground (measured); 130px hang from there */
+  position: absolute; bottom: calc(var(--ground-h) + 130px); width: 520px; height: 130px;
+  display: block; text-decoration: none; z-index: 3;
 }
-.fb-hire .chain {
-  position: absolute; top: 0; width: 4px; height: 14px;
-  background: repeating-linear-gradient(#7b8590 0 3px, transparent 3px 5px);
+.fb-hire .rod {
+  position: absolute; top: 0; width: 6px; height: 18px;
+  background: linear-gradient(90deg, #7b8590, #454d55); border: 2px solid #06080c; box-sizing: border-box;
 }
-.fb-hire .chain.l { left: 48px; } .fb-hire .chain.r { right: 48px; }
+.fb-hire .rod.l { left: 70px; } .fb-hire .rod.r { right: 70px; }
 .fb-hire .board {
-  position: absolute; top: 14px; left: 0; right: 0; height: 86px; box-sizing: border-box;
-  padding: 12px 14px 10px; text-align: center;
-  background: linear-gradient(#10151d, #0a0e14); border: 4px solid #06080c;
-  box-shadow: 0 0 0 3px #3a4148, 0 0 26px #ffc93348, 5px 6px 0 rgba(25, 19, 9, 0.34);
+  position: absolute; top: 16px; left: 0; right: 0; height: 114px; box-sizing: border-box;
+  padding: 20px 20px 14px; text-align: center; overflow: hidden;
+  background: linear-gradient(#0e131a, #080b10); border: 4px solid #06080c;
+  box-shadow: inset 0 0 0 2px var(--gold), 0 0 0 3px #2a3036, 0 0 26px #ffc93352, 0 0 70px #ffc93322, 6px 7px 0 rgba(25, 19, 9, 0.34);
+  animation: fb-neon 5s ease-in-out infinite alternate;
 }
+/* scanlines, like every other screen on the street */
 .fb-hire .board::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: repeating-linear-gradient(0deg, transparent 0 3px, #00000048 3px 4px);
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #00000040 3px 4px);
 }
-/* the bulbs: a dotted strip on each edge, the dots stepping round the frame */
-.fb-hire .bulbs { position: absolute; pointer-events: none; }
-.fb-hire .bulbs.t, .fb-hire .bulbs.b {
-  left: 6px; right: 6px; height: 5px;
-  background: repeating-linear-gradient(90deg, var(--gold) 0 5px, #3a2c0a 5px 14px);
-  animation: fb-chase-x 0.9s steps(2, end) infinite;
+/* two lamp heads on the top edge, and the light they throw down the face */
+.fb-hire .lamp {
+  position: absolute; top: -9px; width: 26px; height: 11px; z-index: 2;
+  background: linear-gradient(#6c7680, #3a4148); border: 2px solid #06080c; box-sizing: border-box;
+  border-radius: 3px 3px 0 0;
 }
-.fb-hire .bulbs.t { top: 2px; } .fb-hire .bulbs.b { bottom: 2px; animation-direction: reverse; }
-.fb-hire .bulbs.l, .fb-hire .bulbs.r {
-  top: 6px; bottom: 6px; width: 5px;
-  background: repeating-linear-gradient(180deg, var(--gold) 0 5px, #3a2c0a 5px 14px);
-  animation: fb-chase-y 0.9s steps(2, end) infinite;
+.fb-hire .lamp::after {
+  content: ""; position: absolute; left: 5px; right: 5px; bottom: -3px; height: 3px;
+  background: #fff1b8; box-shadow: 0 0 8px #ffe9a0;
 }
-.fb-hire .bulbs.l { left: 2px; animation-direction: reverse; } .fb-hire .bulbs.r { right: 2px; }
+.fb-hire .lamp.l { left: 90px; } .fb-hire .lamp.r { right: 90px; }
+.fb-hire .beam {
+  position: absolute; top: 0; width: 46%; height: 100%; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 230, 160, 0.20), rgba(255, 230, 160, 0.06) 45%, transparent 80%);
+  clip-path: polygon(38% 0, 62% 0, 100% 100%, 0 100%);
+}
+.fb-hire .beam.l { left: 2%; } .fb-hire .beam.r { right: 2%; }
 .fb-hire b {
-  display: block; font-family: var(--font-display); font-size: 11px; letter-spacing: .06em;
-  color: var(--gold); text-shadow: 0 0 10px #ffc93380, 0 0 2px #ffc933;
+  position: relative; z-index: 1; display: block;
+  font-family: var(--font-display); font-size: 15px; letter-spacing: .08em;
+  color: var(--gold); text-shadow: 0 0 12px #ffc93380, 0 0 2px #ffc933;
 }
 .fb-hire u {
-  display: block; text-decoration: none; margin-top: 5px; line-height: 1;
-  font-family: var(--font-data); font-size: 17px; color: #9fe0af; text-shadow: 0 0 6px #6fe08c44;
+  position: relative; z-index: 1; display: block; text-decoration: none; margin-top: 9px; line-height: 1;
+  font-family: var(--font-data); font-size: 20px; color: #b8ecc4; text-shadow: 0 0 7px #6fe08c55;
 }
 .fb-hire em {
-  display: inline-block; margin-top: 7px; padding: 4px 12px 3px; font-style: normal;
-  font-family: var(--font-display); font-size: 8px; letter-spacing: .06em; color: var(--ink);
-  background: var(--gold); border: 2px solid #06080c; box-shadow: 0 2px 0 #06080c;
-  animation: fb-breathe 1.6s ease-in-out infinite;
+  position: relative; z-index: 1; display: inline-block; margin-top: 10px; padding-bottom: 2px;
+  font-style: normal; font-family: var(--font-display); font-size: 9px; letter-spacing: .12em;
+  color: var(--gold); border-bottom: 2px solid var(--gold); text-shadow: 0 0 8px #ffc93366;
 }
-.fb-hire:hover .board { box-shadow: 0 0 0 3px #56626d, 0 0 36px #ffc93380, 5px 6px 0 rgba(25, 19, 9, 0.34); }
-.fb-hire:hover em { background: #fff1b8; }
-@keyframes fb-sway { from { transform: rotate(-0.8deg); } to { transform: rotate(0.8deg); } }
-@keyframes fb-chase-x { from { background-position-x: 0; } to { background-position-x: 14px; } }
-@keyframes fb-chase-y { from { background-position-y: 0; } to { background-position-y: 14px; } }
-@keyframes fb-breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.07); } }
-@media (prefers-reduced-motion: reduce) { .fb-hire, .fb-hire .bulbs, .fb-hire em { animation: none; } }
+.fb-hire:hover .board { box-shadow: inset 0 0 0 2px #fff1b8, 0 0 0 3px #2a3036, 0 0 36px #ffc93388, 0 0 90px #ffc93333, 6px 7px 0 rgba(25, 19, 9, 0.34); }
+.fb-hire:hover em { color: #fff1b8; border-color: #fff1b8; }
+@keyframes fb-neon {
+  from { box-shadow: inset 0 0 0 2px var(--gold), 0 0 0 3px #2a3036, 0 0 22px #ffc93340, 0 0 60px #ffc93318, 6px 7px 0 rgba(25, 19, 9, 0.34); }
+  to   { box-shadow: inset 0 0 0 2px #ffd966, 0 0 0 3px #2a3036, 0 0 30px #ffc93362, 0 0 80px #ffc9332a, 6px 7px 0 rgba(25, 19, 9, 0.34); }
+}
+@media (prefers-reduced-motion: reduce) { .fb-hire .board { animation: none; } }
 /* the same door on every screen: a HUD button beside BUY, outlined in gold so
    it does not fight the solid BUY, and dropped on phones where the sign and
    the flat chip already carry it and a sixth button would cost a row */
@@ -345,8 +351,11 @@ button { font-family: inherit; cursor: pointer; }
 .fb-hudbtn.pay:hover { background: #2a2f36; color: #fff1b8; }
 @media (max-width: 480px) {
   .fb-hudbtn.pay { display: none; }
-  /* 400 wide met both edges of a 390 phone; 340 keeps the same centre */
-  .fb-hire { width: 340px; margin-left: 30px; }
+  /* 520 wide would meet both edges of a 390 phone; 340 keeps the same centre */
+  .fb-hire { width: 340px; margin-left: 90px; }
+  .fb-hire b { font-size: 11px; } .fb-hire u { font-size: 16px; }
+  .fb-hire .lamp.l { left: 60px; } .fb-hire .lamp.r { right: 60px; }
+  .fb-hire .rod.l { left: 46px; } .fb-hire .rod.r { right: 46px; }
 }
 .fb-billboard::after { right: 16%; }
 

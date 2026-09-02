@@ -376,7 +376,80 @@
     };
   }
 
+  // ------------------------------------------------ who owns what, read directly
+  /// The owned-broker scan used to walk Transfer logs from deployBlock to
+  /// latest. For a wallet with many brokers (the treasury: 90) that scan never
+  /// returned — the floor read "0 of 0" for its owner, constantly. Ownership
+  /// is a fixed table of at most maxSupply rows, so read it: ownerOf for every
+  /// id through Multicall3.tryAggregate, 200 per call (0.27 s each on both
+  /// RPCs; 500 per call hangs), three in flight, cached three minutes. A
+  /// burned (merged) id reverts and is simply absent. The log scan survives
+  /// below as the fallback for the day a batch fails.
+  const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11";
+  function encodeTryAggregate(calls) {
+    const w = (v) => word(v);
+    let offs = "", bodies = "", off = 0x20 * calls.length;
+    for (const c of calls) {
+      const d = c.data.startsWith("0x") ? c.data.slice(2) : c.data;
+      const body = w(BigInt(c.to)) + w(0x40) + w(d.length / 2) + d + "0".repeat((64 - (d.length % 64)) % 64);
+      offs += w(off); bodies += body; off += body.length / 2;
+    }
+    return "0xbce38bd7" + w(0) + w(0x40) + w(calls.length) + offs + bodies;
+  }
+  function decodeTryAggregate(hex) {
+    const raw = hex.slice(2);
+    const at = (i) => parseInt(raw.slice(i * 2, i * 2 + 64), 16);
+    const arr = at(0); const n = at(arr);   // word 0 is the array's offset (0x20), the length sits there
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      const base = arr + 32 + at(arr + 32 + 32 * k);
+      const ok = at(base) === 1; const ro = at(base + 32); const ln = at(base + ro);
+      out.push({ ok, data: "0x" + raw.slice((base + ro + 32) * 2, (base + ro + 32 + ln) * 2) });
+    }
+    return out;
+  }
+  async function tryAggregate(calls) {
+    const j = await rpcPost({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: MULTICALL3, data: encodeTryAggregate(calls) }, "latest"] });
+    if (!j || typeof j.result !== "string" || j.result.length < 130) throw new Error(j && j.error ? j.error.message : "multicall: bad reply");
+    return decodeTryAggregate(j.result);
+  }
+  let _owners = null;
+  async function ownerTable() {
+    if (_owners && _owners.complete && Date.now() - _owners.at < 180000) return _owners;
+    let max = 5000;
+    try { const m = await rpcPost({ jsonrpc: "2.0", id: 1, method: "eth_call", params: [{ to: CFG.nft, data: SEL.maxSupply }, "latest"] }); if (m && m.result) max = Number(BigInt(m.result)) || max; } catch (e) { /* 5000 stands */ }
+    const byId = new Map();
+    let complete = true, k = 0;
+    const ranges = [];
+    for (let a = 1; a <= max; a += 200) ranges.push([a, Math.min(max, a + 199)]);
+    const worker = async () => {
+      while (k < ranges.length) {
+        const [a, b] = ranges[k++];
+        try {
+          const res = await tryAggregate(Array.from({ length: b - a + 1 }, (_, i) => ({ to: CFG.nft, data: SEL.ownerOf + word(a + i) })));
+          res.forEach((r, i) => { if (r.ok && r.data.length >= 66) byId.set(a + i, ("0x" + r.data.slice(26, 66)).toLowerCase()); });
+        } catch (e) { complete = false; }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+    _owners = { at: Date.now(), byId, complete };
+    return _owners;
+  }
   async function tokensOf(addr) {
+    const me = addr.toLowerCase();
+    try {
+      const t = await ownerTable();
+      if (t.complete) {
+        const mine = [];
+        for (const [id, o] of t.byId) if (o === me) mine.push(id);
+        mine.sort((a, b) => a - b);
+        return mine;
+      }
+    } catch (e) { /* the log scan below */ }
+    return tokensOfByLogs(addr);
+  }
+
+  async function tokensOfByLogs(addr) {
     const padded = "0x" + word(addr);
     let got = await rpcLogsRange(
       { address: CFG.nft, topics: [TRANSFER_TOPIC, null, padded] },

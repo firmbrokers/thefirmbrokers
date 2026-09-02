@@ -900,15 +900,15 @@
     hire.target = "_blank";
     hire.rel = "noopener";
     hire.title = "Build a campaign: your token, paid to brokers as wages";
-    hire.innerHTML = `<i class="chain l"></i><i class="chain r"></i>
-      <span class="board"><i class="bulbs t"></i><i class="bulbs b"></i><i class="bulbs l"></i><i class="bulbs r"></i>
-        <b>PAYMASTERS WANTED</b><u>your token, paid to brokers as wages</u><em>APPLY NOW &rarr;</em></span>`;
+    hire.innerHTML = `<i class="rod l"></i><i class="rod r"></i>
+      <span class="board"><i class="lamp l"></i><i class="lamp r"></i><i class="beam l"></i><i class="beam r"></i>
+        <b>PAYMASTERS WANTED</b><u>your token, paid to brokers as wages</u><em>APPLY &rarr;</em></span>`;
     front.appendChild(px(bb, { left: "540px" }));
     // its own object, not a control on the brand sign (the billboard's rule is
     // that it carries nothing to press, and test/ui/city.mjs holds that): it
-    // hangs from the billboard's underside, centred on it: the sign measures
-    // 640 wide from 540, so its centre is 860 (START_X) and the sign is 400.
-    front.appendChild(px(hire, { left: "660px" }));
+    // mounted under the billboard on two rods, centred on it: the billboard
+    // measures 640 wide from 540, so its centre is 860 (START_X); sign 520.
+    front.appendChild(px(hire, { left: "600px" }));
 
 
     // Two lines each, broken by hand rather than left to wrap. The board is a
@@ -3853,7 +3853,7 @@
     if (state.mode === "street" && state.thoughtEl.style.display !== "none") {
       const tl = state.x - 10, tr = tl + (state.thoughtW || 0);
       const tb = state.y + 120, tt = tb + (state.thoughtH || 0);
-      const hireClash = tl < 1060 && tr > 660 && tt > (g + 160 - g) && tb < 260;
+      const hireClash = tl < 1120 && tr > 600 && tt > 130 && tb < 260;
       if (hireClash) state.thoughtEl.style.visibility = "hidden";
       else if (!state.agentLine) state.thoughtEl.style.visibility = "";
     }
