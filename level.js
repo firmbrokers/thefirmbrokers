@@ -467,9 +467,14 @@
   /// only swaps a pot of 0.01+ ETH per asset, so a small holder's claim is
   /// padded with OTHER brokers' rolled credit (they get paid too — deliver is
   /// permissionless and pay only ever goes to each broker's own owner/vault).
-  const PAYDAY_OWED = 5_000_000_000_000_000n; // fees waiting in the splitter worth a harvest
+  // fees waiting in the splitter worth a harvest FROM THE CLICKER. The keeper
+  // harvests once per round since 2026-09-02 (HARVEST=1), so this is the
+  // keeper-is-dead fallback, not the normal path: at ~0.03 ETH/h of fees it
+  // takes well over an hour to reach, and a click stops paying a second
+  // wallet prompt for the pull.
+  const PAYDAY_OWED = 50_000_000_000_000_000n; // 0.05 ETH
   const WIDEN_MAX = 40; // ids a click pads a fresh pot out to (payPlan needs ~6; the keeper sweeps the rest)
-  const OWN_MIN = 1_000_000_000_000_000n; // 0.001 ETH of own pay before the machine arms a collect (a click costs ≈$1 in gas)
+  const OWN_MIN = 1_000_000_000_000_000n; // 0.001 ETH of own pay before the machine arms a collect (an unpadded click costs ≈$0.3 in gas at 0.36 gwei)
   const engineMinSwap = () => (state.stats && state.stats.minSwap) || 10_000_000_000_000_000n;
   const collectNeed = () => (engineMinSwap() * 12n) / 10n; // 20% over the swap floor
   /// The settled total a click could actually deliver (holder + padding), for

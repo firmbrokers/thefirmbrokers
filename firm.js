@@ -810,15 +810,21 @@
   /// MetaMask's own maxFeePerGas guess on RHC runs 0.1–0.8 gwei against a
   /// 0.06–0.09 gwei effective price, so a batch that costs $0.30 was shown as
   /// $6, and a wallet holding less than the ceiling could not confirm at all.
-  /// Suggesting the fee (2× the node's gas price, no tip — the sequencer
+  /// Suggesting the fee (1.25× the node's gas price, no tip — the sequencer
   /// takes none) makes the ceiling track the real price; a wallet that
   /// ignores dapp fees loses nothing. If the price read fails, send as before.
+  /// Why 1.25× and not 2× (2026-09-02): 289 base-fee samples over 24h — the
+  /// fee moves under 7% in 95% of 5-minute windows; the rare spike is 1.5–4×,
+  /// which 2× did not cover either. A ceiling below the base fee is refused
+  /// at submission (nothing is sent, nothing charged) and the click is simply
+  /// repeated; the quote, which is what holders read as "the gas fee", is
+  /// 37% lower for it.
   async function suggestedFees() {
     try {
       const j = await rpcPost({ jsonrpc: "2.0", id: 1, method: "eth_gasPrice", params: [] });
       const gp = toBig(j.result);
       if (gp <= 0n) return null;
-      return { maxFeePerGas: "0x" + (gp * 2n).toString(16), maxPriorityFeePerGas: "0x0" };
+      return { maxFeePerGas: "0x" + ((gp * 5n) / 4n).toString(16), maxPriorityFeePerGas: "0x0" };
     } catch (e) { return null; }
   }
   async function send(to, data, valueWei, from, gasLimit) {
@@ -842,23 +848,36 @@
       throw e;
     }
   }
-  /// gas for a payroll delivery, from what it actually costs: ≈28.7k per pay
-  /// slot (a 3-way split is 3 slots) + ≈100k per real swap, fitted over
-  /// mainnet receipts (150 ids / 230 slots / 2 swaps = 8.17M). Budgeted at
-  /// 45k per slot + 1.4M for up to ~13 swaps + 400k base — 30%+ over the
-  /// worst measured batch, a third of the old 150k-per-id figure that made
-  /// wallets quote a 23M-gas ceiling. Slots come from splitOf (count 0 = the
-  /// default single USDG slot); if that read fails every id is budgeted as 3.
+  /// gas for a payroll delivery, from what it actually costs. Fitted over 376
+  /// mainnet deliver receipts (2026-08-30 → 09-02): ≈203k + ≈42k per id at
+  /// the usual one slot per id; the swaps on top run ≈100k (one hop) to
+  /// ≈300k (two hops through a mid pool, plus the TWAP reads). The old
+  /// budget charged 1.4M for "up to ~13 swaps" on every batch, and a batch
+  /// swaps one asset per DISTINCT asset in its splits, usually one — so a
+  /// holder collecting three USDG brokers was quoted 3.6M gas for a 330k
+  /// charge. Now: 400k base + 50k per slot + 300k per distinct asset, which
+  /// is 20%+ over the p90 of every measured batch shape. Slots and assets
+  /// come from splitOf (count 0 = the default single USDG slot); if that read
+  /// fails every id is budgeted as 3 slots of 3 assets, the old ceiling.
   async function deliverGas(ids) {
     let slots = 0;
+    const assets = new Set();
     try {
       const raws = await callBatch(ids.map((id) => ({ to: CFG.engine, data: SEL.splitOf + word(id) })));
       for (const r of raws) {
-        const count = r && r.length >= 2 + 7 * 64 ? Number(toBig("0x" + r.slice(2 + 6 * 64, 2 + 7 * 64))) : 3;
-        slots += count > 0 ? count : 1;
+        if (!(r && r.length >= 2 + 7 * 64)) { slots += 3; assets.add("a").add("b").add("c"); continue; }
+        const wordAt = (k) => Number(toBig("0x" + r.slice(2 + k * 64, 2 + (k + 1) * 64)));
+        const count = wordAt(6);
+        if (count > 0) {
+          slots += count;
+          for (let k = 0; k < count && k < 3; k++) assets.add(wordAt(k));
+        } else {
+          slots += 1;
+          assets.add("default");
+        }
       }
-    } catch (e) { slots = ids.length * 3; }
-    return 400_000 + 45_000 * slots + 1_400_000;
+    } catch (e) { slots = ids.length * 3; assets.clear(); assets.add("a").add("b").add("c"); }
+    return 400_000 + 50_000 * slots + 300_000 * Math.max(1, assets.size);
   }
 
   // ------------------------------------------------------- many calls at once
@@ -1001,8 +1020,9 @@
     owedEngine,
     earnedAllTime,
     hiredCount,
-    // pull the fee pot in; fixed gas — harvest's estimate is the original trap
-    harvest: (from) => send(CFG.engine, SEL.harvest, 0n, from, 1_000_000),
+    // pull the fee pot in; fixed gas — harvest's estimate is the original trap.
+    // 450k: 355 mainnet harvests used 170k median, 198k max (2026-09-02).
+    harvest: (from) => send(CFG.engine, SEL.harvest, 0n, from, 450_000),
     upgradeTier: (id, tier, from) => send(CFG.nft, SEL.upgradeTier + word(id) + word(tier), 0n, from),
     fuse: (ids, from) =>
       send(CFG.nft, SEL.fuse + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""), 0n, from),
