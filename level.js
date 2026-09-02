@@ -3641,6 +3641,7 @@
       </div>
       <div class="bar">
         <button class="fb-btn small save" type="button">SAVE ON-CHAIN</button>
+        <button class="fb-btn small saveall" type="button" title="the same paycheck for every hired broker you own">APPLY TO ALL MY HIRED</button>
         <button class="fb-btn small ghost cancel" type="button">CANCEL</button>
       </div>`;
     const lines = [...ed.querySelectorAll(".line")];
@@ -3699,6 +3700,21 @@
       await txFlow("paycheck",
         () => F.setSplit(b.id, rows.map((r) => r.idx), rows.map((r) => r.pct * 100), state.account),
         async () => { closePopover(); await refreshBrokers(); });
+    });
+    // the same split for every hired broker: one signature on a smart account,
+    // one confirmation per broker otherwise (runForAll says which)
+    ed.querySelector(".saveall").addEventListener("click", async () => {
+      const { rows, ok } = check();
+      if (!ok) return;
+      const idxs = rows.map((r) => r.idx), bps = rows.map((r) => r.pct * 100);
+      const setSplitCall = (id) => {
+        const offIdx = 3 * 32, offBps = offIdx + 32 + 32 * idxs.length;
+        return { to: CFG.engine, data: F.SEL.setSplit + F.word(id) + F.word(offIdx) + F.word(offBps) + F.word(idxs.length) + idxs.map((v) => F.word(v)).join("") + F.word(bps.length) + bps.map((v) => F.word(v)).join("") };
+      };
+      const hired = (state.brokers || []).filter((x) => x.active);
+      if (!hired.length) return toast("none of your brokers is hired", false);
+      closePopover();
+      await runForAll(hired, setSplitCall, "setting the paycheck on", (n) => `paycheck set on ${n} broker${n === 1 ? "" : "s"}`);
     });
     ed.querySelector(".cancel").addEventListener("click", () => {
       ed.remove();
