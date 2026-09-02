@@ -367,7 +367,7 @@
     // the same door the street's hiring sign opens: a project's way in
     const pay = el("button", null, "BE THE PAYCHECK");
     pay.type = "button";
-    pay.addEventListener("click", () => { location.href = "apply.html"; });
+    pay.addEventListener("click", () => { location.href = "apply"; });
     chips.appendChild(pay);
     // the allowlist checker — guarded, so a stale cached page without
     // wlcheck.js simply shows no chip rather than a dead button

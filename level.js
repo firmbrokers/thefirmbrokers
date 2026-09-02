@@ -896,18 +896,19 @@
     // spawn point, in the same sign language as everything else, and it is a
     // link: the apply page is where a token becomes an extra paycheck.
     const hire = el("a", "fb-hire");
-    hire.href = "apply.html";
+    hire.href = "apply";
     hire.target = "_blank";
     hire.rel = "noopener";
     hire.title = "Build a campaign: your token, paid to brokers as wages";
     hire.innerHTML = `<i class="chain l"></i><i class="chain r"></i>
-      <span class="board"><b>PAYMASTERS WANTED</b><u>your token as wages &middot; apply &rarr;</u></span>`;
+      <span class="board"><i class="bulbs t"></i><i class="bulbs b"></i><i class="bulbs l"></i><i class="bulbs r"></i>
+        <b>PAYMASTERS WANTED</b><u>your token, paid to brokers as wages</u><em>APPLY NOW &rarr;</em></span>`;
     front.appendChild(px(bb, { left: "540px" }));
     // its own object, not a control on the brand sign (the billboard's rule is
     // that it carries nothing to press, and test/ui/city.mjs holds that): it
     // hangs from the billboard's underside, centred on it: the sign measures
-    // 640 wide from 540, so its centre is 860 (START_X) and the sign is 300.
-    front.appendChild(px(hire, { left: "710px" }));
+    // 640 wide from 540, so its centre is 860 (START_X) and the sign is 400.
+    front.appendChild(px(hire, { left: "660px" }));
 
 
     // Two lines each, broken by hand rather than left to wrap. The board is a
@@ -3847,6 +3848,15 @@
       state.thoughtEl.style.visibility = clash ? "hidden" : "";
     }
     if (state.thoughtUntil && Date.now() > state.thoughtUntil) state.thoughtEl.classList.add("faded");
+    // and it steps aside for the hiring sign, which hangs exactly over the
+    // spawn point: same rule as the booth board, the sign stays up
+    if (state.mode === "street" && state.thoughtEl.style.display !== "none") {
+      const tl = state.x - 10, tr = tl + (state.thoughtW || 0);
+      const tb = state.y + 120, tt = tb + (state.thoughtH || 0);
+      const hireClash = tl < 1060 && tr > 660 && tt > (g + 160 - g) && tb < 260;
+      if (hireClash) state.thoughtEl.style.visibility = "hidden";
+      else if (!state.agentLine) state.thoughtEl.style.visibility = "";
+    }
     const sh = state.shadowEl;
     sh.style.left = state.x - 23 + "px";
     sh.style.bottom = g - 3 + "px";
