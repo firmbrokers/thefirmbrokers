@@ -127,9 +127,12 @@
       </div>
       <div id="mine" class="msg"></div>
       <div id="sponsorBox"></div>`;
+    // a switch of account in the wallet re-renders with the new one
+    if (window.ethereum && window.ethereum.on && !window.__cpAcctHook) { window.__cpAcctHook = true; window.ethereum.on("accountsChanged", () => location.reload()); }
     document.getElementById("wallet").addEventListener("click", async () => {
       try {
         const acct = await CP.connect();
+        document.getElementById("wallet").textContent = "CONNECTED " + CP.short(acct) + " (switch account in the wallet for another role)";
         const s = await CP.summary(a, acct, []);
         const bal = CP.u(await CP.call(c.token, CP.SEL.balanceOf + CP.addrWord(acct)), 0);
         document.getElementById("mine").innerHTML = `Closed positions for ${CP.short(acct)}: earned ${CP.units(s.earned)} ${sym}, unlocked ${CP.units(s.unlocked)}, claimable ${CP.units(s.claimable)}. Live brokers show on the street. You hold ${CP.units(bal)} ${sym}.`;

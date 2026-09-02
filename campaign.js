@@ -164,7 +164,8 @@
     ]);
     const holder = slot && slot.length >= 130 ? "0x" + slot.slice(26, 66) : null;
     const weight = slot && slot.length >= 130 ? BigInt("0x" + slot.slice(66, 130)) : 0n;
-    return { holder: holder && /^0x0{40}$/.test(holder) ? null : holder, weight, earned: hexU(earned), released: hexU(released) };
+    const claimed = slot && slot.length >= 322 ? BigInt("0x" + slot.slice(258, 322)) : 0n;
+    return { holder: holder && /^0x0{40}$/.test(holder) ? null : holder, weight, earned: hexU(earned), released: hexU(released), claimed };
   }
 
   /// summary(holder, ids) -> (earned in total, unlocked so far, claimable now)
@@ -230,6 +231,13 @@
       info.appendChild(sub);
       line.appendChild(info);
       if (!state.account || (b.owner && state.account.toLowerCase() !== String(b.owner).toLowerCase())) continue;
+      if (mine && st) {
+        const cardBtn = document.createElement("button");
+        cardBtn.className = "fb-btn small";
+        cardBtn.textContent = "HIS CARD";
+        cardBtn.addEventListener("click", () => openCard(ctx, c, b, st).catch(() => {}));
+        line.appendChild(cardBtn);
+      }
       const btn = document.createElement("button");
       btn.className = "fb-btn small";
       btn.textContent = mine ? "OPT OUT" : "OPT IN";
@@ -301,5 +309,88 @@
     if (any) container.appendChild(box);
   }
 
-  window.__CAMPAIGN = { load, brokerRows, holderCard, brokerState, holderState, fmtUnits };
+  // ---------------------------------------------------------------- the share card
+  /// A 1200x675 card from real numbers: the broker's portrait and number, the
+  /// token, earned / claimable / still working, the release rule, time left.
+  /// Drawn in the browser; the holder downloads it and attaches it to the post
+  /// the SHARE button prepares. No claim about price, nothing paid for.
+  function renderCard(d) {
+    const W = 1200, H = 675;
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#15171A"; g.fillRect(0, 0, W, H);
+    g.fillStyle = "#C9A237"; g.fillRect(0, 0, W, 6);
+    // portrait, pixel-exact scaling
+    const px = 300, x0 = 70, y0 = 110;
+    g.fillStyle = "#0f1113"; g.fillRect(x0 - 10, y0 - 10, px + 20, px + 20);
+    g.fillStyle = "#C9A237"; g.fillRect(x0 - 12, y0 - 12, px + 24, 2); g.fillRect(x0 - 12, y0 + px + 10, px + 24, 2);
+    if (d.img) { g.imageSmoothingEnabled = false; g.drawImage(d.img, x0, y0, px, px); }
+    const mono = "'Menlo', 'Courier New', monospace";
+    const dot = " \u00b7 ";
+    g.fillStyle = "#C9A237"; g.font = "bold 22px " + mono;
+    g.fillText("FIRM BROKERS" + dot + "SPONSORED PAYROLL", 70, 66);
+    g.fillStyle = "#F4F3EF"; g.font = "bold 40px " + mono;
+    g.fillText(`MY BROKER #${d.id}`, 420, 150);
+    g.fillText(`CLOCKED INTO $${d.symbol}`, 420, 198);
+    const rows = [["EARNED", d.earned], ["CLAIMABLE", d.claimable], ["STILL WORKING", d.locked]];
+    let y = 262;
+    for (const [k, v] of rows) {
+      g.fillStyle = "#878C93"; g.font = "20px " + mono; g.fillText(k, 420, y);
+      g.fillStyle = "#F4F3EF"; g.font = "bold 36px " + mono; g.fillText(`${v} $${d.symbol}`, 420, y + 42);
+      y += 96;
+    }
+    g.fillStyle = "#878C93"; g.font = "20px " + mono;
+    g.fillText(d.release, 70, 566);
+    g.fillText(d.remaining, 70, 596);
+    g.fillStyle = "#4E535A"; g.font = "18px " + mono;
+    g.fillText("bought on the open market, paid by the hour, on top of the wage", 70, 640);
+    g.fillStyle = "#C9A237"; g.fillText("every number is on chain" + dot + "thefirmbrokers.com/campaign", 70, 664);
+    return cv;
+  }
+  function timeLeft(ts) {
+    const s = Number(ts) - Date.now() / 1000;
+    if (s <= 0) return "distribution finished";
+    const dd = Math.floor(s / 86400), hh = Math.floor((s % 86400) / 3600);
+    return `campaign time remaining: ${dd ? dd + "d " : ""}${hh}h`;
+  }
+  async function openCard(ctx, c, b, st) {
+    ensureCss();
+    const d = {
+      id: b.id, symbol: c.symbol,
+      earned: fmtUnits(st.earned), claimable: fmtUnits(st.released > st.claimed ? st.released - st.claimed : 0n), locked: fmtUnits(st.earned > st.released ? st.earned - st.released : 0n),
+      release: c.delay > 0n ? `release: ${delayText(c.delay)}` : "release: unlocks as it is earned",
+      remaining: timeLeft(c.distributionEnd), img: null,
+    };
+    try {
+      d.img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = `art/images/${b.artwork}.png`; });
+    } catch (e) { d.img = null; }
+    const cv = renderCard(d);
+    const wrap = document.createElement("div");
+    wrap.className = "fb-camp";
+    wrap.style.cssText = "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:9999;max-width:min(92vw,640px);background:#15171A;padding:12px";
+    const caption = `MY BROKER #${b.id} CLOCKED INTO $${c.symbol}\nEarned: ${d.earned}\nClaimable: ${d.claimable}\nStill working: ${d.locked}\n${location.origin}/campaign?c=${c.address}`;
+    wrap.innerHTML = `<header><b>HIS CARD</b><span>real numbers, drawn now</span></header>`;
+    cv.style.cssText = "width:100%;height:auto;display:block;image-rendering:pixelated";
+    wrap.appendChild(cv);
+    const row = document.createElement("div");
+    row.className = "line";
+    const dl = document.createElement("a");
+    dl.className = "fb-btn small"; dl.textContent = "DOWNLOAD PNG"; dl.download = `broker-${b.id}-${c.symbol}.png`;
+    cv.toBlob((blob) => { dl.href = URL.createObjectURL(blob); });
+    const share = document.createElement("a");
+    share.className = "fb-btn small"; share.textContent = "SHARE ON X"; share.target = "_blank"; share.rel = "noopener";
+    share.href = "https://x.com/intent/post?text=" + encodeURIComponent(caption);
+    const close = document.createElement("button");
+    close.className = "fb-btn small"; close.textContent = "CLOSE";
+    close.addEventListener("click", () => wrap.remove());
+    row.appendChild(dl); row.appendChild(share); row.appendChild(close);
+    wrap.appendChild(row);
+    const hint = document.createElement("div");
+    hint.className = "sub"; hint.textContent = "download the card, then attach it to the post the SHARE button opens";
+    wrap.appendChild(hint);
+    document.body.appendChild(wrap);
+  }
+
+  window.__CAMPAIGN = { load, brokerRows, holderCard, brokerState, holderState, fmtUnits, renderCard, openCard };
 })();
