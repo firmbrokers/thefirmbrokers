@@ -124,7 +124,7 @@ window.FIRM_CFG = {
   // ---- sponsored campaigns (SPONSORED_CAMPAIGN_PLAN.md) ----
   // The CampaignFactory. Empty = no campaign UI anywhere. Fill it after
   // script/DeployCampaign.s.sol --sig "factory()" has landed and is verified.
-  campaignFactory: "0x876FF78cAD7DF65CE990c1733eE8a39d28c83aA0", // deployed 2026-09-02 by the operator wallet; owner = operator
+  campaignFactory: "0xAd7F5280630786a633B02Ba12B448DDc97cF0400", // deployed 2026-09-02 by the operator wallet; owner = operator
 
   // letscash pool page for buying $9TO5
   buyUrl: "https://www.letscash.fun/",
