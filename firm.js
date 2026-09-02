@@ -1011,8 +1011,16 @@
     if (!calls.length) return { batched: false, done: 0 };
     if (calls.length > 1 && (await batchSupported(from))) {
       try {
-        if (onStep) onStep(0, calls.length, true);
-        await sendCalls(calls, from);
+        // MetaMask refuses a batch of more than ten calls ("Batch size cannot
+        // exceed 10", seen 2026-09-02 with 50 setSplits), so a roster goes in
+        // pages of ten: five confirmations for fifty brokers, not fifty
+        const PAGE = 10;
+        let sent = 0;
+        while (sent < calls.length) {
+          if (onStep) onStep(sent, calls.length, true);
+          await sendCalls(calls.slice(sent, sent + PAGE), from);
+          sent += Math.min(PAGE, calls.length - sent);
+        }
         return { batched: true, done: calls.length };
       } catch (e) {
         // a wallet that claimed the capability and then refused it must not
