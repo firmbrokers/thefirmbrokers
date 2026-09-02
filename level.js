@@ -1444,7 +1444,9 @@
   /// same way auction.js builds the sale room: guarded, so a missing or broken
   /// file leaves an honest empty room rather than half of one.
   function buildCashcatRoom() {
-    roomShell(2900, [470, 1180, 2120, 2650]);
+    // 3700 since 2026-09-02: the payroll desk, the payroll board and the guest
+    // book took the wall past the box
+    roomShell(3700, [470, 1180, 2120, 2650, 3250]);
     let built = false;
     try {
       if (window.__CASHCAT && window.__CASHCAT.room) {
@@ -2053,7 +2055,9 @@
         rebuildRoom();
         return;
       }
-      goHire();   // nothing to seat: the auction is where you get one
+      // nothing to seat: the Market is where you buy one, and its value sort
+      // is the page's best feature, so that is where the plate points
+      location.href = "market.html?sort=value";
     });
     px(d, { left: x + "px" });
     roomLayer.appendChild(d);
@@ -4146,6 +4150,19 @@
       const c = el("div", "fb-card");
       mintDesk(s, c, false);
       room.appendChild(c);
+      // the auction house had no presence on this page at all, so a phone
+      // never learned the site's daily event exists, let alone that it sells
+      if (auctionLive() && window.__AUCTION && window.__AUCTION.lastHammer) {
+        const a = el("div", "fb-card");
+        a.innerHTML = `<h2>THE AUCTION HOUSE</h2><p>One broker a day on the stage, bidding in ${CFG.featureAsset || "FRONG"}, hammer at five New York. Outbid and you get 105% back. Walk the street to bid.</p><p class="fb-mintnote">Reading the last hammer…</p>`;
+        room.appendChild(a);
+        window.__AUCTION.lastHammer(F, CFG).then((h) => {
+          const note = a.querySelector(".fb-mintnote");
+          if (!h) { note.textContent = "No lot has closed yet."; return; }
+          const when = new Date(h.endsAt * 1000).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+          note.innerHTML = `LAST HAMMER · LOT ${h.lotId} · ${h.art ? "BROKER #" + h.art : "BROKER"} · <b>${h.price}</b> · ${when} NY`;
+        }).catch(() => { a.querySelector(".fb-mintnote").textContent = "The chain did not answer."; });
+      }
     });
 
     flatSection(host, "Trading Floor", zoneLive(ZONES[2]) ? "your brokers" : "locked", (room) => {
@@ -4251,15 +4268,15 @@
   // The list checker's street door: a chip beside DOCS. Built only when the
   // module is present, so a stale cache degrades to no button rather than a
   // dead one, and clicking APPLY inside the modal opens the real form.
-  if (window.__WL_CHECK) {
-    const wb = el("button", "fb-hudbtn", "THE LIST");
-    wb.id = "fb-wlbtn";
-    wb.type = "button";
-    // after the cut the modal must never offer the form, so no onApply is passed
-    wb.addEventListener("click", () =>
-      window.__WL_CHECK.open(state.account || undefined, applyClosed() ? {} : { onApply: () => openApply() }));
-    const db = $("fb-docsbtn");
-    if (db && db.parentElement) db.parentElement.insertBefore(wb, db);
+  // THE LIST button is gone (every broker is minted); the checker still exists
+  // for anyone holding an old link, behind #list, and loads only then: the
+  // street stops shipping wlcheck.js to every visitor for a list nobody can
+  // join. The handbook's "how the mint went" note carries the one link.
+  if (location.hash === "#list") {
+    const sc = document.createElement("script");
+    sc.src = "wlcheck.js";
+    sc.onload = () => { try { window.__WL_CHECK && window.__WL_CHECK.open(state.account || undefined, {}); } catch (e) { /* the modal is a courtesy */ } };
+    document.head.appendChild(sc);
   }
 
   $("fb-flatbtn")?.addEventListener("click", () => {
@@ -4282,6 +4299,26 @@
   } catch (e) { /* no font loading api: the first measurement stands */ }
   refreshStats();
   setInterval(refreshStats, 60000);
+
+  /// THE HAMMER, on the street. The auction is the site's daily event and
+  /// nothing outside the room said a lot had sold. Once a lot closes, anyone
+  /// on the street in the eight hours after the hammer sees it once (per lot,
+  /// per tab), whether they arrive later or are standing there when it falls.
+  async function announceHammer() {
+    if (!(CFG.auction && CFG.auctionToken && window.__AUCTION && window.__AUCTION.lastHammer)) return;
+    if (state.mode !== "street") return;
+    let h = null;
+    try { h = await window.__AUCTION.lastHammer(F, CFG); } catch (e) { return; }
+    if (!h) return;
+    const age = Date.now() / 1000 - h.endsAt;
+    if (age < 0 || age > 8 * 3600) return;
+    const key = "fb-hammer-" + h.lotId;
+    try { if (sessionStorage.getItem(key)) return; sessionStorage.setItem(key, "1"); } catch (e) { /* storage blocked: say it anyway */ }
+    const who = h.bidder ? h.bidder.slice(0, 6) + "\u2026" + h.bidder.slice(-4) : "";
+    toast(`HAMMER \u00b7 LOT ${h.lotId} \u00b7 ${h.art ? "BROKER #" + h.art : "TODAY'S BROKER"} SOLD FOR ${h.price}${who ? " \u00b7 TO " + who : ""}`);
+  }
+  setTimeout(announceHammer, 4000);
+  setInterval(announceHammer, 120000);
   setInterval(() => state.account && refreshBrokers(), 90000);
   if (wantsFlat()) {
     setFlat(true, false);

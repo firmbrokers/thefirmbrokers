@@ -200,6 +200,9 @@
     const more = $("#mk-more"); if (more) more.addEventListener("click", () => { shown += 24; renderRows(); });
   }
   document.querySelectorAll(".mk-board .tabs button").forEach((b) => b.addEventListener("click", () => { sortBy = b.dataset.sort; document.querySelectorAll(".mk-board .tabs button").forEach((o) => o.classList.toggle("on", o === b)); renderRows(); }));
+  // the trading floor's empty desks arrive here with ?sort=value
+  { const want = new URLSearchParams(location.search).get("sort");
+    if (["price", "level", "value"].includes(want)) { sortBy = want; document.querySelectorAll(".mk-board .tabs button").forEach((o) => o.classList.toggle("on", o.dataset.sort === want)); } }
 
   // ------------------------------------------------------------ the card
   const ago = (blk, head) => { if (!blk || !head) return DASH; const h = Math.max(0, (head - blk) / 10 / 3600); return h < 1 ? "<1 h" : h < 48 ? `${Math.floor(h)} h` : `${Math.floor(h / 24)} d`; }; // floored: never a claim of more than the chain shows

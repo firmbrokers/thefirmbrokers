@@ -955,6 +955,15 @@
     host.appendChild(card);
     const mount = { card, tote: card, desk: card.querySelector(".au-desk"), stage: null, root: host };
     start(ctx, mount, true);
+    // the last hammer, so the phone page says the house has actually sold
+    const lh = el("div", "fine");
+    lh.style.marginTop = "10px";
+    card.appendChild(lh);
+    lastHammer(F, CFG).then((h) => {
+      if (!h) { lh.remove(); return; }
+      const when = new Date(h.endsAt * 1000).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      lh.innerHTML = `LAST HAMMER \u00b7 LOT ${h.lotId} \u00b7 ${h.art ? "BROKER #" + h.art : "BROKER"} \u00b7 <b style="color:#ffd75e">${h.price}</b> \u00b7 ${when} NY`;
+    });
     return mount;
   }
 
@@ -1392,5 +1401,27 @@
     try { return BigInt(i) * 10n ** BigInt(dec) + BigInt(frac || "0"); } catch (e) { return null; }
   }
 
-  window.__AUCTION = { room, flatCard, decodeLotView, decodeLadder, parseAmount, nothingScheduled, fmtUnits, exactUnits };
+  /// The last lot that SOLD, for the street and the flat page: nothing outside
+  /// the room used to say the hammer had fallen. One recent(1) read, then the
+  /// same lotView decode the wall uses. Null when nothing has sold.
+  async function lastHammer(F, CFG) {
+    try {
+      // two round trips, both batched: F.call alone measured ~2 s each here
+      const head = await F.callBatch([
+        { to: CFG.auction, data: SEL.recent + F.word(1) },
+        { to: CFG.auctionToken, data: SEL.symbol }, { to: CFG.auctionToken, data: SEL.decimals }]);
+      const ids = decodeUintArray(head[0]);
+      if (!ids.length) return null;
+      const sym = decodeStr(head[1]) || "TOKEN";
+      const dec = head[2] ? Number(F.toBig(head[2])) : 18;
+      const v = decodeLotView((await F.callBatch([{ to: CFG.auction, data: SEL.lotView + F.word(ids[0]) }]))[0]);
+      if (!v || v.outcome !== SOLD) return null;
+      let art = 0;
+      try { const a = (await F.callBatch([{ to: CFG.nft, data: SEL.artworkOf + F.word(v.tokenId) }]))[0]; if (a) art = Number(F.toBig(a)); } catch (e) { /* unknown stays 0 */ }
+      return { lotId: v.lotId, art, tokenId: v.tokenId, endsAt: v.endsAt, bidder: v.bidder,
+        price: fmtUnits(v.highest, dec, 0) + " " + sym };
+    } catch (e) { return null; }
+  }
+
+  window.__AUCTION = { room, flatCard, decodeLotView, decodeLadder, parseAmount, nothingScheduled, fmtUnits, exactUnits, lastHammer };
 })();
