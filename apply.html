@@ -121,17 +121,17 @@
 
 <section class="step locked" id="s-fund">
   <h3>Fund it</h3>
-  <p class="msg">Send the budget to the campaign address. Any amount, any time, more later if you like. Withdrawable by you until we approve.</p>
+  <p class="msg">Send the budget to the campaign address. Any amount, any time, more later if you like. Withdrawable by you until the campaign starts. This is the last step.</p>
   <div class="form"><label><b>Amount in ETH</b><input id="fundAmt" type="number" step="0.01" min="0"></label></div>
   <button class="btn" id="fund">SEND</button>
   <div id="fundMsg" class="msg"></div>
 </section>
 
 <section class="step locked" id="s-submit">
-  <h3>Tell us who you are</h3>
-  <p class="msg">The details above go to our review queue with the campaign address. We check the token, the pool, the project and the timing, then approve with a start date, or tell you why not.</p>
-  <button class="btn" id="submit">SUBMIT FOR REVIEW</button>
+  <h3>In review</h3>
+  <p class="msg">Your project details and the campaign address went to our review queue the moment the campaign was created. We check the token, the pool, the project and the timing, then approve with a start date, or tell you why not, on the contact you gave, usually within a day.</p>
   <div id="submitMsg" class="msg"></div>
+  <button class="btn ghost" id="submit" hidden>RESEND THE DETAILS</button>
 </section>
 </div>
 
@@ -241,6 +241,7 @@
       $("createMsg").innerHTML = `Created. Your campaign address: <span class="addr">${mine}</span> · <a href="${CP.explorer(mine)}" target="_blank" rel="noopener">explorer</a> · <a href="/campaign?c=${mine}">its page</a>`;
       $("s-fund").classList.remove("locked");
       $("s-submit").classList.remove("locked");
+      submitMeta();
     } catch (e) {
       $("createMsg").className = "msg bad";
       $("createMsg").textContent = String(e.message || e).slice(0, 220);
@@ -266,26 +267,28 @@
     $("fund").disabled = false;
   });
 
-  $("submit").addEventListener("click", async () => {
+  $("submit").addEventListener("click", submitMeta);
+  async function submitMeta() {
     if (!st.campaign) return;
+    $("submit").hidden = true;
     const body = { campaign: st.campaign, tier: st.tier, name: $("pname").value.trim(), ticker: st.tokenInfo ? st.tokenInfo.symbol : "", website: $("website").value.trim(), x: $("xacct").value.trim(), chat: $("chat").value.trim(), contact: $("contact").value.trim(), proof: $("proof").value.trim() };
     if (!CP.CAMPAIGN_API) {
       $("submitMsg").innerHTML = `The review queue is not online yet. Send the campaign address <span class="addr">${st.campaign}</span> and your contact to <a href="https://x.com/thefirmbrokers" target="_blank" rel="noopener">@thefirmbrokers</a> and we take it from there.`;
       return;
     }
-    $("submit").disabled = true;
     try {
       const r = await fetch(CP.CAMPAIGN_API + "/api/submit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "submit failed");
       $("submitMsg").className = "msg good";
-      $("submitMsg").textContent = "In the queue. We reply on the contact you gave, usually within a day.";
+      $("submitMsg").innerHTML = `<span class="state">IN THE REVIEW QUEUE</span> Fund it above if you have not yet; nothing is spent before approval.`;
     } catch (e) {
       $("submitMsg").className = "msg bad";
-      $("submitMsg").textContent = String(e.message || e).slice(0, 220);
+      $("submitMsg").textContent = "The details did not reach the queue (" + String(e.message || e).slice(0, 120) + "). Try again, or send us the campaign address on X.";
+      $("submit").hidden = false;
       $("submit").disabled = false;
     }
-  });
+  }
 
   render();
 })();
