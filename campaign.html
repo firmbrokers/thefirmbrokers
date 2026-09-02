@@ -9,7 +9,7 @@
 <meta property="og:title" content="Campaigns">
 <meta property="og:description" content="A partner's token, bought on the open market and paid to brokers hour by hour. Every number is on chain.">
 <meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
-<link rel="stylesheet" href="campaign.css?v=1788364233">
+<link rel="stylesheet" href="campaign.css">
 <style>
 .list{display:grid;gap:12px}
 .card{border:1px solid var(--rule);border-radius:8px;padding:14px 16px;background:var(--card);display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center;text-decoration:none;color:inherit}
@@ -46,8 +46,8 @@
 <div id="app"><p class="plain">Loading from the chain…</p></div>
 </div>
 
-<script src="config.js?v=1788364233"></script>
-<script src="campaign-pages.js?v=1788364233"></script>
+<script src="config.js"></script>
+<script src="campaign-pages.js"></script>
 <script>
 (async function () {
   const app = document.getElementById("app");
@@ -123,7 +123,7 @@
       <div class="actions">
         <a class="btn" href="/">OPEN THE STREET</a>
         <a class="btn ghost" href="https://x.com/intent/post?text=${share}" target="_blank" rel="noopener">SHARE ON X</a>
-        <button class="btn ghost" id="wallet">CONNECT TO SEE YOURS</button>
+        <button class="btn ghost" id="wallet">CONNECT (holder, sponsor or operator)</button>
       </div>
       <div id="mine" class="msg"></div>
       <div id="sponsorBox"></div>`;
@@ -134,8 +134,44 @@
         const bal = CP.u(await CP.call(c.token, CP.SEL.balanceOf + CP.addrWord(acct)), 0);
         document.getElementById("mine").innerHTML = `Closed positions for ${CP.short(acct)}: earned ${CP.units(s.earned)} ${sym}, unlocked ${CP.units(s.unlocked)}, claimable ${CP.units(s.claimable)}. Live brokers show on the street. You hold ${CP.units(bal)} ${sym}.`;
         if (acct.toLowerCase() === c.sponsor.toLowerCase()) sponsorPanel(acct);
+        const owner = CP.addr(await CP.call(CP.FACTORY, CP.SEL.owner), 0);
+        if (owner && acct.toLowerCase() === owner.toLowerCase()) operatorPanel(acct);
       } catch (e) { document.getElementById("mine").textContent = String(e.message || e); }
     });
+    /// The operator's two switches, for the wallet that owns the factory:
+    /// approve with a start (at most 30 days out), and pause or resume buys.
+    function operatorPanel(acct) {
+      const box = document.createElement("div");
+      box.innerHTML = `<h2 class="sec">Operator</h2>
+        ${c.approved ? `<p class="plain">Approved. Starts ${CP.date(c.startAt)}.</p>` : `<p class="plain">Not approved yet. Approving fixes the calendar; the sponsor can still withdraw until the start.</p>
+        <div class="form" style="display:grid;gap:10px;max-width:420px"><label style="display:grid;gap:5px;font-size:14px"><b>Starts in</b><select id="opStart" style="font:inherit;padding:8px;border:1px solid var(--rule);border-radius:6px;background:var(--card);color:var(--ink)">
+          <option value="300">5 minutes</option><option value="3600">1 hour</option><option value="21600">6 hours</option><option value="86400">tomorrow, same time</option><option value="req">the requested date (${CP.date(c.requestedStart)})</option></select></label></div>
+        <div class="actions"><button class="btn" id="opApprove">APPROVE</button></div>`}
+        <div class="actions"><button class="btn ghost" id="opPause">${c.paused ? "RESUME BUYS" : "PAUSE BUYS"}</button></div>
+        <div id="opMsg" class="msg"></div>`;
+      document.getElementById("sponsorBox").appendChild(box);
+      const say = (t, cls) => { const m = document.getElementById("opMsg"); m.className = "msg " + (cls || ""); m.textContent = t; };
+      const ap = document.getElementById("opApprove");
+      if (ap) ap.addEventListener("click", async () => {
+        ap.disabled = true;
+        try {
+          const v = document.getElementById("opStart").value;
+          const now = Math.floor(Date.now() / 1000);
+          let start = v === "req" ? Number(c.requestedStart) : now + Number(v);
+          if (start < now + 60) start = now + 60;
+          say("confirm in your wallet…");
+          await CP.send({ to: a, data: "0x34041397" + CP.word(start), gas: "0x" + (120_000).toString(16) });
+          say("approved; starts " + CP.date(start) + ". Reload to see it.", "good");
+        } catch (e) { say(String(e.message || e).slice(0, 200), "bad"); ap.disabled = false; }
+      });
+      document.getElementById("opPause").addEventListener("click", async () => {
+        try {
+          say("confirm in your wallet…");
+          await CP.send({ to: a, data: "0x16c38b3c" + CP.word(c.paused ? 0 : 1), gas: "0x" + (80_000).toString(16) });
+          say((c.paused ? "buys resumed" : "buys paused") + ". Reload to see it.", "good");
+        } catch (e) { say(String(e.message || e).slice(0, 200), "bad"); }
+      });
+    }
     function sponsorPanel(acct) {
       const now = Math.floor(Date.now() / 1000);
       const canRefund = !c.approved && c.balance > 0n;
