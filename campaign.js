@@ -211,8 +211,10 @@
     if (!running.length) return;
     const box = document.createElement("div");
     box.className = "fb-camp";
+    box.dataset.kind = "rows";
     box.innerHTML = `<header><b>EXTRA PAYCHECK</b><span>A partner pays him in their token, on top of his wage. Free to join.</span></header>`;
-    card.appendChild(box);
+    const holderBox = card.querySelector('.fb-camp[data-kind="holder"]');
+    if (holderBox) card.insertBefore(box, holderBox); else card.appendChild(box);
     for (const c of running) {
       const line = document.createElement("div");
       line.className = "line";
@@ -271,6 +273,7 @@
     const ids = (state.brokers || []).map((x) => x.id);
     const box = document.createElement("div");
     box.className = "fb-camp";
+    box.dataset.kind = "holder";
     box.innerHTML = `<header><b>YOUR EXTRA PAY</b><span>What your brokers earned from partners. Claim it any time it is unlocked.</span></header>`;
     let any = false;
     for (const c of list) {
