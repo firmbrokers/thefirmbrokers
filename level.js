@@ -668,7 +668,10 @@
       state.stats = s;
       // every broker minted: THE LIST button and the flat page's chip point at
       // a whitelist nobody can use any more
-      if (soldOutNow()) { $("fb-wlbtn")?.remove(); $("fh-wlchip")?.remove(); }
+      if (soldOutNow()) {
+        window.__FB_SOLD_OUT = true;   // flathero.js reads this when it builds its chips
+        $("fb-wlbtn")?.remove(); $("fh-wlchip")?.remove();
+      }
       // the token is on chain the moment config.js names it; the burned read is
       // a number for the HUD, not the door key — one flaky eth_call must never
       // show the bank as "locked" (seen 2026-08-29 in the user's own tab)

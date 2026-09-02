@@ -366,7 +366,9 @@
     });
     // the allowlist checker — guarded, so a stale cached page without
     // wlcheck.js simply shows no chip rather than a dead button
-    if (window.__WL_CHECK) {
+    // and not once every broker is minted: level.js raises __FB_SOLD_OUT from
+    // the chain's own count, and the chip pointed at a list nobody can use
+    if (window.__WL_CHECK && !window.__FB_SOLD_OUT) {
       const b = el("button", null, "AM I ON THE LIST?");
       b.type = "button";
       b.id = "fh-wlchip";
