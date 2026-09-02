@@ -192,6 +192,9 @@ window.CP = (function () {
   async function connect() {
     const p = provider();
     if (!p) throw new Error("no wallet in this browser");
+    // ask for the account chooser every time: a site that is already
+    // connected to one account otherwise never gets offered another one
+    try { await p.request({ method: "wallet_requestPermissions", params: [{ eth_accounts: {} }] }); } catch (e) { /* older wallets: fall through */ }
     const accs = await p.request({ method: "eth_requestAccounts" });
     account = accs[0];
     try {
