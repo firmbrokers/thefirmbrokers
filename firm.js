@@ -965,18 +965,23 @@
   ///
   /// Every step is wrapped so a wallet that answers the capability query oddly
   /// can never break claiming: anything unexpected falls through to the loop.
+  /// Why the last batch attempt did or did not batch, in the wallet's words,
+  /// so a room can show it instead of silently prompting N times.
+  let batchNote = "";
   async function batchSupported(from) {
     const p = provider();
-    if (!p || !from) return false;
+    if (!p || !from) { batchNote = "no wallet"; return false; }
     try {
       const caps = await p.request({ method: "wallet_getCapabilities", params: [from, [CFG.chainHex]] });
-      const c = caps && (caps[CFG.chainHex] || caps[CFG.chainHex.toLowerCase()]);
-      if (!c) return false;
+      const c = caps && (caps[CFG.chainHex] || caps[CFG.chainHex.toLowerCase()] || caps[String(parseInt(CFG.chainHex, 16))]);
+      if (!c) { batchNote = "wallet reports no batch capability on this chain"; return false; }
       // the spec renamed this: atomicBatch.supported became atomic.status
-      if (c.atomicBatch && c.atomicBatch.supported) return true;
+      if (c.atomicBatch && c.atomicBatch.supported) { batchNote = ""; return true; }
       const s = c.atomic && c.atomic.status;
-      return s === "supported" || s === "ready";
-    } catch (e) { return false; }
+      if (s === "supported" || s === "ready") { batchNote = ""; return true; }
+      batchNote = "wallet says batching is " + (s || "unsupported") + " for this account";
+      return false;
+    } catch (e) { batchNote = "wallet refused the capability query: " + String(e && e.message).slice(0, 80); return false; }
   }
 
   async function sendCalls(calls, from) {
@@ -1013,6 +1018,9 @@
         // a wallet that claimed the capability and then refused it must not
         // leave the roster unclaimed; the loop below is always available
         if (String(e && e.message).includes("not confirmed")) throw e;
+        batchNote = "wallet refused the batch: " + String(e && (e.message || e)).slice(0, 100);
+        console.warn("batch refused, falling back to one by one:", e);
+        if (onStep) onStep(0, calls.length, false);
       }
     }
     let done = 0;
@@ -1133,6 +1141,7 @@
     upgradeCall: (id, tier) => ({ to: CFG.nft, data: SEL.upgradeTier + word(id) + word(tier) }),
     runCalls,
     batchSupported,
+    get batchNote() { return batchNote; },
   };
   window.Firm = api;
 })();

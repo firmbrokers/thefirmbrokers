@@ -428,9 +428,9 @@
     const calls = list.map((b) => makeCall(b.id));
     try {
       const one = list.length === 1 || (await F.batchSupported(state.account));
-      if (!one) toast(`${list.length} brokers, ${list.length} confirmations`);
+      if (!one) toast(`${list.length} brokers, ${list.length} confirmations` + (F.batchNote ? ` — ${F.batchNote}` : ""));
       const res = await F.runCalls(calls, state.account, (done, total, batched) => {
-        toast(batched ? `${working} all ${total}…` : `broker ${done + 1} of ${total}…`);
+        toast(batched ? `${working} all ${total}…` : `broker ${done + 1} of ${total}…` + (done === 0 && F.batchNote ? ` — ${F.batchNote}` : ""));
       });
       toast(finished(res.done), true);
     } catch (e) {
