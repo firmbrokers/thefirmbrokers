@@ -891,7 +891,23 @@
     // the worst possible moment for it. Buying lives in the zone bar on every
     // screen and at the bank's cash machine, which is where it belongs.
     bb.appendChild(bbInner);
+    // The hiring sign, chained under the billboard: the one thing on the
+    // street that speaks to a PROJECT rather than a holder. It hangs at the
+    // spawn point, in the same sign language as everything else, and it is a
+    // link: the apply page is where a token becomes an extra paycheck.
+    const hire = el("a", "fb-hire");
+    hire.href = "apply.html";
+    hire.target = "_blank";
+    hire.rel = "noopener";
+    hire.title = "Build a campaign: your token, paid to brokers as wages";
+    hire.innerHTML = `<i class="chain l"></i><i class="chain r"></i>
+      <span class="board"><b>PAYMASTERS WANTED</b><u>your token as wages &middot; apply &rarr;</u></span>`;
     front.appendChild(px(bb, { left: "540px" }));
+    // its own object, not a control on the brand sign (the billboard's rule is
+    // that it carries nothing to press, and test/ui/city.mjs holds that): it
+    // hangs from the billboard's underside, centred on it: the sign measures
+    // 640 wide from 540, so its centre is 860 (START_X) and the sign is 300.
+    front.appendChild(px(hire, { left: "710px" }));
 
 
     // Two lines each, broken by hand rather than left to wrap. The board is a

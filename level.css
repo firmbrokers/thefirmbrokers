@@ -277,6 +277,41 @@ button { font-family: inherit; cursor: pointer; }
   background: linear-gradient(90deg, #3a4148, #21262c); border: 3px solid var(--ink);
 }
 .fb-billboard::before { left: 16%; }
+
+/* ---- the hiring sign, chained under the billboard (2026-09-02) ---- */
+.fb-hire {
+  /* the billboard's box ends 260px above the ground (measured); the sign's 60px hang from there */
+  position: absolute; bottom: calc(var(--ground-h) + 200px); width: 300px; height: 60px;
+  display: block; text-decoration: none; transform-origin: 50% -4px; z-index: 3;
+  animation: fb-sway 6s ease-in-out infinite alternate;
+}
+.fb-hire .chain {
+  position: absolute; top: 0; width: 4px; height: 14px;
+  background: repeating-linear-gradient(#7b8590 0 3px, transparent 3px 5px);
+}
+.fb-hire .chain.l { left: 36px; } .fb-hire .chain.r { right: 36px; }
+.fb-hire .board {
+  position: absolute; top: 14px; left: 0; right: 0; height: 44px; box-sizing: border-box;
+  padding: 7px 10px 6px; text-align: center;
+  background: linear-gradient(#10151d, #0a0e14); border: 3px solid #06080c;
+  box-shadow: 0 0 0 3px #3a4148, 0 0 14px #ffc9332a, 4px 5px 0 rgba(25, 19, 9, 0.34);
+}
+.fb-hire .board::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(0deg, transparent 0 3px, #00000048 3px 4px);
+}
+.fb-hire b {
+  display: block; font-family: var(--font-display); font-size: 8px; letter-spacing: .04em;
+  color: var(--gold); text-shadow: 0 0 8px #ffc93370;
+}
+.fb-hire u {
+  display: block; text-decoration: none; margin-top: 3px; line-height: 1;
+  font-family: var(--font-data); font-size: 15px; color: #9fe0af; text-shadow: 0 0 6px #6fe08c44;
+}
+.fb-hire:hover .board { box-shadow: 0 0 0 3px #56626d, 0 0 24px #ffc93355, 4px 5px 0 rgba(25, 19, 9, 0.34); }
+.fb-hire:hover b { color: #fff1b8; }
+@keyframes fb-sway { from { transform: rotate(-1.2deg); } to { transform: rotate(1.2deg); } }
+@media (prefers-reduced-motion: reduce) { .fb-hire { animation: none; } }
 .fb-billboard::after { right: 16%; }
 
 /* signposts along the walk: LED displays standing on chart candles */
