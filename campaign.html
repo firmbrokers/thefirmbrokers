@@ -119,7 +119,9 @@
         <span>Sponsor</span><b class="addr">${c.sponsor}</b>
       </div>
       <h2 class="sec">Your brokers</h2>
-      <p class="plain">Opting in, and claiming, happens in each broker's file on <a href="/">the street</a>: open a broker, and the campaign row is under his paycheck. One click opts your whole roster in.</p>
+      <p class="plain">Opting in, and claiming, happens in each broker's file on <a href="/">the street</a>: open a broker, and the campaign row is under his paycheck. One click opts your whole roster in. If you know your broker numbers, you can do both right here.</p>
+      <div class="form" style="display:grid;gap:8px;max-width:520px;margin:10px 0"><label style="display:grid;gap:5px;font-size:14px"><b>Your broker numbers, comma separated</b><input id="myIds" placeholder="52, 53, 54" style="font:inherit;padding:8px;border:1px solid var(--rule);border-radius:6px;background:var(--card);color:var(--ink)"></label>
+        <div class="actions" style="margin:0"><button class="btn" id="idOptIn">OPT THESE IN</button><button class="btn ghost" id="idClaim">CLAIM FOR THESE</button><button class="btn ghost" id="idShow">SHOW THEIR NUMBERS</button></div><div id="idMsg" class="msg"></div></div>
       <div class="actions">
         <a class="btn" href="/">OPEN THE STREET</a>
         <a class="btn ghost" href="https://x.com/intent/post?text=${share}" target="_blank" rel="noopener">SHARE ON X</a>
@@ -129,6 +131,23 @@
       <div id="sponsorBox"></div>`;
     // a switch of account in the wallet re-renders with the new one
     if (window.ethereum && window.ethereum.on && !window.__cpAcctHook) { window.__cpAcctHook = true; window.ethereum.on("accountsChanged", () => location.reload()); }
+    const idsFromBox = () => (document.getElementById("myIds").value.match(/\d+/g) || []).map(Number).filter((n) => n > 0 && n <= 5000);
+    const idSay = (t, cls) => { const m = document.getElementById("idMsg"); m.className = "msg " + (cls || ""); m.innerHTML = t; };
+    document.getElementById("idShow").addEventListener("click", async () => {
+      const ids = idsFromBox(); if (!ids.length) return idSay("type at least one broker number");
+      const rows = await CP.multicall(ids.flatMap((i) => [{ to: a, data: "0x387dd9e9" + CP.word(i) }, { to: a, data: "0x4d6ed8c4" + CP.word(i) }, { to: a, data: "0xa94d373b" + CP.word(i) }]));
+      idSay(ids.map((i, k) => { const sl = rows[k * 3]; const holder = CP.addr(sl, 0); const inC = holder && !/^0x0{40}$/.test(holder); const claimed = CP.u(sl, 4); const earned = CP.u(rows[k * 3 + 1], 0); const rel = CP.u(rows[k * 3 + 2], 0); return `#${i}: ${inC ? `opted in by ${CP.short(holder)} · earned ${CP.units(earned)} · unlocked ${CP.units(rel)} · claimable ${CP.units(rel > claimed ? rel - claimed : 0n)} ${sym}` : "not opted in"}`; }).join("<br>"));
+    });
+    document.getElementById("idOptIn").addEventListener("click", async () => {
+      const ids = idsFromBox(); if (!ids.length) return idSay("type at least one broker number");
+      try { await CP.connect(); idSay("confirm in your wallet…"); await CP.send({ to: a, data: "0x7c4ebeee" + CP.word(32) + CP.word(ids.length) + ids.map((i) => CP.word(i)).join(""), gas: "0x" + (200_000 + 250_000 * ids.length).toString(16) }); idSay(`opted in: #${ids.join(", #")}. They earn from now.`, "good"); }
+      catch (e) { idSay(String(e.message || e).slice(0, 200), "bad"); }
+    });
+    document.getElementById("idClaim").addEventListener("click", async () => {
+      const ids = idsFromBox(); if (!ids.length) return idSay("type at least one broker number");
+      try { await CP.connect(); idSay("confirm in your wallet…"); await CP.send({ to: a, data: "0x6ba4c138" + CP.word(32) + CP.word(ids.length) + ids.map((i) => CP.word(i)).join(""), gas: "0x" + (300_000 + 120_000 * ids.length).toString(16) }); idSay("claimed; everything unlocked for those brokers is in your wallet.", "good"); }
+      catch (e) { idSay(String(e.message || e).slice(0, 200), "bad"); }
+    });
     document.getElementById("wallet").addEventListener("click", async () => {
       try {
         const acct = await CP.connect();
