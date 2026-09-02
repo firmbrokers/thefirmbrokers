@@ -10,7 +10,7 @@
 <meta property="og:title" content="Build a campaign">
 <meta property="og:description" content="Configure, fund on chain, and we review. Your token becomes an extra paycheck brokers can opt into.">
 <meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
-<link rel="stylesheet" href="campaign.css?v=1788358066">
+<link rel="stylesheet" href="campaign.css">
 <style>
 .form{display:grid;gap:14px}
 .form label{display:grid;gap:5px;font-size:14px;color:var(--ink-2)}
@@ -138,8 +138,8 @@
 <p class="plain" style="margin-top:28px">Questions first? <a href="https://x.com/thefirmbrokers" target="_blank" rel="noopener"><b>@thefirmbrokers</b></a> on X. The mechanics are in the <a href="/payroll">payroll page</a> and the <a href="/docs">handbook</a>.</p>
 </div>
 
-<script src="config.js?v=1788358066"></script>
-<script src="campaign-pages.js?v=1788358066"></script>
+<script src="config.js"></script>
+<script src="campaign-pages.js"></script>
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
@@ -225,7 +225,9 @@
       const acct = await CP.connect();
       $("createMsg").textContent = "confirm in your wallet…";
       const data = CP.createData({ token: st.token, pool: st.pool.pool, slippageBps: 300, minLiquidity: 10n ** 21n, minHold: BigInt(Math.round(c.minHold)) * 10n ** 18n, requestedStart: c.start, days: c.days, delay: c.delay * 86400, buysPerDay: c.buys });
-      const rc = await CP.send({ to: CP.FACTORY, data, gas: "0x" + (2_600_000).toString(16) });
+      // deploying a 20 KB contract from the factory: ~4.5M gas measured; the
+      // limit is free (only gasUsed is charged), the block limit is 2^50
+      const rc = await CP.send({ to: CP.FACTORY, data, gas: "0x" + (6_500_000).toString(16) });
       // the new campaign: the last one in the registry whose sponsor is this wallet
       const list = await CP.campaigns();
       let mine = null;

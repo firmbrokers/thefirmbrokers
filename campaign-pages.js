@@ -132,8 +132,8 @@ window.CP = (function () {
       rpc("eth_getBalance", [a, "latest"]).then((x) => BigInt(x)),
       c.approved && c.status === 2 ? call(a, SEL.buysOn + word((BigInt(Math.floor(Date.now() / 1000)) - c.startAt) / DAY)).then((x) => u(x, 0)) : Promise.resolve(0n),
     ]);
-    c.symbol = sym || "?";
-    c.name = name;
+    c.symbol = cleanSymbol(sym);
+    c.name = cleanText(name, 60);
     c.balance = bal;
     c.buysToday = buysToday;
     // derived, all exact from state
@@ -174,7 +174,7 @@ window.CP = (function () {
 
   async function tokenInfo(token) {
     const [s, n, d] = await multicall([{ to: token, data: SEL.symbol }, { to: token, data: SEL.name }, { to: token, data: SEL.decimals }]);
-    return { symbol: str(s), name: str(n), decimals: Number(u(d, 0)), hasCode: !!s };
+    return { symbol: cleanSymbol(str(s)), name: cleanText(str(n), 60), decimals: Number(u(d, 0)), hasCode: !!s };
   }
 
   async function ethUsd() {
@@ -243,7 +243,15 @@ window.CP = (function () {
     return `each hour's pay unlocks ${d} day${d === 1 ? "" : "s"} later`;
   }
   const short = (a) => (a ? a.slice(0, 6) + "…" + a.slice(-4) : "");
+  /// Anything from the chain or the worker is untrusted text (a token's
+  /// symbol() can return markup). Escape before innerHTML, and only accept a
+  /// symbol that looks like one.
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+  const cleanSymbol = (v) => (/^[A-Za-z0-9 _.$-]{1,16}$/.test(String(v || "")) ? String(v) : "?");
+  const cleanText = (v, n) => String(v == null ? "" : v).replace(/[\x00-\x1f\x7f<>]/g, "").trim().slice(0, n || 80);
+  const cleanUrl = (v) => (/^https:\/\/[A-Za-z0-9.-]+(\/[^\s"'<>]*)?$/.test(String(v || "")) ? String(v) : "");
+  const cleanHandle = (v) => (String(v || "").replace(/^@/, "").match(/^[A-Za-z0-9_]{1,15}$/) || [""])[0];
   const explorer = (a) => "https://robinhoodchain.blockscout.com/address/" + a;
 
-  return { CFG, FACTORY, WETH, CAMPAIGN_API, SEL, rpc, call, multicall, campaigns, campaign, summary, poolsFor, tokenInfo, ethUsd, connect, send, createData, get account() { return account; }, STATUS, eth, units, date, delayText, short, explorer, u, addr, str, word, addrWord, addrArray };
+  return { CFG, FACTORY, WETH, CAMPAIGN_API, SEL, rpc, call, multicall, campaigns, campaign, summary, poolsFor, tokenInfo, ethUsd, connect, send, createData, get account() { return account; }, STATUS, eth, units, date, delayText, short, explorer, esc, cleanSymbol, cleanText, cleanUrl, cleanHandle, u, addr, str, word, addrWord, addrArray };
 })();

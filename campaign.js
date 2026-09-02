@@ -39,6 +39,7 @@
     earned: "0x4d6ed8c4",
     released: "0xa94d373b",
     summary: "0x8a331567",
+    trancheCount: "0x29dc62b4",
     optIn: "0x36130f00",
     optInMany: "0x7c4ebeee",
     optOut: "0x44dc6e1a",
@@ -72,6 +73,8 @@
   }
 
   const hexU = (h) => (h && h.length >= 66 ? BigInt(h.slice(0, 66)) : 0n);
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+  const cleanSymbol = (v) => (/^[A-Za-z0-9 _.$-]{1,16}$/.test(String(v || "")) ? String(v) : "?");
   const hexAddr = (h) => (h && h.length >= 66 ? "0x" + h.slice(26, 66) : null);
   function decodeString(hex) {
     try {
@@ -148,7 +151,7 @@
       list.push(c);
     }
     const syms = await F.callBatch(list.map((c) => ({ to: c.token, data: SEL.symbol })));
-    list.forEach((c, i) => { c.symbol = decodeString(syms[i]) || "?"; });
+    list.forEach((c, i) => { c.symbol = cleanSymbol(decodeString(syms[i])); });
     cache = { at: Date.now(), list };
     return list;
   }
@@ -181,8 +184,12 @@
   const optOutTx = (F, c, id, from) => F.send(c.address, SEL.optOut + F.word(id), 0n, from, 250_000);
   const optInManyTx = (F, c, ids, from) =>
     F.send(c.address, SEL.optInMany + F.word(32) + F.word(ids.length) + ids.map((i) => F.word(i)).join(""), 0n, from, 200_000 + 250_000 * ids.length);
-  const claimTx = (F, c, ids, from) =>
-    F.send(c.address, SEL.claim + F.word(32) + F.word(ids.length) + ids.map((i) => F.word(i)).join(""), 0n, from, 200_000 + 120_000 * ids.length);
+  // claim walks every tranche the holder has and prunes the finished ones
+  // (~24k each), so the budget has to count them (audit F4).
+  const claimTx = async (F, c, ids, from) => {
+    const n = Number(hexU(await F.call(c.address, SEL.trancheCount + F.word(from))));
+    return F.send(c.address, SEL.claim + F.word(32) + F.word(ids.length) + ids.map((i) => F.word(i)).join(""), 0n, from, 200_000 + 120_000 * ids.length + 40_000 * n);
+  };
 
   // ---------------------------------------------------------------- surfaces
   /// Inside a broker's file. `b` is the level's broker object (id, active,
@@ -215,7 +222,7 @@
         status.className = "off";
         status.textContent = "NOT OPTED IN";
       }
-      info.innerHTML = `<i>${c.symbol}</i> `;
+      info.innerHTML = `<i>${esc(c.symbol)}</i> `;
       info.appendChild(status);
       const sub = document.createElement("div");
       sub.className = "sub";
@@ -260,8 +267,8 @@
       const line = document.createElement("div");
       line.className = "line";
       const info = document.createElement("div");
-      info.innerHTML = `<i>${c.symbol}</i> <b class="${hs.claimable > 0n ? "on" : "lockd"}">${fmtUnits(hs.claimable)} ${c.symbol} claimable</b>
-        <div class="sub">earned ${fmtUnits(hs.earned)} · still locked ${fmtUnits(hs.locked)} · ${STATUS[c.status]} · ${delayText(c.delay)}${c.minHold > 0n && hs.balance < c.minHold ? ` · <b class="no">hold ≥ ${fmtUnits(c.minHold)} ${c.symbol} to claim</b>` : ""}</div>`;
+      info.innerHTML = `<i>${esc(c.symbol)}</i> <b class="${hs.claimable > 0n ? "on" : "lockd"}">${fmtUnits(hs.claimable)} ${esc(c.symbol)} claimable</b>
+        <div class="sub">earned ${fmtUnits(hs.earned)} · still locked ${fmtUnits(hs.locked)} · ${STATUS[c.status]} · ${delayText(c.delay)}${c.minHold > 0n && hs.balance < c.minHold ? ` · <b class="no">hold ≥ ${fmtUnits(c.minHold)} ${esc(c.symbol)} to claim</b>` : ""}</div>`;
       line.appendChild(info);
       // one signature for every hired broker of theirs that is not in yet
       if (c.status === 2 && !(c.minHold > 0n && hs.balance < c.minHold)) {

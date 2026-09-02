@@ -9,7 +9,7 @@
 <meta property="og:title" content="Campaigns">
 <meta property="og:description" content="A partner's token, bought on the open market and paid to brokers hour by hour. Every number is on chain.">
 <meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
-<link rel="stylesheet" href="campaign.css?v=1788358066">
+<link rel="stylesheet" href="campaign.css">
 <style>
 .list{display:grid;gap:12px}
 .card{border:1px solid var(--rule);border-radius:8px;padding:14px 16px;background:var(--card);display:grid;grid-template-columns:1fr auto;gap:6px 14px;align-items:center;text-decoration:none;color:inherit}
@@ -46,8 +46,8 @@
 <div id="app"><p class="plain">Loading from the chain…</p></div>
 </div>
 
-<script src="config.js?v=1788358066"></script>
-<script src="campaign-pages.js?v=1788358066"></script>
+<script src="config.js"></script>
+<script src="campaign-pages.js"></script>
 <script>
 (async function () {
   const app = document.getElementById("app");
@@ -55,7 +55,13 @@
   const target = (q.get("c") || "").trim();
   const meta = {};
   if (CP.CAMPAIGN_API) {
-    try { const r = await fetch(CP.CAMPAIGN_API + "/api/campaigns"); const j = await r.json(); (j.campaigns || []).forEach((m) => { meta[m.campaign.toLowerCase()] = m; }); } catch (e) {}
+    try {
+      const r = await fetch(CP.CAMPAIGN_API + "/api/campaigns"); const j = await r.json();
+      (j.campaigns || []).forEach((m) => {
+        if (!/^0x[0-9a-fA-F]{40}$/.test(String(m.campaign || ""))) return;
+        meta[m.campaign.toLowerCase()] = { name: CP.cleanText(m.name, 60), website: CP.cleanUrl(m.website), x: CP.cleanHandle(m.x) };
+      });
+    } catch (e) {}
   }
   if (!CP.FACTORY) { app.innerHTML = '<p class="plain">Campaigns are not open yet.</p>'; return; }
 
@@ -74,7 +80,7 @@
 
   function card(c) {
     const m = meta[c.address.toLowerCase()] || {};
-    return `<a class="card" href="/campaign?c=${c.address}"><div><b>${m.name ? m.name + " · " : ""}${c.symbol}</b><div class="sub">${CP.eth(c.deposited)} ETH deposited · ${CP.units(c.totalTokensBought)} ${c.symbol} bought · ${Number(c.optedCount)} brokers in · ${CP.delayText(c.delay)}</div></div><span class="state ${c.status === 2 ? "live" : ""}">${CP.STATUS[c.status]}</span></a>`;
+    return `<a class="card" href="/campaign?c=${c.address}"><div><b>${CP.esc(m.name ? m.name + " · " : "")}${CP.esc(c.symbol)}</b><div class="sub">${CP.eth(c.deposited)} ETH deposited · ${CP.units(c.totalTokensBought)} ${CP.esc(c.symbol)} bought · ${Number(c.optedCount)} brokers in · ${CP.delayText(c.delay)}</div></div><span class="state ${c.status === 2 ? "live" : ""}">${CP.STATUS[c.status]}</span></a>`;
   }
 
   async function one(a) {
@@ -83,12 +89,13 @@
     const isC = CP.u(await CP.call(CP.FACTORY, CP.SEL.isCampaign + CP.addrWord(a)), 0) === 1n;
     if (!isC) { app.innerHTML = '<p class="plain">That address is not a campaign from our factory.</p>'; return; }
     const m = meta[a.toLowerCase()] || {};
-    const title = (m.name ? m.name + " · " : "") + c.symbol;
-    const share = encodeURIComponent(`${c.symbol} is an extra paycheck on Firm Brokers: bought on the open market ${Number(c.buysPerDay)}x a day, paid to brokers by the hour, ${CP.delayText(c.delay)}. ${location.origin}/campaign?c=${a}`);
-    const links = [m.website && `<a href="${m.website}" target="_blank" rel="noopener">website</a>`, m.x && `<a href="https://x.com/${String(m.x).replace(/^@/, "")}" target="_blank" rel="noopener">X</a>`].filter(Boolean).join(" · ");
+    const sym = CP.esc(c.symbol);
+    const title = CP.esc(m.name ? m.name + " · " : "") + sym;
+    const share = encodeURIComponent(`${sym} is an extra paycheck on Firm Brokers: bought on the open market ${Number(c.buysPerDay)}x a day, paid to brokers by the hour, ${CP.delayText(c.delay)}. ${location.origin}/campaign?c=${a}`);
+    const links = [m.website && `<a href="${CP.esc(m.website)}" target="_blank" rel="noopener">website</a>`, m.x && `<a href="https://x.com/${CP.esc(m.x)}" target="_blank" rel="noopener">X</a>`].filter(Boolean).join(" · ");
     app.innerHTML = `<header class="hero"><div class="eyebrow">Sponsored payroll · <span class="state ${c.status === 2 ? "live" : ""}">${CP.STATUS[c.status]}${c.paused ? " · buys paused" : ""}</span></div>
       <h1>${title}</h1>
-      <p class="lede">${c.symbol} arrives as <b>an extra paycheck</b> to every broker whose owner opted in, on top of the wage. ${CP.delayText(c.delay)}. ${links}</p></header>
+      <p class="lede">${sym} arrives as <b>an extra paycheck</b> to every broker whose owner opted in, on top of the wage. ${CP.delayText(c.delay)}. ${links}</p></header>
       <div class="counters">
         ${counter("Deposited", CP.eth(c.deposited) + " ETH", "on the contract now, plus what it already spent")}
         ${counter("Spent buying", CP.eth(c.totalEthSpent) + " ETH", "fee to the house " + CP.eth(c.totalFees) + " ETH")}
@@ -104,7 +111,7 @@
         <span>Distribution</span><b>${Number(c.days_)} days · ${Number(c.buysPerDay)} buys a day${c.approved ? " · ends " + CP.date(c.distributionEnd) : ""}</b>
         <span>Release</span><b>${CP.delayText(c.delay)}${c.approved ? " · last unlock " + CP.date(c.lastUnlock) : ""}</b>
         ${c.status === 2 ? `<span>Next buy window</span><b>${c.buysToday < c.buysPerDay ? "opens " + CP.date(c.nextWindow) : "tomorrow"} · about ${CP.eth(c.sliceNow)} ETH</b>` : ""}
-        ${c.minHold > 0n ? `<span>Holding requirement</span><b>${CP.units(c.minHold)} ${c.symbol} to opt in and to claim</b>` : ""}
+        ${c.minHold > 0n ? `<span>Holding requirement</span><b>${CP.units(c.minHold)} ${sym} to opt in and to claim</b>` : ""}
         <span>Buy floor</span><b>30-minute average price minus ${Number(c.slippageBps) / 100}%; pool liquidity at least ${CP.units(c.minLiquidity)}</b>
         <span>Campaign</span><b class="addr"><a href="${CP.explorer(a)}" target="_blank" rel="noopener">${a}</a></b>
         <span>Token</span><b class="addr"><a href="${CP.explorer(c.token)}" target="_blank" rel="noopener">${c.token}</a></b>
@@ -125,7 +132,7 @@
         const acct = await CP.connect();
         const s = await CP.summary(a, acct, []);
         const bal = CP.u(await CP.call(c.token, CP.SEL.balanceOf + CP.addrWord(acct)), 0);
-        document.getElementById("mine").innerHTML = `Closed positions for ${CP.short(acct)}: earned ${CP.units(s.earned)} ${c.symbol}, unlocked ${CP.units(s.unlocked)}, claimable ${CP.units(s.claimable)}. Live brokers show on the street. You hold ${CP.units(bal)} ${c.symbol}.`;
+        document.getElementById("mine").innerHTML = `Closed positions for ${CP.short(acct)}: earned ${CP.units(s.earned)} ${sym}, unlocked ${CP.units(s.unlocked)}, claimable ${CP.units(s.claimable)}. Live brokers show on the street. You hold ${CP.units(bal)} ${sym}.`;
         if (acct.toLowerCase() === c.sponsor.toLowerCase()) sponsorPanel(acct);
       } catch (e) { document.getElementById("mine").textContent = String(e.message || e); }
     });
