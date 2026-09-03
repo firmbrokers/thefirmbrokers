@@ -178,8 +178,15 @@
     // the token's own two, which are what a bidder who is simply short of
     // FRONG hits — the most likely failure on a busy auction day, and until
     // now it ended on the raw string "execution reverted"
-    if (m.includes("insufficientbalance") || m.includes("0xf4d678b8")) return "not enough of that token in this wallet";
+    // 0xf4d678b8 = InsufficientBalance() (FRONG); 0xe450d38c = OpenZeppelin v5
+    // ERC20InsufficientBalance(address,uint256,uint256), what $9TO5 throws
+    // (verified 2026-09-03: a fuse from a wallet holding 2,152 of the 50,000)
+    if (m.includes("insufficientbalance") || m.includes("0xf4d678b8") || m.includes("0xe450d38c")) return "not enough of that token in this wallet";
     if (m.includes("insufficientallowance") || m.includes("0x13be252b")) return "approve the token first, then bid";
+    // the merger (EmployeeNFT.fuse)
+    if (m.includes("badfuse") || m.includes("0x4f936278")) return "that merge is not allowed: two or three different brokers, three parts at most";
+    if (m.includes("notowner") || m.includes("0x30cd7471")) return "one of those brokers is not in this wallet any more";
+    if (m.includes("burn failed")) return "the $9TO5 burn failed — check the balance and the approval";
     // the auction house
     if (m.includes("bidtoolow") || m.includes("0xa0d26eb6")) return "someone bid first — the minimum has gone up";
     if (m.includes("notlive") || m.includes("0xbaf13b3f")) return "bidding is not open on that lot yet";
@@ -202,6 +209,9 @@
     t.className = "fb-toast show" + (ok === false ? " bad" : "");
     clearTimeout(t._t);
     t._t = setTimeout(() => (t.className = "fb-toast"), 6000);
+    // a tap closes it too: on a phone a five-line message covers the zone
+    // bar, and six seconds is a long time to wait to see the buttons again
+    if (!t._tap) { t._tap = true; t.addEventListener("click", () => { clearTimeout(t._t); t.className = "fb-toast"; }); }
   }
 
   async function txFlow(label, fn, after) {
@@ -2641,8 +2651,21 @@
       const ids = m.picked.map((b) => b.id);
       const burn = fuseCost(m) ?? (await loadFuseBurns(), fuseCost(m));
       if (burn === null) return toast("could not read the merge cost — try again", false);
+      // the burn comes out of this wallet: say so here, not in the wallet's
+      // failed estimate (2026-09-03: a holder saw "$25 of gas" — a wallet's
+      // fallback limit on a reverting merge, not a fee anyone would pay)
+      const bal = await F.tokenBalance(state.account);
+      if (bal !== null && bal < burn) return toast(`the merge burns ${fmtCompact(burn)} $9TO5 and this wallet holds ${fmtCompact(bal)}`, false);
       if (!(await ensureAllowance(burn))) return;
-      await txFlow("merger", () => F.fuse(ids, state.account), async () => {
+      // pre-flight on our own RPC: a revert is explained before any wallet
+      // opens, and a good estimate becomes the wallet's gas limit (×1.5, at
+      // least 450k: two merges on 2026-09-03 used 258k and 281k)
+      let gas;
+      try {
+        const est = await F.estimateGas(CFG.nft, F.fuseData(ids), state.account);
+        if (est !== null) gas = est * 3n / 2n > 450_000n ? est * 3n / 2n : 450_000n;
+      } catch (e) { return toast(humanError(e), false); }
+      await txFlow("merger", () => F.fuse(ids, state.account, gas), async () => {
         state.fusePick.clear();
         closePopover();
         await refreshBrokers();
@@ -3527,6 +3550,12 @@
     const payRow = act("", "CHOOSE HIS PAYCHECK",
       "He earns ETH. Pick which stocks it turns into, up to three.",
       () => openSplitEditor(b, pop, payRow));
+    // The 401(k) is one switch for the whole wallet, so its row sits under
+    // the paycheck it applies to and opens the plan rather than editing him.
+    if (K401()) {
+      act("", "THE 401(k)", "Every payday into $9TO5, automatically. One switch for the whole wallet.",
+        () => open401kPopover());
+    }
     // Sponsored campaigns: an extra paycheck in a partner's token, on top of
     // his wage. campaign.js registers window.__CAMPAIGN and is called guarded,
     // like the auction; nothing renders until config.js names a factory.
@@ -3561,6 +3590,137 @@
   /// Every popover is built from this, so clicking the dimmed area outside the
   /// card always closes it. Escape already does; this is the same escape hatch
   /// for anyone reaching for the mouse.
+  // ------------------------------------------------------------ the 401(k)
+  /// Every paycheck into $9TO5. Wallet-level, not per broker: the plan pulls
+  /// whatever salary asset lands in the wallet and hands back $9TO5 in the
+  /// same transaction. Lives behind CFG.reinvest: nothing renders until the
+  /// contract has an address. Drawn on the flat page's Trading Floor and in a
+  /// popover behind a row on every broker's file.
+  const K401 = () => !!(F.reinvestOn && F.reinvestOn());
+  /// under this the sell guard refuses the trip (rounding in a six-decimal
+  /// stablecoin hop eats more than the band) and the keeper never bothers
+  const DUST_ETH = 500_000_000_000_000n; // 0.0005 ETH
+  /// runForAll for a list of calls that is not one-per-broker
+  async function runList(calls, working, finished) {
+    if (!calls.length || !state.account) return false;
+    try {
+      const res = await F.runCalls(calls, state.account, (done, total, batched) => {
+        toast(batched ? `${working} (${Math.min(done + 10, total)} of ${total})…` : `${working} — step ${done + 1} of ${total}…`);
+      });
+      toast(finished(res.done), true);
+      return true;
+    } catch (e) { toast(humanError(e), false); return false; }
+  }
+  /// which salary assets this wallet's paychecks can land in: every hired
+  /// broker's split, the default when he has none picked
+  function salaryAssetsOf(bs) {
+    const idxs = new Set();
+    for (const b of bs) {
+      if (!b.active) continue;
+      if (b.split.length) b.split.forEach((s) => idxs.add(s.idx));
+      else idxs.add(defaultIdx());
+    }
+    return [...idxs];
+  }
+  async function build401kInto(card) {
+    card.innerHTML = `<h2>The 401(k)</h2>
+      <p class="lead">Every paycheck becomes $9TO5. Turn it on and the payroll sweep converts the salary assets in this wallet — USDG, stock, FRONG, CASHCAT — into $9TO5 about once an hour, and hands it straight back. 1% of each sweep pays the runner. Turn it off any time.</p>
+      <div class="k401"><div class="st">reading…</div></div>`;
+    const box = card.querySelector(".k401");
+    if (!state.account) { box.innerHTML = `<div class="st">connect your wallet to enrol</div>`; return; }
+    let st, waiting;
+    try {
+      [st, waiting] = await Promise.all([F.reinvestStatus(state.account), F.reinvestWaiting(state.account)]);
+    } catch (e) { box.innerHTML = `<div class="st bad">could not read the plan — ${humanError(e)}</div>`; return; }
+    if (!document.body.contains(card)) return;
+    const since = st.since ? new Date(st.since * 1000).toLocaleDateString() : "";
+    // an enrolled wallet can pick a new salary asset later; the sweep skips it
+    // until it is allowed, so the row says so and offers the one call
+    const rows = waiting.map((w) => `<div class="r"><span>${w.symbol}</span><b>${fmtUnits(w.balance, w.decimals)}</b><i>${w.allowance >= w.balance ? "allowed" : w.allowance > 0n ? "partly allowed" : "not allowed yet"}${st.enrolled && w.allowance < w.balance ? ` <button class="mini allow" data-idx="${w.idx}" type="button">ALLOW</button>` : ""}</i></div>`).join("");
+    box.innerHTML = `
+      <div class="st${st.enrolled ? " on" : ""}">${st.enrolled ? `ENROLLED${since ? " · SINCE " + since : ""}` : "NOT ENROLLED"}</div>
+      <div class="r tot"><span>converted so far</span><b>${fmtCompact(st.converted)} $9TO5</b></div>
+      <div class="wait"><em>${waiting.length ? "in this wallet now" : "nothing waiting in this wallet"}</em>${rows}</div>
+      <div class="quote"></div>
+      <div class="warn">It converts the whole balance of those assets in this wallet, not only the pay. Keep other USDG somewhere else, or set a smaller allowance in your wallet.</div>
+      <div class="bar">
+        <button class="fb-btn small enrol" type="button">${st.enrolled ? "LEAVE THE PLAN" : "ENROL"}</button>
+        ${waiting.length && waiting[0].value >= DUST_ETH ? `<button class="fb-btn small ghost now" type="button">CONVERT ${waiting[0].symbol} NOW</button>` : ""}
+      </div>
+      ${waiting.length && waiting[0].value < DUST_ETH ? `<div class="dust">too small to convert on its own — it waits, nothing is lost</div>` : ""}`;
+    // the biggest pile is the one CONVERT NOW takes; say what it fetches today
+    const top = waiting[0];
+    if (top) {
+      (async () => {
+        try {
+          const q = await F.reinvestQuote(top.idx, top.balance, true);
+          const line = box.querySelector(".quote");
+          if (line) line.textContent = `${fmtUnits(top.balance, top.decimals)} ${top.symbol} ≈ ${fmtEth(q.ethOut, 6)} ETH ≈ ${fmtCompact(q.tokensOut)} $9TO5 right now`;
+        } catch (e) { /* the line stays empty */ }
+      })();
+    }
+    box.querySelector(".enrol").addEventListener("click", async () => {
+      if (st.enrolled) {
+        const ok = await runList([F.reinvestLeaveCall()], "leaving", () => "you left the plan. Allowances stay until you revoke them in your wallet");
+        if (ok) build401kInto(card);
+        return;
+      }
+      // pay-to-wallet for every hired broker still on the vault, an allowance
+      // for every asset a paycheck can land in (skipping ones already given),
+      // then enrol — one list, one signature on a wallet that batches
+      const vaulted = state.brokers.filter((b) => b.active && !b.collect);
+      const meta = state.assetMeta || {};
+      const need = salaryAssetsOf(state.brokers)
+        .filter((i) => { const w = waiting.find((x) => x.idx === i); return !w || w.allowance < (1n << 200n); })
+        .map((i) => meta[i] && meta[i].token).filter(Boolean);
+      const calls = F.reinvestEnrollCalls(vaulted.map((b) => b.id), need);
+      const ok = await runList(calls, "enrolling", () =>
+        `enrolled — ${vaulted.length ? `${vaulted.length} broker${vaulted.length === 1 ? "" : "s"} switched to paying your wallet, ` : ""}${need.length} asset${need.length === 1 ? "" : "s"} allowed. The next sweep converts what lands`);
+      if (ok) { await refreshBrokers(); build401kInto(card); }
+    });
+    box.querySelectorAll(".allow").forEach((btn) => btn.addEventListener("click", async () => {
+      const w = waiting.find((x) => x.idx === Number(btn.dataset.idx));
+      if (!w) return;
+      const ok = await runList([F.reinvestApproveCall(w.token)], "allowing", () => `${w.symbol} allowed — the next sweep converts it`);
+      if (ok) build401kInto(card);
+    }));
+    const now = box.querySelector(".now");
+    if (now) now.addEventListener("click", async () => {
+      const w = waiting[0];
+      let q;
+      try { q = await F.reinvestQuote(w.idx, w.balance, true); } catch (e) { toast(humanError(e), false); return; }
+      if (!q.tokensOut) { toast("too small to swap right now — it converts with the next sweep", false); return; }
+      // the quote prices the sell at the time-weighted price; the contract lets
+      // the real sell land up to 3% under that, and the buy moves too, so the
+      // floor is 96%: a tighter one refused honest sweeps on the fork
+      const minOut = (q.tokensOut * 96n) / 100n;
+      const calls = [];
+      if (w.allowance < w.balance) calls.push(F.reinvestApproveCall(w.token));
+      calls.push(F.reinvestSweepSelfCall(w.idx, minOut, state.account));
+      const ok = await runList(calls, "converting", () => `converted ${fmtUnits(w.balance, w.decimals)} ${w.symbol} into $9TO5 — at least ${fmtCompact(minOut)}`);
+      if (ok) build401kInto(card);
+    });
+  }
+  function build401kCard() {
+    const c = el("div", "fb-card fb-401k");
+    build401kInto(c);
+    return c;
+  }
+  function open401kPopover() {
+    closePopover();
+    const pop = popoverShell();
+    const card = build401kCard();
+    card.style.maxWidth = "460px";
+    const x = el("button", "fb-btn small ghost", "X");
+    x.id = "pop-close";
+    x.style.cssText = "position:absolute;top:10px;right:10px";
+    x.addEventListener("click", closePopover);
+    card.style.position = "relative";
+    card.appendChild(x);
+    pop.appendChild(card);
+    document.body.appendChild(pop);
+  }
+
   function popoverShell() {
     const pop = el("div", "fb-popover");
     pop.id = "fb-popover";
@@ -4238,6 +4398,7 @@
         ac.appendChild(ab);
         room.appendChild(ac);
       }
+      if (K401()) room.appendChild(build401kCard());
       const grid = el("div", "fb-brokers");
       for (const b of state.brokers) {
         const t = tierOf(b.tierBurned);

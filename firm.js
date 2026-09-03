@@ -61,6 +61,17 @@
     claim: "0x379607f5",
     claimOne: "0x71c96fc0",
     vaultBalance: "0xb183b67f",
+    // the 401(k) (Reinvest401k)
+    enroll: "0xe65f2a7e",
+    leave: "0xd66d9e19",
+    enrolledAt: "0x80a55f0e",
+    converted: "0x3633a1b0",
+    quoteSweep: "0x2c522de6",
+    sweep: "0x6c64e885",
+    allowance: "0xdd62ed3e",
+    runnerBps: "0x53c99fcc",
+    totalConverted: "0x97fd3613",
+    twapEthOut: "0x69e102b3",
   };
   const TRANSFER_TOPIC =
     "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -904,6 +915,27 @@
       return { maxFeePerGas: "0x" + ((gp * 5n) / 4n).toString(16), maxPriorityFeePerGas: "0x0" };
     } catch (e) { return null; }
   }
+  function fuseData(ids) {
+    return SEL.fuse + word(32) + word(ids.length) + ids.map((i) => word(i)).join("");
+  }
+  /// eth_estimateGas through our own RPC (never the wallet's): the gas the
+  /// call needs, or a throw carrying the node's revert message/data so the
+  /// caller can say WHY before any wallet opens. Null when the RPC itself is
+  /// unreachable — that is not a revert and must not read as one.
+  async function estimateGas(to, data, from, valueWei) {
+    const tx = { from, to, data };
+    if (valueWei && valueWei > 0n) tx.value = "0x" + valueWei.toString(16);
+    let j;
+    try { j = await rpcPost({ jsonrpc: "2.0", id: 1, method: "eth_estimateGas", params: [tx] }); }
+    catch (e) { return null; }
+    if (!j) return null;
+    if (j.error) {
+      const err = new Error(String(j.error.message || "execution reverted") + " " + String(j.error.data || ""));
+      err.data = j.error.data;
+      throw err;
+    }
+    return toBig(j.result);
+  }
   async function send(to, data, valueWei, from, gasLimit) {
     const p = provider();
     const tx = { from, to, data };
@@ -1009,7 +1041,10 @@
   /// each one so the room can say "3 of 8" instead of appearing to hang.
   async function runCalls(calls, from, onStep) {
     if (!calls.length) return { batched: false, done: 0 };
-    if (calls.length > 1 && (await batchSupported(from))) {
+    // a call that carries its own gas (a 401(k) sweep) must not ride a 5792
+    // batch: the smart account sizes gas itself and the estimate trap is why
+    // the call carries gas at all — so such a list always goes one by one
+    if (calls.length > 1 && !calls.some((c) => c.gas) && (await batchSupported(from))) {
       try {
         // MetaMask refuses a batch of more than ten calls ("Batch size cannot
         // exceed 10", seen 2026-09-02 with 50 setSplits), so a roster goes in
@@ -1034,7 +1069,9 @@
     let done = 0;
     for (const c of calls) {
       if (onStep) onStep(done, calls.length, false);
-      const hash = await send(c.to, c.data, 0n, from);
+      // a call may carry its own gas: the estimate trap (see send) is real for
+      // anything that nests calls, and a 401(k) sweep nests four deep
+      const hash = await send(c.to, c.data, 0n, from, c.gas);
       await waitForTx(hash);
       done++;
     }
@@ -1117,8 +1154,15 @@
     // 450k: 355 mainnet harvests used 170k median, 198k max (2026-09-02).
     harvest: (from) => send(CFG.engine, SEL.harvest, 0n, from, 450_000),
     upgradeTier: (id, tier, from) => send(CFG.nft, SEL.upgradeTier + word(id) + word(tier), 0n, from),
-    fuse: (ids, from) =>
-      send(CFG.nft, SEL.fuse + word(32) + word(ids.length) + ids.map((i) => word(i)).join(""), 0n, from),
+    // merge: an explicit gas limit when the caller measured one (see
+    // level.js: a pre-flight estimate, ×1.5, floor 450k). Without it the
+    // wallet estimates alone, and a wallet whose estimate fails falls back to
+    // a fraction of the block gas limit — the "$25 to merge" quotes of
+    // 2026-09-03 against a 258–281k gas (≈$0.80) transaction.
+    fuse: (ids, from, gas) =>
+      send(CFG.nft, fuseData(ids), 0n, from, gas),
+    fuseData,
+    estimateGas,
     setSplit: (id, idxs, bpsList, from) => {
       const offIdx = 3 * 32;
       const offBps = offIdx + 32 + 32 * idxs.length;
@@ -1147,6 +1191,69 @@
     // transferFrom, and under a 5792 batch one failed pull takes the whole list
     // down with it.
     upgradeCall: (id, tier) => ({ to: CFG.nft, data: SEL.upgradeTier + word(id) + word(tier) }),
+    // ------------------------------------------------------- the 401(k)
+    // Reinvest401k: every paycheck into $9TO5. Wallet-level. Nothing here
+    // runs until config.js names the contract.
+    reinvestOn: () => !!CFG.reinvest && !/^0x0{40}$/i.test(CFG.reinvest),
+    reinvestStatus: async (addr) => {
+      const r = await callBatch([
+        { to: CFG.reinvest, data: SEL.enrolledAt + word(addr) },
+        { to: CFG.reinvest, data: SEL.converted + word(addr) },
+        { to: CFG.reinvest, data: SEL.totalConverted },
+        { to: CFG.reinvest, data: SEL.runnerBps },
+      ]);
+      const big = (x) => (x && x.length >= 66 ? toBig(x) : 0n);
+      const since = Number(big(r[0]));
+      return { enrolled: since > 0, since, converted: big(r[1]), totalConverted: big(r[2]), runnerBps: Number(big(r[3])) };
+    },
+    // every salary asset this wallet holds, with what the plan may take of
+    // it and what it is worth in ETH at the time-weighted price; biggest first
+    reinvestWaiting: async (addr) => {
+      const meta = (await assetMeta()) || {};
+      const idxs = Object.keys(meta).map(Number);
+      const big = (x) => (x && x.length >= 66 ? toBig(x) : 0n);
+      const reqs = [];
+      for (const i of idxs) {
+        reqs.push({ to: meta[i].token, data: SEL.balanceOf + word(addr) });
+        reqs.push({ to: meta[i].token, data: SEL.allowance + word(addr) + word(CFG.reinvest) });
+      }
+      const r = await callBatch(reqs);
+      const held = [];
+      idxs.forEach((i, j) => {
+        const balance = big(r[j * 2]);
+        if (balance > 0n) held.push({ idx: i, token: meta[i].token, symbol: meta[i].symbol, decimals: meta[i].decimals, balance, allowance: big(r[j * 2 + 1]), value: 0n });
+      });
+      if (held.length) {
+        const v = await callBatch(held.map((h) => ({ to: CFG.reinvest, data: SEL.twapEthOut + word(h.idx) + word(h.balance) })));
+        held.forEach((h, j) => { h.value = big(v[j]); });
+        held.sort((a, b) => (b.value > a.value ? 1 : b.value < a.value ? -1 : 0));
+      }
+      return held;
+    },
+    // the whole trip for `amount` of asset `idx`: ETH at the time-weighted
+    // price and the $9TO5 that buys right now (the contract runs the buy and
+    // reverts, so this is the swap, not an estimate of it)
+    reinvestQuote: async (idx, amount, self) => {
+      const raw = await call(CFG.reinvest, SEL.quoteSweep + word(idx) + word(amount) + word(self ? 1 : 0));
+      if (!raw || raw.length < 130) return { ethOut: 0n, tokensOut: 0n };
+      return { ethOut: toBig("0x" + raw.slice(2, 66)), tokensOut: toBig("0x" + raw.slice(66, 130)) };
+    },
+    // enrolling is one list: pay-to-wallet for the brokers still on the
+    // vault, an allowance per asset a paycheck can land in, then enrol
+    reinvestEnrollCalls: (vaultIds, tokens) => [
+      ...vaultIds.map((id) => ({ to: CFG.engine, data: SEL.setCollectMode + word(id) + word(1) })),
+      ...tokens.map((t) => ({ to: t, data: SEL.approve + word(CFG.reinvest) + word((1n << 256n) - 1n) })),
+      { to: CFG.reinvest, data: SEL.enroll },
+    ],
+    reinvestLeaveCall: () => ({ to: CFG.reinvest, data: SEL.leave }),
+    reinvestApproveCall: (token) => ({ to: token, data: SEL.approve + word(CFG.reinvest) + word((1n << 256n) - 1n) }),
+    // sweep(idx, [from], minOut): the holder running their own wallet, no cut.
+    // Explicit gas: v3 sell → unwrap → v4 unlock → callback → swap → hook is
+    // nested deep enough that eth_estimateGas comes in UNDER what the call
+    // needs (fork, 2026-09-02: estimate 653k, the tx died at 658k, the same
+    // call ran at 579k with room). Only gas used is charged on this chain.
+    reinvestSweepSelfCall: (idx, minOut, from) =>
+      ({ to: CFG.reinvest, data: SEL.sweep + word(idx) + word(96) + word(minOut) + word(1) + word(from), gas: 1_200_000 }),
     runCalls,
     batchSupported,
     get batchNote() { return batchNote; },

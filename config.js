@@ -16,13 +16,21 @@ window.FIRM_CFG = {
   // production until the user has shown it to the Cash Cat team. Flip to true
   // to open it. test/ui/harness.mjs forces it TRUE so the suite still covers
   // the building while it is held.
-  cashcatLive: false,
+  cashcatLive: true, // flipped 2026-09-03: the first office opens
+  // Where the BUY $CASHCAT plate by the first office's door sends people: the
+  // token's own page on letscash, where it launched. ONE exact URL, the same
+  // anti-phishing rule as the mint and the token: nothing else on the site ever
+  // offers a CASHCAT buy. Empty = the plate is not built.
+  cashcatBuyUrl: "https://www.letscash.fun/token/0x020bfC650A365f8BB26819deAAbF3E21291018b4",
   explorer: "https://robinhoodchain.blockscout.com",
 
   // ---- fill these at launch ----
   nft: "0x2d4dFF47ba18c89847facA0C968e073d8B70ABb4",        // EmployeeNFT — deployed 2026-08-27, block 47105759
   engine: "0x5a362FFdaB7ffA585D50f1a5c032288EF0029740",     // PayrollEngine
   vault: "0x5D792986F671b11e6C551F7C90591c61341d749e",      // PayVault
+  // Reinvest401k — the 401(k): every paycheck into $9TO5. Zero until it is
+  // deployed; the card and the broker-file row stay hidden until then.
+  reinvest: "0x0000000000000000000000000000000000000000",
   marketApi: "https://firm-market.firmbrokersrhchain.workers.dev", // firm-market worker base URL (market/README.md); empty = listings column off, level lookup still works
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)
