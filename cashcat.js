@@ -623,17 +623,18 @@
 /* the wall changes with the window. Under 710 the certificate is gone: the
    small plate takes its place over the desk (the big one would sit on the
    sleeper's zzz), under the ceiling even at 520. From
-   890 the founding board stands between ceiling and certificate, leaving a
-   62px slot: a small plate lives there. From 1010 there is room above the
-   board again (its top = ground + 625): the big plate goes back, centred
+   930 the founding board stands between ceiling and certificate, leaving a
+   62px slot: a small plate lives there. From 1040 there is room above the
+   board again (its top = ground + 653): the big plate goes back, centred
    between the ceiling and the board. */
 @media (max-height:709px){
   .cc-buy{width:200px;height:46px;left:1080px;gap:3px;bottom:calc(var(--ground-h) + 190px)}
   .cc-buy b{font-size:13px} .cc-buy em{font-size:6px}}
-@media (min-height:890px) and (max-height:1009px){
+@media (min-height:930px) and (max-height:1039px){
   .cc-buy{width:200px;height:46px;left:1080px;gap:3px;bottom:calc(var(--ground-h) + 346px)}
   .cc-buy b{font-size:13px} .cc-buy em{font-size:6px}}
-@media (min-height:1010px){.cc-buy{bottom:calc(50% + (var(--ground-h) + 581px) / 2 - 36px)}}
+/* the flywheel board is 253 tall: its top is ground + 653, so mid = 50% + (653 - 44) / 2 */
+@media (min-height:1040px){.cc-buy{bottom:calc(50% + (var(--ground-h) + 609px) / 2 - 36px)}}
 
 /* ---------- glazing, so the gaps are windows and not seams -------------- */
 .cc-win{position:absolute;bottom:calc(var(--ground-h) + 132px);height:268px;
@@ -674,8 +675,8 @@
   letter-spacing:.26em;text-transform:uppercase}
 .cc-first p{margin:0;font:21px/1.3 'VT323',monospace;color:#eae4d6}
 .cc-first p b{color:#ffd75e;font-weight:400}
-.cc-first .n{display:flex;justify-content:center;gap:38px;margin:10px 0 2px}
-.cc-first .n span{font:8px/1.7 var(--font-display);color:#9a917f;letter-spacing:.08em}
+.cc-first .n{display:flex;justify-content:center;gap:30px;margin:10px 0 2px}
+.cc-first .n span{font:8px/1.7 var(--font-display);color:#9a917f;letter-spacing:.08em;white-space:nowrap}
 .cc-first .n em{display:block;font:24px/1 'VT323',monospace;color:#a8f0b6;
   font-variant-numeric:tabular-nums;margin-bottom:4px}
 .cc-first .src{margin-top:8px;font:7px/1.7 var(--font-display);
@@ -1123,7 +1124,7 @@
    to a plain display:flex written LATER in the same stylesheet, which is
    exactly what happened to the frame wall: hidden below 700 on paper and
    crossing the ceiling at three heights in fact. ---------------------- */
-@media (max-height:889px){.cc-first{display:none}}
+@media (max-height:929px){.cc-first{display:none}}   /* 253 tall: its top clears the ceiling only from 930 */
 @media (max-height:899px){.cc-burn{display:none}}
 @media (max-height:759px){.cc-portrait,.cc-plaque{display:none}}
 @media (max-height:709px){.cc-cert,.cc-board{display:none}}
@@ -1322,16 +1323,23 @@
     // found no transaction in either direction, ever. Holdings are zero both
     // ways too. So this room is not commemorating a long friendship; it is the
     // first time the two projects have touched at all.
+    // (2026-09-03: this board used to carry the "first contact" fact -- the
+    // two projects had never transacted before the building opened. True,
+    // proved, and read by holders as a riddle. The user wants the wall to
+    // sell the flywheel, so it now says what CASHCAT does inside Firm, with
+    // the numbers read live from the same sources as the desk and the
+    // record. Nothing here is typed in.)
     var fc = el("div", "cc-first");
-    fc.innerHTML = "<h4>First contact</h4>"
-      + "<p>Before this building opened, these two<br>projects had "
-      + "<b>never touched on this chain.</b><br>Not one transaction, either way.</p>"
+    fc.innerHTML = "<h4>The flywheel</h4>"
+      + "<p>Every hour the payroll <b>buys CASHCAT on the market</b><br>and pays it to "
+      + "every broker on cat pay.<br>Every $9TO5 trade on letscash <b>burns CASHCAT.</b><br>"
+      + "Hire, hold, get paid: the cat eats either way.</p>"
       + '<div class="n">'
-      + "<span><em>681</em>their transactions</span>"
-      + "<span><em>48</em>and theirs</span>"
-      + "<span><em>0</em>with us</span></div>"
-      + '<div class="src">FULL HISTORY OF BOTH ADDRESSES, TO THE FIRST'
-      + "<br>TRANSACTION EITHER EVER MADE &middot; WALKED 31 AUG 2026</div>";
+      + '<span><em class="fw-paid">&hellip;</em>bought by payroll &middot; 24h</span>'
+      + '<span><em class="fw-brokers">&hellip;</em>brokers paid &middot; 24h</span>'
+      + '<span><em class="fw-burn">&hellip;</em>of supply burned</span></div>'
+      + '<div class="src fw-src">READ LIVE: THE PAYROLL ENGINE&rsquo;S OWN EVENTS &middot; THE DEAD ADDRESS'
+      + "<br>THE LETSCASH BURN IS THEIR DOCUMENTED RULE, NOT OUR CLAIM</div>";
     put(fc, { left: "770px", bottom: "calc(var(--ground-h) + 400px)" });   // 600 wide, centre 1070
 
     // ---- glazing, so the gaps read as windows rather than seams ----------
@@ -1659,6 +1667,7 @@ var bed = el("div", "cc-bed");
           q(".lv-price").textContent = fmtUsd(lv.priceUsd);
           q(".lv-mcap").textContent = fmtUsd(lv.mcapUsd);
           q(".lv-burn").textContent = lv.burnedPct.toFixed(2) + "%";
+          fc.querySelector(".fw-burn").textContent = lv.burnedPct.toFixed(1) + "%";
           q(".lv-dep").textContent = lv.deployerPct.toFixed(3) + "%";
           q(".lv-src").textContent = "READ FROM THE CHAIN \u00b7 JUST NOW \u00b7 PRICE OFF THEIR LAUNCH POOL";
         } else { q(".lv-src").textContent = "CASHCAT IS NOT ON THE MENU YET"; }
@@ -1667,6 +1676,10 @@ var bed = el("div", "cc-bed");
         payboard.querySelector(".pb-total").textContent = fmtCc(sc.total) + " CASHCAT";
         payboard.querySelector(".pb-brokers").textContent = String(sc.brokers);
         payboard.querySelector(".pb-count").textContent = String(sc.paydays);
+        fc.querySelector(".fw-paid").textContent = sc.paydays ? fmtCc(sc.total) : "0";
+        fc.querySelector(".fw-brokers").textContent = String(sc.brokers);
+        if (!sc.paydays) fc.querySelector(".fw-src").innerHTML = "THE FIRST CASHCAT PAYCHECK SIGNS THE FIRST TWO NUMBERS \u00b7 THE DESK BELOW STARTS IT"
+          + "<br>THE LETSCASH BURN IS THEIR DOCUMENTED RULE, NOT OUR CLAIM";
         payboard.querySelector(".pb-src").textContent = sc.paydays
           ? "THE ENGINE\u2019S OWN DELIVERED EVENTS \u00b7 LIVE" + (sc.short ? " \u00b7 AT LEAST: PART OF THE DAY DID NOT ANSWER" : "")
           : "NOBODY HAS PICKED CASHCAT PAY YET \u00b7 THE DESK BELOW";
@@ -1677,6 +1690,7 @@ var bed = el("div", "cc-bed");
       } catch (e) {
         cc.querySelector(".lv-src").textContent = "THE CHAIN DID NOT ANSWER";
         payboard.querySelector(".pb-src").textContent = "THE CHAIN DID NOT ANSWER";
+        fc.querySelector(".fw-src").textContent = "THE CHAIN DID NOT ANSWER";
       }
     })();
 
