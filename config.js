@@ -30,7 +30,7 @@ window.FIRM_CFG = {
   vault: "0x5D792986F671b11e6C551F7C90591c61341d749e",      // PayVault
   // Reinvest401k — the 401(k): every paycheck into $9TO5. Zero until it is
   // deployed; the card and the broker-file row stay hidden until then.
-  reinvest: "0x0000000000000000000000000000000000000000",
+  reinvest: "0x53fD07eFF0aA1cE0A1e15f4Ef436A2cBffcf75Ab",
   marketApi: "https://firm-market.firmbrokersrhchain.workers.dev", // firm-market worker base URL (market/README.md); empty = listings column off, level lookup still works
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)
