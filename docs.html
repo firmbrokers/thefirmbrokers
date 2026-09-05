@@ -459,16 +459,25 @@ footer a{color:var(--ink-2)}
     Trading Floor, and the payroll sweep converts the salary assets that land in your wallet
     &mdash; USDG, a stock, FRONG, CASHCAT &mdash; into $9TO5 about once an hour, and hands it
     straight back to the same wallet.</p>
+  <p><strong>Only pay that arrives after you enrol is ever converted.</strong> When you enrol,
+    the plan notes what you already hold of each asset, and that stays yours. Deposit more later
+    and press KEEP WHAT I HOLD NOW, and that stays too. Spend your old holdings and the protected
+    amount simply follows your balance down; your next paycheck still converts.</p>
   <p>It sells on the same Uniswap pools the payroll bought on, and buys $9TO5 on its own pool,
     where the trading fee applies like any other buy &mdash; so a converted paycheck feeds the
     next payday too.</p>
   <div class="note"><b>What it can and cannot do</b>
-    Enrolling switches your hired brokers to paying your wallet and lets the plan spend the salary
-    assets in that wallet. Everything it takes comes back as $9TO5 in the same transaction; it never
-    holds your money. One percent of each sweep pays whoever runs it. It converts the whole balance
-    of those assets in the wallet, not only the pay: keep other USDG elsewhere, or set a smaller
-    allowance. Leave whenever you like. The CONVERT NOW button works with or without enrolling,
+    Enrolling switches your hired brokers to paying your wallet and sets a <b>cap per asset</b>
+    that you type yourself (about thirty days of pay is suggested; nothing is unlimited). The plan
+    can never take more than the cap, and never anything you held before enrolling. Everything it
+    takes comes back as $9TO5 in the same transaction; it never holds your money. One percent of
+    each sweep pays whoever runs it. Leave whenever you like. CONVERT lets you convert an exact
+    amount you type &mdash; old holdings included, on purpose &mdash; with or without enrolling,
     and takes no cut.</div>
+  <div class="note"><b>If you were on the first version of the plan</b>
+    It converted whole balances and asked for an unlimited allowance. The card offers MOVE TO THE
+    NEW PLAN: one list that revokes those allowances, leaves the old plan and enrols you in the new
+    one with your own caps.</div>
 </section>
 
 <section id="more">
@@ -820,7 +829,7 @@ footer a{color:var(--ink-2)}
 
 </div>
 
-<script src="config.js?v=1788634170"></script>
+<script src="config.js?v=1788641139"></script>
 <script>
 // Addresses come from config.js (window.FIRM_CFG), never hardcoded here, so this
 // page cannot drift out of sync with the rest of the site or show a stale address.

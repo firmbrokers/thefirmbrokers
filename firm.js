@@ -64,6 +64,10 @@
     // the 401(k) (Reinvest401k)
     enroll: "0xe65f2a7e",
     leave: "0xd66d9e19",
+    // v2 (Reinvest401kV2): baselines
+    baseline: "0x743faff7",  // baseline(address,uint8)
+    protect: "0x2dcd05b8",   // protect()
+    sweepSelf: "0x275da49e", // sweepSelf(uint8,uint256,uint256)
     enrolledAt: "0x80a55f0e",
     converted: "0x3633a1b0",
     quoteSweep: "0x2c522de6",
@@ -1230,6 +1234,12 @@
       }
       return held;
     },
+    // ETH per whole unit of asset `idx` at the time-weighted price (for
+    // turning "30 days of pay" into an allowance in the asset's own units)
+    reinvestRate: async (idx, decimals) => {
+      const raw = await call(CFG.reinvest, SEL.twapEthOut + word(idx) + word(10n ** BigInt(decimals)));
+      return raw && raw.length >= 66 ? toBig(raw) : 0n;
+    },
     // the whole trip for `amount` of asset `idx`: ETH at the time-weighted
     // price and the $9TO5 that buys right now (the contract runs the buy and
     // reverts, so this is the swap, not an estimate of it)
@@ -1239,21 +1249,38 @@
       return { ethOut: toBig("0x" + raw.slice(2, 66)), tokensOut: toBig("0x" + raw.slice(66, 130)) };
     },
     // enrolling is one list: pay-to-wallet for the brokers still on the
-    // vault, an allowance per asset a paycheck can land in, then enrol
-    reinvestEnrollCalls: (vaultIds, tokens) => [
+    // vault, a BOUNDED allowance per asset a paycheck can land in
+    // ([{token, amount}], the holder's own numbers), then enrol
+    reinvestEnrollCalls: (vaultIds, allowances) => [
       ...vaultIds.map((id) => ({ to: CFG.engine, data: SEL.setCollectMode + word(id) + word(1) })),
-      ...tokens.map((t) => ({ to: t, data: SEL.approve + word(CFG.reinvest) + word((1n << 256n) - 1n) })),
+      ...allowances.map((x) => ({ to: x.token, data: SEL.approve + word(CFG.reinvest) + word(x.amount) })),
       { to: CFG.reinvest, data: SEL.enroll },
     ],
     reinvestLeaveCall: () => ({ to: CFG.reinvest, data: SEL.leave }),
-    reinvestApproveCall: (token) => ({ to: token, data: SEL.approve + word(CFG.reinvest) + word((1n << 256n) - 1n) }),
-    // sweep(idx, [from], minOut): the holder running their own wallet, no cut.
-    // Explicit gas: v3 sell → unwrap → v4 unlock → callback → swap → hook is
-    // nested deep enough that eth_estimateGas comes in UNDER what the call
-    // needs (fork, 2026-09-02: estimate 653k, the tx died at 658k, the same
-    // call ran at 579k with room). Only gas used is charged on this chain.
-    reinvestSweepSelfCall: (idx, minOut, from) =>
-      ({ to: CFG.reinvest, data: SEL.sweep + word(idx) + word(96) + word(minOut) + word(1) + word(from), gas: 1_200_000 }),
+    reinvestApproveCall: (token, amount) => ({ to: token, data: SEL.approve + word(CFG.reinvest) + word(amount == null ? (1n << 256n) - 1n : amount) }),
+    // v2: keep what I hold now
+    reinvestProtectCall: () => ({ to: CFG.reinvest, data: SEL.protect }),
+    // v2: convert exactly `amount` of asset `idx` from my own wallet, no cut
+    reinvestSweepAmountCall: (idx, amount, minOut) =>
+      ({ to: CFG.reinvest, data: SEL.sweepSelf + word(idx) + word(amount) + word(minOut), gas: 1_200_000 }),
+    // the old plan (config.reinvestV1): is this wallet still on it, and what did it allow
+    reinvestV1Status: async (addr, tokens) => {
+      if (!CFG.reinvestV1) return { enrolled: false, allowed: [] };
+      const r = await callBatch([{ to: CFG.reinvestV1, data: SEL.enrolledAt + word(addr) }, ...tokens.map((t) => ({ to: t, data: SEL.allowance + word(addr) + word(CFG.reinvestV1) }))]);
+      const big = (x) => (x && x.length >= 66 ? toBig(x) : 0n);
+      return { enrolled: big(r[0]) > 0n, allowed: tokens.filter((t, i) => big(r[i + 1]) > 0n) };
+    },
+    // leaving the old plan for good: every allowance to it revoked, then leave
+    reinvestMigrateCalls: (allowedTokens, wasEnrolled) => [
+      ...allowedTokens.map((t) => ({ to: t, data: SEL.approve + word(CFG.reinvestV1) + word(0) })),
+      ...(wasEnrolled ? [{ to: CFG.reinvestV1, data: SEL.leave }] : []),
+    ],
+    // (v1's sweep([self]) helper is gone on purpose: on v2 that path takes the
+    // whole allowance of a never-enrolled wallet; CONVERT uses sweepSelf(amount).
+    // Explicit gas on sweepSelf: v3 sell → unwrap → v4 unlock → callback → swap
+    // → hook is nested deep enough that eth_estimateGas comes in UNDER what the
+    // call needs (fork, 2026-09-02: estimate 653k, the tx died at 658k, the
+    // same call ran at 579k with room). Only gas used is charged on this chain.
     runCalls,
     batchSupported,
     get batchNote() { return batchNote; },
