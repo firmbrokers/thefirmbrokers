@@ -67,7 +67,7 @@
   }
   const nyTime = (ts, withDate) => new Date(ts * 1000).toLocaleString("en-US", Object.assign({ timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }, withDate ? { month: "short", day: "numeric" } : {}));
   /// " · 21:00 your time" when the viewer is not on New York time
-  const localTime = (ts) => { try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (!tz || tz === "America/New_York") return ""; return " · " + new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + " your time"; } catch (e) { return ""; } };
+  const localTime = (ts, brief) => { try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (!tz || tz === "America/New_York") return ""; return " · " + new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + (brief ? " yours" : " your time"); } catch (e) { return ""; } };
   const ago = (ts) => { const s = Math.max(0, Math.floor(Date.now() / 1000) - ts); return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d"; };
   const countdown = (left) => { if (left <= 0) return "0:00"; const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60; return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`; };
 
@@ -116,7 +116,7 @@
   const S = {
     account: null, cur: null, curId: 0, closesAt: 0, delay: 300, skew: 0, count: 0,
     players: [], feed: [], history: [], due: [], me: null, claimable: 0n, refOwed: 0n, code: "", referrer: ZERO,
-    knobs: null, balance: 0n, allowance: 0n, brokers: [], brokersOwned: 0, brokersEligible: 0, useBrokers: true, ethPer: null, loaded: false, busy: false,
+    knobs: null, refOwner: ZERO, balance: 0n, allowance: 0n, brokers: [], brokersOwned: 0, brokersEligible: 0, useBrokers: true, ethPer: null, loaded: false, busy: false,
   };
 
   // ---------------------------------------------------------------- chain
@@ -125,7 +125,9 @@
     const head = await F.callBatch([
       { to: P, data: SEL.currentRound }, { to: P, data: SEL.roundCount }, { to: P, data: SEL.beaconDelay },
       { to: P, data: SEL.dueForDraw }, { to: P, data: SEL.recentRounds + word(8) }, { to: P, data: SEL.knobs },
+      { to: P, data: SEL.codeOwner + bytes32(refCode() || "---") }, // does the link's code exist?
     ]);
+    S.refOwner = head[6] && head[6].length >= 66 ? addr(head[6], 0) : ZERO;
     // the terms a round opening now would take (the board's rules before the first chip-in of a day)
     if (head[5] && head[5].length >= 2 + 64 * 6) S.knobs = { minDeposit: big(head[5], 0), divBps: num(head[5], 1), refBps: num(head[5], 2), houseBps: num(head[5], 3), boostBps: num(head[5], 4), boostCapBps: num(head[5], 5) };
     const cr = head[0];
@@ -280,7 +282,7 @@
     const P = CFG.pool;
     const brokers = S.useBrokers ? S.brokers : [];
     const typed = (host.querySelector("#op-ref") || {}).value;
-    const code = S.referrer === ZERO ? (typed && validCode(String(typed).trim().toLowerCase()) ? String(typed).trim().toLowerCase() : refCode()) : "";
+    const code = S.referrer === ZERO ? (typed && validCode(String(typed).trim().toLowerCase()) ? String(typed).trim().toLowerCase() : (S.refOwner !== ZERO ? refCode() : "")) : "";
     // deposit(uint128 amount, uint256[] brokerIds, bytes32 refCode)
     let data = SEL.deposit + word(amountWei) + word(96) + (code ? bytes32(code) : word(0)) + word(brokers.length);
     for (const id of brokers) data += word(id);
@@ -385,7 +387,7 @@
     const left = S.closesAt - now;
     const me = S.me;
     const T = terms();
-    const eth = (units) => (S.ethPer ? `<div class="fine">≈ ${(Number(units) / 1e18 * S.ethPer).toLocaleString("en-US", { maximumFractionDigits: 3 })} ETH</div>` : "");
+    const ethStr = (units) => (S.ethPer ? `≈ ${(Number(units) / 1e18 * S.ethPer).toLocaleString("en-US", { maximumFractionDigits: 3 })} ETH` : "");
     const myW = me ? me.weight : 0n;
     const tot = r ? r.totalWeight : 0n;
     const odds = myW > 0n && tot > 0n ? (Number(tot) / Number(myW)).toLocaleString("en-US", { maximumFractionDigits: 1 }) : null;
@@ -395,14 +397,16 @@
     const bellNY = S.closesAt ? nyTime(S.closesAt) : "4:00 PM";
     const youWon = (a) => same(a, S.account);
     const buyHref = CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : null;
-    const sender = S.referrer !== ZERO ? short(S.referrer) : refCode() ? esc(refCode()) : "";
+    const codeKnown = !!refCode() && S.refOwner !== ZERO;
+    const sender = S.referrer !== ZERO ? short(S.referrer) : codeKnown ? esc(refCode()) : "";
+    const badCode = refCode() && !codeKnown && S.loaded ? `<div class="fine">link code '${esc(refCode())}' is not registered · their 5% would go to the jackpot</div>` : "";
 
     // ---- the results banner: from the draw until the next bell
     const last = S.history.find((h) => h.state === 2 && h.playerCount > 0 && now < h.closesAt + 86400 + 600);
     let banner = "";
     if (last) {
       const who = (a) => (youWon(a) ? `<b class="won">YOU</b>` : `<b>${short(a)}</b>`);
-      banner = `<div class="last">🔔 ${nyTime(last.closesAt, true) === nyTime(S.closesAt, true) ? "today" : "yesterday"}: ${last.jackpotWinner !== ZERO ? `${who(last.jackpotWinner)} took the jackpot (${fmt(last.jackpotPaid)}) · ` : ""}${who(last.refundWinner)} got their money back (${fmt(last.refundPaid)})`;
+      banner = `<div class="last">🔔 ${now - last.closesAt < 12 * 3600 ? "today" : "yesterday"}: ${last.jackpotWinner !== ZERO ? `jackpot ${fmt(last.jackpotPaid)} → ${who(last.jackpotWinner)} · ` : ""}money back ${fmt(last.refundPaid)} → ${who(last.refundWinner)}`;
       if (S.account) {
         const mine = [];
         if (youWon(last.jackpotWinner)) mine.push(`<b class="won">YOU took the jackpot: ${fmt(last.jackpotPaid)} $9TO5</b>`);
@@ -415,11 +419,11 @@
 
     const board = `<div class="cab board"><div class="scr">${banner}
       <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
-      <div class="pot">${r ? fmt(r.pot) + " $9TO5" : "—"}</div>${r ? eth(r.pot) : ""}
-      <div class="one">chip in $9TO5 before the ${bellNY} New York bell · one takes the jackpot, one gets their money back · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</div>
-      <div class="fine">${r ? (r.seed > 0n ? `${fmt(r.seed)} seeded · ` : "") + `${r.playerCount} player${r.playerCount === 1 ? "" : "s"} · ${fmt(r.deposits)} chipped in` : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
+      <div class="pot">${r ? fmt(r.pot) + " $9TO5" : "—"}</div>
+      <div class="one">chip in $9TO5 before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
+      <div class="fine">${r ? [ethStr(r.pot), r.seed > 0n ? `${fmt(r.seed)} seeded` : "", `${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)} chipped in`].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
       <div class="row">
-        <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? nyTime(S.closesAt, true) + " NY" + localTime(S.closesAt) + " · draw 5 min after the bell" : ""}</div></div>
+        <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? `<span class="long">${nyTime(S.closesAt, true)} NY${localTime(S.closesAt)} · draw 5 min after the bell</span><span class="short">${nyTime(S.closesAt)} NY${localTime(S.closesAt, true)} · draw +5 min</span>` : ""}</div></div>
         ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} $9TO5</div><div class="fine">${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}</div></div>
         <div><div class="lab">YOUR CHANCE AT THE JACKPOT</div><div class="hi">${odds ? "1 in " + odds : "—"}</div><div class="fine">${me.divEarned > 0n ? "earned " + fmt(me.divEarned) + " in dividends today" : ""}</div></div>` : ""}
       </div></div></div>`;
@@ -441,7 +445,7 @@
     if (!S.account) {
       deskBody = S.pickWallet
         ? `<div class="lab">WHICH WALLET?</div><div class="presets">${S.pickWallet.map((x, i) => `<button class="chip" data-act="wallet" data-i="${i}" type="button">${esc(x.info.name)}</button>`).join("")}</div><div class="fine">this browser has more than one</div>`
-        : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell${sender ? ` · sent by <b>${sender}</b>` : ""}</div>`;
+        : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell${sender ? ` · sent by <b>${sender}</b>` : ""}</div>${badCode}`;
     } else {
       const brokerLine = S.brokers.length
         ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> count my ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of ${S.brokersEligible}` : S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"} <span class="dim">(${multX(S.brokers.length)})</span></label>
@@ -456,29 +460,29 @@
       ${brokerLine}
       <button class="go" data-act="chip" ${left > 0 && !poor ? "" : "disabled"}>${left > 0 ? (me && me.deposited > 0n ? "CHIP IN MORE" : "CHIP IN") : "CLOSED — NEXT POOL AT THE BELL"}</button>
       ${firstTime && !poor ? `<div class="fine">two wallet prompts the first time: 1) allow $9TO5 · 2) chip in</div>` : ""}
-      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${sender ? " · sent by <b>" + sender + "</b>" : ""}</div>
+      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${sender ? " · sent by <b>" + sender + "</b>" : ""}</div>${badCode}
       <div class="echo" id="op-echo"></div>
       <div class="lab" style="margin-top:6px">YOURS TO CLAIM</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <span>dividends <b>${fmt(S.claimable)}</b></span><button class="chip" data-act="claimdiv" ${S.claimable > 0n ? "" : "disabled"}>CLAIM</button>
-        <span>referrals <b>${fmt(S.refOwed)}</b></span><button class="chip" data-act="claimref" ${S.refOwed > 0n ? "" : "disabled"}>CLAIM</button>
+        ${S.refOwed > 0n ? `<span>referrals <b>${fmt(S.refOwed)}</b></span><button class="chip" data-act="claimref">CLAIM</button>` : ""}
         ${S.claimable > 0n && S.refOwed > 0n ? `<button class="chip" data-act="claimall">CLAIM ALL</button>` : ""}
       </div>
-      ${S.referrer === ZERO && !(me && me.deposited > 0n) ? `<div class="amt" style="margin-top:8px"><span class="dim" style="align-self:center;white-space:nowrap">sent by:</span><input type="text" id="op-ref" placeholder="name · optional" value="${esc(refCode())}" autocapitalize="off" spellcheck="false"></div>
+      ${S.referrer === ZERO && !codeKnown && !(me && me.deposited > 0n) ? `<div class="amt" style="margin-top:8px"><span class="dim" style="align-self:center;white-space:nowrap">sent by:</span><input type="text" id="op-ref" placeholder="name · optional" value="" autocapitalize="off" spellcheck="false"></div>
       <details id="op-refwhy" ${keep.refOpen ? "open" : ""}><summary class="fine">what is this?</summary><div class="fine">if a player sent you, their name goes here (filled in when you arrive through their link). Fixed on your first chip-in; it pays them 5% of your chip-ins, never out of your share.</div></details>` : ""}`;
     }
     const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">${deskBody}</div></div></div>`;
 
     const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
-      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">share it. Whoever arrives through it (or types your name) has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time. It never comes out of their share.</div>`
+      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>`
       : `<div class="fine">pick a name once, then share your link or the name. Whoever arrives through it has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time.</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
     </div></div>` : "";
 
     const ranked = S.players.slice().sort((a, b) => (b.v.deposited > a.v.deposited ? 1 : -1)).slice(0, 10);
     const lead = `<div class="cab"><div class="scr"><div class="lab">TODAY'S BOARD</div>
-      <div class="grid3 head"><span>player</span><span>brokers</span><span>chipped in · earned in dividends</span></div>
+      <div class="grid3 head"><span>player<span class="long"> · brokers counted</span></span><span>chipped in<span class="long"> · earned in dividends</span></span></div>
       <div class="list">${ranked.length ? ranked.map((p, i) =>
-        `<div class="grid3${same(p.addr, S.account) ? " me" : ""}"><span class="who">${i + 1}. ${same(p.addr, S.account) ? "<b class='won'>YOU</b>" : `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`}</span><span class="dim" title="${p.v.brokers} brokers counted · ${multX(p.v.brokers)}">${p.v.brokers ? `+${p.v.brokers} · ${multX(p.v.brokers)}` : ""}</span><span class="n">${fmt(p.v.deposited)}<span class="dim sub"> · earned ${fmt(p.v.divEarned)}</span></span></div>`).join("")
+        `<div class="grid3${same(p.addr, S.account) ? " me" : ""}"><span class="who">${i + 1}. ${same(p.addr, S.account) ? "<b class='won'>YOU</b>" : `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`}${p.v.brokers ? ` <span class="dim brk" title="${p.v.brokers} brokers counted · ${multX(p.v.brokers)}">+${p.v.brokers} · ${multX(p.v.brokers)}</span>` : ""}</span><span class="n">${fmt(p.v.deposited)}<span class="dim sub"><span class="dot"> · </span>earned ${fmt(p.v.divEarned)}</span></span></div>`).join("")
         : `<div class="dim">${S.loaded ? "nobody yet" : "loading…"}</div>`}</div></div></div>`;
 
     const feed = `<div class="cab"><div class="scr"><div class="lab">JUST NOW</div>
@@ -487,8 +491,10 @@
     const hist = `<div class="cab hist"><div class="scr"><div class="lab">PAST POOLS</div>
       <div class="list">${S.history.length ? S.history.map((h) => {
         const st = h.state === 2 ? (h.playerCount === 0 ? "nobody came · carried" : "") : h.state === 3 ? "abandoned · refunds open" : "waiting for its draw";
-        return `<div class="r${youWon(h.refundWinner) || youWon(h.jackpotWinner) ? " me" : ""}"><div class="line"><b>${nyTime(h.closesAt, true)}</b><span>${fmt(h.refundPaid + h.jackpotPaid + h.pot)} $9TO5</span><span class="dim">${h.playerCount} players</span>${st ? `<span class="dim">${st}</span>` : ""}</div>
-          ${h.state === 2 && h.playerCount > 0 ? `<div class="line"><span>money back: ${youWon(h.refundWinner) ? `<b class="won">YOU</b>` : `<a href="${explorer(h.refundWinner)}" rel="noopener">${short(h.refundWinner)}</a>`} ${fmt(h.refundPaid)}</span>${h.jackpotWinner !== ZERO ? `<span>the jackpot: ${youWon(h.jackpotWinner) ? `<b class="won">YOU</b>` : `<a href="${explorer(h.jackpotWinner)}" rel="noopener">${short(h.jackpotWinner)}</a>`} <b>${fmt(h.jackpotPaid)}</b></span>` : `<span class="dim">the refund was the whole jackpot</span>`}<a class="dim" href="${drandUrl(h.beaconRound)}" rel="noopener">beacon ${h.beaconRound} ↗</a></div>` : ""}</div>`;
+        const name = (a) => (youWon(a) ? `<b class="won">YOU</b>` : `<a href="${explorer(a)}" rel="noopener">${short(a)}</a>`);
+        const drawn = h.state === 2 && h.playerCount > 0;
+        return `<div class="r${youWon(h.refundWinner) || youWon(h.jackpotWinner) ? " me" : ""}"><div class="line"><b>${nyTime(h.closesAt, true)}</b>${drawn ? (h.jackpotWinner !== ZERO ? `<span>jackpot <b>${fmt(h.jackpotPaid)}</b> → ${name(h.jackpotWinner)}</span>` : `<span class="dim">the refund was the whole jackpot</span>`) : `<span>${fmt(h.pot)} $9TO5</span>`}<span class="dim">${h.playerCount} players</span>${st ? `<span class="dim">${st}</span>` : ""}</div>
+          ${drawn ? `<div class="line"><span>money back ${fmt(h.refundPaid)} → ${name(h.refundWinner)}</span><a class="dim" href="${drandUrl(h.beaconRound)}" rel="noopener">beacon ${h.beaconRound} ↗</a></div>` : ""}</div>`;
       }).join("") : `<div class="dim">${S.loaded ? "none yet" : "loading…"}</div>`}</div></div></div>`;
 
     const rules = `<div class="cab rules"><div class="lab">HOUSE RULES</div>
@@ -496,7 +502,8 @@
       <p>At the bell one player takes the jackpot. Another gets their money back first (up to the jackpot). Your chance is your chip-ins, boosted <b>${T.boostBps / 100}%</b> per hired broker you count that day, up to <b>${cap / 10000}×</b>. A chip-in is final.</p>
       <p>The number is drand's public beacon for a round fixed in advance, verified by the contract. Closes <b>${bellNY} New York</b>, drawn five minutes later. The fine print is in the <a href="/docs#pool">handbook</a>.</p></div>`;
 
-    host.innerHTML = board + bell + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + hist + rules;
+    // the bell panel (a missed draw, rare) goes after the desk: on a phone it was pushing CHIP IN below the first screen
+    host.innerHTML = board + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + bell + hist + rules;
     const a = host.querySelector("#op-amt"), c = host.querySelector("#op-code"), b = host.querySelector("#op-brk"), rf = host.querySelector("#op-ref");
     if (a && keep.amt) a.value = keep.amt;
     if (c && keep.code) c.value = keep.code;

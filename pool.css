@@ -55,18 +55,19 @@ input { font: inherit; }
 .desk details summary { cursor: pointer; list-style: none; }
 .desk details summary::-webkit-details-marker { display: none; }
 .desk details summary::before { content: "? "; color: var(--gold); }
-.grid3 { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #12301f; }
+.grid3 { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #12301f; }
+.grid3 .brk { font-size: 17px; }
+.one .short, .board .cd + .fine .short { display: none; }
 .grid3.head { color: var(--grey); font-size: 16px; border-bottom: 1px solid #1c4a2e; }
 .grid3 .n { color: var(--crtbright); white-space: nowrap; text-align: right; }
 .grid3.me { color: var(--gold); }
 @media (max-width: 720px) {
-  .grid3 { grid-template-columns: 1fr auto; }
-  .grid3 .who { grid-column: 1; grid-row: 1; }
-  .grid3 .n { grid-column: 2; grid-row: 1; }
   .grid3 .n .sub { display: block; text-align: right; }
-  .grid3.head span:nth-child(2) { display: none; }
-  .grid3 > span:nth-child(2) { grid-column: 1; grid-row: 2; font-size: 17px; }
-  .grid3 > span:nth-child(2):empty { display: none; }
+  .grid3 .n .sub .dot { display: none; }
+}
+@media (max-width: 520px) {
+  .one .long, .board .cd + .fine .long, .grid3.head .long { display: none; }
+  .one .short, .board .cd + .fine .short { display: inline; }
 }
 /* the phone hero: pot, countdown and CHIP IN on the first screen */
 @media (max-width: 520px) {
