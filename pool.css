@@ -125,3 +125,14 @@ input { font: inherit; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px); background: #0b0e13; border: 3px solid var(--ink2); box-shadow: 0 4px 0 var(--rim); color: var(--cream); padding: 10px 14px; font-size: 20px; z-index: 9; display: none; }
 .toast.on { display: block; }
 .toast.ok { color: var(--green); } .toast.bad { color: var(--red); }
+/* short desktop windows: a compact hero so the desk starts inside the first screen */
+@media (min-width: 721px) and (max-height: 720px) {
+  .op { padding-top: 8px; }
+  .op-hero { margin: 6px auto 10px; }
+  .op-hero .marq { padding: 10px 18px; font-size: 14px; line-height: 18px; }
+  .op-hero .sub { margin-top: 4px; font-size: 17px; }
+  .op-ticker { height: 28px; margin-bottom: 10px; }
+  .op-ticker .tape { font-size: 18px; line-height: 28px; }
+  .board .pot { font-size: 36px; line-height: 42px; margin: 4px 0 4px; }
+  .cab { margin-bottom: 12px; padding: 10px; }
+}
