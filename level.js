@@ -3700,9 +3700,7 @@
       <div class="r tot"><span>converted so far</span><b>${fmtCompact(st.converted)} $9TO5</b></div>
       ${low.length ? `<div class="fine">The cap for ${low.map((w) => w.symbol).join(", ")} is nearly used up.</div><div class="bar"><button class="fb-btn small topup" type="button">RAISE THE CAP</button></div>` : ""}
       ${oldPlan ? `<div class="fine">One step of the move is still open: leaving the old plan.</div><div class="bar"><button class="fb-btn small revoke" type="button">FINISH THE MOVE</button></div>` : ""}
-      <div class="bar"><button class="fb-btn small ghost leave" type="button">LEAVE THE PLAN</button><button class="fb-btn small ghost more" type="button">MORE</button></div>
-      <div class="adv" hidden><p class="fine">Everything in this wallet at the moment you enrolled is treated as yours and is never converted. If you have moved more in since and want that treated the same way, reset the starting point to now.</p><div class="bar"><button class="fb-btn small ghost keep" type="button">RESET THE STARTING POINT TO NOW</button></div></div>`;
-    box.querySelector(".more").addEventListener("click", () => { const a = box.querySelector(".adv"); a.hidden = !a.hidden; });
+      <div class="bar"><button class="fb-btn small ghost leave" type="button">LEAVE THE PLAN</button></div>`;
     const topup = box.querySelector(".topup");
     if (topup) topup.addEventListener("click", async () => {
       const caps = await capsFor(low.map((w) => w.idx));
