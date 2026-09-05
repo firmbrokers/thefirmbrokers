@@ -445,11 +445,11 @@
     // two identical halves sliding exactly one half: seamless, full from the first frame
     const half = tape.repeat(Math.max(2, Math.ceil(2400 / Math.max(80, tape.replace(/<[^>]+>/g, "").length * 11))));
     const ticker = tickerItems.length > 1 ? `<div class="op-ticker"><div class="tape">${half}${half}</div></div>` : "";
-    const board = `<div class="cab board"><div class="scr">${banner}
+    const board = `<div class="cab board"><div class="scr">${banner}<div class="hero">
       <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
       <div class="pot${left > 0 && left <= 600 ? " hot2" : left > 0 && left <= 3600 ? " hot1" : ""}" data-pot="${r ? r.pot.toString() : "0"}"><span class="num">${r ? fmt(S.potShown && S.potShown < r.pot ? S.potShown : r.pot) : "—"}</span>${r ? ` <span class="unit">$9TO5</span>` : ""}</div>
       <div class="one">chip in $9TO5 before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
-      <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
+      <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div></div>
       <div class="row">
         <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? `<span class="long">${nyTime(S.closesAt, true)} NY${localTime(S.closesAt)} · draw 5 min after the bell</span><span class="short">${nyTime(S.closesAt)} NY${localTime(S.closesAt, true)} · draw +5 min</span>` : ""}</div></div>
         ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} $9TO5</div><div class="fine">${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}</div></div>

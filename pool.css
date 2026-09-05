@@ -39,7 +39,9 @@ input { font: inherit; }
 
 /* the board: the jackpot is the hero */
 .board .pot { font-family: var(--fd); font-size: 48px; line-height: 56px; color: var(--crtbright); text-shadow: 0 0 18px #b6ffcf66, 0 0 40px #6fe08c33; margin: 8px 0 6px; word-break: break-all; }
-.board .pot .unit { font-size: 18px; color: var(--crtink); text-shadow: none; }
+.board .pot .unit { font-size: inherit; color: var(--crtink); text-shadow: 0 0 12px #67b18455; }
+.board .hero { text-align: center; }
+.board .hero .one { max-width: 760px; margin-left: auto; margin-right: auto; }
 .board .pot.hot1 { text-shadow: 0 0 22px #ffd75e88, 0 0 60px #ffc93344; color: #fff3c4; }
 .board .pot.hot2 { animation: pulse 1.2s ease-in-out infinite; color: #fff3c4; }
 @keyframes pulse { 0%, 100% { text-shadow: 0 0 18px #ffd75e88, 0 0 40px #ffc93344; } 50% { text-shadow: 0 0 34px #ffd75ecc, 0 0 90px #ffc93377; } }
@@ -90,8 +92,7 @@ input { font: inherit; }
   .op-hero { margin: 8px auto 12px; }
   .op-hero .marq { padding: 12px 16px; font-size: 14px; line-height: 18px; }
   .op-hero .sub { margin-top: 6px; font-size: 17px; }
-  .board .pot { font-size: 30px; line-height: 36px; }
-  .board .pot .unit { font-size: 13px; }
+  .board .pot { font-size: 28px; line-height: 34px; }
   .op-ticker { margin-bottom: 12px; }
 }
 .won { color: var(--gold); text-shadow: 0 0 8px #ffc93355; }
