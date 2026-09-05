@@ -46,6 +46,38 @@ input { font: inherit; }
 .go { height: 46px; padding: 0 18px; font-family: var(--fd); font-size: 10px; color: var(--ink); background: linear-gradient(#ffe08a, #ffd75e 55%, #e2b640); border: 3px solid var(--ink2); box-shadow: 0 3px 0 #8a6a12; }
 .go:hover:not(:disabled) { background: linear-gradient(#fff0b8, #ffe08a 55%, #eec04a); }
 .go.quiet { background: #1c2230; color: var(--cream); box-shadow: 0 3px 0 var(--rim); }
+.desk .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.desk .presets .chip { padding: 0 10px; height: 36px; }
+.board .last { color: var(--cream); margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #12301f; }
+.board .last .mine { margin-top: 4px; }
+.board .one { color: var(--cream); margin: 4px 0 6px; }
+.desk .need { color: var(--gold); }
+.desk details summary { cursor: pointer; list-style: none; }
+.desk details summary::-webkit-details-marker { display: none; }
+.desk details summary::before { content: "? "; color: var(--gold); }
+.grid3 { display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #12301f; }
+.grid3.head { color: var(--grey); font-size: 16px; border-bottom: 1px solid #1c4a2e; }
+.grid3 .n { color: var(--crtbright); white-space: nowrap; text-align: right; }
+.grid3.me { color: var(--gold); }
+@media (max-width: 720px) {
+  .grid3 { grid-template-columns: 1fr auto; }
+  .grid3 .who { grid-column: 1; grid-row: 1; }
+  .grid3 .n { grid-column: 2; grid-row: 1; }
+  .grid3 .n .sub { display: block; text-align: right; }
+  .grid3.head span:nth-child(2) { display: none; }
+  .grid3 > span:nth-child(2) { grid-column: 1; grid-row: 2; font-size: 17px; }
+  .grid3 > span:nth-child(2):empty { display: none; }
+}
+/* the phone hero: pot, countdown and CHIP IN on the first screen */
+@media (max-width: 520px) {
+  .op { padding-top: 10px; }
+  .op-home { height: auto; padding: 0; background: none; border: 0; box-shadow: none; font-size: 8px; }
+  .op-hero { margin: 8px auto 12px; }
+  .op-hero .marq { padding: 12px 16px; font-size: 14px; line-height: 18px; }
+  .op-hero .sub { margin-top: 6px; font-size: 17px; }
+  .board .pot { font-size: 22px; line-height: 28px; }
+}
+.won { color: var(--gold); text-shadow: 0 0 8px #ffc93355; }
 .desk label.tog { display: flex; align-items: center; gap: 10px; color: var(--cream); }
 .desk label.tog input { width: 18px; height: 18px; }
 .fine { color: var(--grey); font-size: 18px; line-height: 20px; }
