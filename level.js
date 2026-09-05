@@ -443,7 +443,7 @@
   /// way: a wallet that speaks EIP-5792 signs the lot once, and every other
   /// wallet asks per broker. The count is said out loud so ten prompts are
   /// never a surprise.
-  async function runForAll(list, makeCall, working, finished) {
+  async function runForAll(list, makeCall, working, finished, quiet) {
     if (!list.length || !state.account) return;
     const calls = list.map((b) => makeCall(b.id));
     try {
@@ -456,12 +456,15 @@
     } catch (e) {
       toast(humanError(e), false);
     }
+    // the PAYDAY machine runs this as one step of a longer click and redraws
+    // once at the end, so it asks for no rebuild in the middle
+    if (quiet) return;
     await refreshBrokers();
     if (state.mode === "floor") rebuildRoom();
     if (document.body.classList.contains("flat-mode")) buildFlat();
   }
-  const claimAll = (list) => runForAll(list, (id) => F.claimCall(id), "claiming",
-    (n) => `paid out ${n} broker${n === 1 ? "" : "s"}`);
+  const claimAll = (list, quiet) => runForAll(list, (id) => F.claimCall(id), "claiming",
+    (n) => `paid out ${n} broker${n === 1 ? "" : "s"}`, quiet);
   /// setCollectMode is per token as well, so switching a roster over is the
   /// same shape of job. Once it is done the vaults stop filling and neither of
   /// the floor's cleanup buttons ever appears again.
@@ -2123,10 +2126,34 @@
   function paydayPayOf(b) {
     return b.pending || 0n;
   }
+  /// Pay that has ALREADY been delivered, into a broker's vault because his
+  /// PAY TO MY WALLET switch is off. It is settled money in whatever asset he
+  /// is paid in; nothing but the holder's claim moves it, and it follows the
+  /// token, so a broker bought second-hand can arrive holding some. The board
+  /// over the desks used to be the only place to claim it, and HIRE ALL takes
+  /// that slot whenever two brokers are unhired — a treasury with 37 unhired
+  /// and 351 USDG in vaults (2026-09-05) had no button anywhere on the floor.
+  /// The machine is where pay is collected, so it collects this too.
+  function vaultOf(bs) {
+    const list = bs.filter((b) => b.holdings.length);
+    if (!list.length) return { list, big: "" };
+    const bySym = new Map();
+    for (const b of list) for (const h of b.holdings) {
+      const cur = bySym.get(h.symbol) || { amount: 0n, decimals: h.decimals };
+      cur.amount += h.amount;
+      bySym.set(h.symbol, cur);
+    }
+    // one asset reads as the amount; a mix has no single unit, so it counts
+    const big = bySym.size === 1
+      ? [...bySym].map(([sym, v]) => `${fmtUnits(v.amount, v.decimals)} ${sym}`)[0]
+      : `${bySym.size} ASSETS`;
+    return { list, big };
+  }
   function buildPaydayMachine(bs) {
     const out = !state.account;
     const collectable = out ? 0n : bs.filter((b) => b.active).reduce((acc, b) => acc + paydayPayOf(b), 0n);
     const hasActive = !out && bs.some((b) => b.active);
+    const vault = out ? { list: [], big: "" } : vaultOf(bs);
     const st = state.stats || {};
     const nowRound = Math.floor(Date.now() / 3_600_000);
     const roundDue = hasActive && st.lastSettled !== null && st.lastSettled !== undefined
@@ -2137,7 +2164,13 @@
     const mm = String(59 - new Date().getUTCMinutes()).padStart(2, "0");
     // faces: the button is only ever CLICKABLE when a click will really pay.
     // Until the async pre-flight answers, earnings show as BUILDING.
-    const crt = (label, big) => `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${label}</b><u>${big}</u></div>`;
+    // the screen is 162px wide and the display font runs ~15px a character, so
+    // ten characters is the most the big line holds at full size ("0.0618 ETH"
+    // is exactly ten). A vault total in its own unit can be longer — "351.48
+    // USDG" is eleven, "1,234.56 CASHCAT" sixteen — so the line steps its type
+    // down by length instead of clipping the last letter (measured 2026-09-05).
+    const bigCls = (t) => (String(t).length > 14 ? "xl" : String(t).length > 10 ? "long" : "");
+    const crt = (label, big) => `<div class="crt"><i class="scan"></i><i class="vig"></i><b>${label}</b><u class="${bigCls(big)}">${big}</u></div>`;
     const faceArmed = (label, big) => crt(label, big) + `<div class="btn">&#9654; CLICK TO COLLECT &#9664;</div>`;
     const faceIdle = () => (out
       // no wallet: the machine tells the time, and YOUR BROKERS is the one
@@ -2173,43 +2206,57 @@
       const f = m.querySelector(".face");
       if (f) f.innerHTML = html;
     };
+    // what the engine side would say on its own: an armed {label, big}, or
+    // null when nothing there is worth a click (pooling is a side effect)
+    let engineReady = false;
+    let pooledFace = null;
+    async function engineFace() {
+      if (roundDue) return { label: "FEES ACCRUED FOR PAYDAY", big: "RUN PAYDAY" };
+      const owedFees = await F.owedEngine();
+      state.owedFees = owedFees;
+      if (hasActive && owedFees >= PAYDAY_OWED) return { label: "FEES ACCRUED FOR PAYDAY", big: "RUN PAYDAY" };
+      if (hasActive) {
+        const plan = await payPlan(bs.filter((b) => b.active).map((b) => b.id));
+        // arm only when the holder's own pay is worth the click: a 40-id
+        // deliver costs ≈$1 real gas, so under OWN_MIN the face pools and the
+        // hourly sweep pays them for free (it pays at 0.002 anyway)
+        if (plan.own >= OWN_MIN && plan.total >= engineMinSwap() && plan.ids.length) {
+          // plan.own is the TARGET asset's slice — what this click actually
+          // delivers — so the label has to say that and not imply the total.
+          return { label: "READY TO COLLECT", big: `${fmtEth(plan.own)} ETH` };
+        }
+        if (collectable > 0n) {
+          // settled pay that a 40-id batch cannot swap yet: either it is in
+          // stock slots (they only swap once the whole floor's stock pot
+          // clears) or the USDG pool is thin after a sweep. Either way the
+          // keeper's hourly sweep pays it; never invite the holder to pay
+          // gas to swap other people's pay ("POOLED PAY IS READY" used to),
+          // and never tell them to wait for the hour — it is not building
+          // name the asset that is waiting — "STOCK PAY" was wrong the moment
+          // a non-stock asset (FRONG) could be the one pooling.
+          const sym = plan.asset === null || plan.asset === undefined
+            ? null
+            : (state.assetMeta && state.assetMeta[plan.asset] && state.assetMeta[plan.asset].symbol);
+          const label = plan.own > 0n && sym ? `${sym} PAY IS POOLING` : plan.own > 0n ? "PAY IS POOLING" : "POOLED PAY IS WAITING";
+          pooledFace = crt(label, `${fmtEth(collectable)} ETH`) + `<div class="btn dim">THE SWEEP PAYS IT HOURLY</div>`;
+          return null;
+        }
+      }
+      return null;
+    }
     // async pre-flight: arm only when a click would truly pay out
     if (!out) (async () => {
       try {
         if (stranded.length) { setFace(faceArmed(`${stranded.length} BROKER${stranded.length === 1 ? "" : "S"} OFF PAYROLL`, "CLICK TO SEAT"), true); return; }
-        if (roundDue) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
-        const owedFees = await F.owedEngine();
-        state.owedFees = owedFees;
-        if (hasActive && owedFees >= PAYDAY_OWED) { setFace(faceArmed("FEES ACCRUED FOR PAYDAY", "RUN PAYDAY"), true); return; }
-        if (hasActive) {
-          const plan = await payPlan(bs.filter((b) => b.active).map((b) => b.id));
-          // arm only when the holder's own pay is worth the click: a 40-id
-          // deliver costs ≈$1 real gas, so under OWN_MIN the face pools and the
-          // hourly sweep pays them for free (it pays at 0.002 anyway)
-          if (plan.own >= OWN_MIN && plan.total >= engineMinSwap() && plan.ids.length) {
-            // plan.own is the TARGET asset's slice — what this click actually
-            // delivers — so the label has to say that and not imply the total.
-            setFace(faceArmed("READY TO COLLECT", `${fmtEth(plan.own)} ETH`), true);
-            return;
-          }
-          if (collectable > 0n) {
-            // settled pay that a 40-id batch cannot swap yet: either it is in
-            // stock slots (they only swap once the whole floor's stock pot
-            // clears) or the USDG pool is thin after a sweep. Either way the
-            // keeper's hourly sweep pays it; never invite the holder to pay
-            // gas to swap other people's pay ("POOLED PAY IS READY" used to),
-            // and never tell them to wait for the hour — it is not building
-            pooling = true;
-            // name the asset that is waiting — "STOCK PAY" was wrong the moment
-            // a non-stock asset (FRONG) could be the one pooling.
-            const sym = plan.asset === null || plan.asset === undefined
-              ? null
-              : (state.assetMeta && state.assetMeta[plan.asset] && state.assetMeta[plan.asset].symbol);
-            const label = plan.own > 0n && sym ? `${sym} PAY IS POOLING` : plan.own > 0n ? "PAY IS POOLING" : "POOLED PAY IS WAITING";
-            setFace(crt(label, `${fmtEth(collectable)} ETH`) + `<div class="btn dim">THE SWEEP PAYS IT HOURLY</div>`, false);
-            return;
-          }
-        }
+        const eng = await engineFace();
+        engineReady = !!eng;
+        // vault money is certain — no pot to clear, no hour to close — so it
+        // arms the machine by itself, and a click takes the engine's pay in
+        // the same go when that is ready too
+        if (vault.list.length && eng) { setFace(faceArmed("VAULT + PAYDAY READY", vault.big), true); return; }
+        if (vault.list.length) { setFace(faceArmed("PAY IN THE VAULT", vault.big), true); return; }
+        if (eng) { setFace(faceArmed(eng.label, eng.big), true); return; }
+        if (pooledFace) { pooling = true; setFace(pooledFace, false); return; }
         setFace(faceIdle(), false);
       } catch (e) { if (document.body.contains(m)) setFace(faceIdle(), false); }
     })();
@@ -2229,7 +2276,12 @@
           toast("seated — they start earning at the next payday", true);
           await refreshBrokers();
         } else {
-          await collectPay(bs, roundDue);
+          // vault first: it cannot fail for want of a pot, and it is the
+          // holder's own money. The engine run follows only when the
+          // pre-flight armed for it, so a vault-only click never pays gas to
+          // deliver a pot that is not ready.
+          if (vault.list.length) await claimAll(vault.list, true);
+          if (engineReady) await collectPay(bs, roundDue);
           // whatever the click did (or refused), redraw from fresh reads so an
           // armed face never outlives the state that armed it
           await refreshBrokers();

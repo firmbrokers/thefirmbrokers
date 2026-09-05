@@ -22,9 +22,6 @@ window.FIRM_CFG = {
   // anti-phishing rule as the mint and the token: nothing else on the site ever
   // offers a CASHCAT buy. Empty = the plate is not built.
   cashcatBuyUrl: "https://www.letscash.fun/token/0x020bfC650A365f8BB26819deAAbF3E21291018b4",
-  // THE OFFICE POOL (pool.html) — OfficePool, deployed 2026-09-05 16:22Z, block 55259924,
-  // reusing the proven drand verifier 0xf17f…4e9. Empty = the page says it has not opened.
-  pool: "0xba74bFbfa33296052c47149bb805C396ee608c2B",
   explorer: "https://robinhoodchain.blockscout.com",
 
   // ---- fill these at launch ----
@@ -35,6 +32,9 @@ window.FIRM_CFG = {
   // deployed; the card and the broker-file row stay hidden until then.
   reinvest: "0x3374e7B8e11e84027Fe2E9f5029F18f00a04d663", // v2 (2026-09-05): only pay after enrolment converts; caps you type
   reinvestV1: "0x53fD07eFF0aA1cE0A1e15f4Ef436A2cBffcf75Ab", // the first plan: runner off; the card moves wallets off it
+  // THE OFFICE POOL (pool.html) — OfficePool, deployed 2026-09-05 16:22Z, block 55259924,
+  // reusing the proven drand verifier 0xf17f…4e9. Empty = the page says it has not opened.
+  pool: "0xba74bFbfa33296052c47149bb805C396ee608c2B",
   marketApi: "https://firm-market.firmbrokersrhchain.workers.dev", // firm-market worker base URL (market/README.md); empty = listings column off, level lookup still works
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)

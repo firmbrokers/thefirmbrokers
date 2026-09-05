@@ -4096,6 +4096,8 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
 .fb-payday .crt .vig { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.42)); pointer-events: none; }
 .fb-payday .crt b { display: block; margin-top: 14px; font-family: var(--font-display); font-size: 7px; color: #67b184; letter-spacing: 0; white-space: nowrap; }
 .fb-payday .crt u { display: block; margin-top: 12px; text-decoration: none; font-family: var(--font-display); font-size: 15px; color: #8bf59a; text-shadow: 0 0 12px rgba(126,231,135,.75); white-space: nowrap; }
+.fb-payday .crt u.long { font-size: 11px; margin-top: 15px; }
+.fb-payday .crt u.xl { font-size: 8px; margin-top: 17px; }
 .fb-payday .btn { position: absolute; top: 148px; left: 12px; right: 12px; height: 28px; background: linear-gradient(#ffe08a, #ffd75e 55%, #e0af3a); border: 4px solid var(--ink); text-align: center; line-height: 21px; font-family: var(--font-display); font-size: 7px; color: #1c1408; letter-spacing: 0; white-space: nowrap; overflow: hidden; animation: fb-crankglow 1.6s ease-in-out infinite; }
 .fb-payday.armed:hover .btn { background: linear-gradient(#fff0b8, #ffe08a 55%, #eec04a); }
 .fb-payday .btn.dim { background: linear-gradient(#39404a, #2b3038); color: #8fa0b0; animation: none; }

@@ -1225,7 +1225,9 @@
       return { enrolled: since > 0, since, converted: big(r[1]), totalConverted: big(r[2]), runnerBps: Number(big(r[3])) };
     },
     // every salary asset this wallet holds, with what the plan may take of
-    // it and what it is worth in ETH at the time-weighted price; biggest first
+    // it and what it is worth in ETH at the time-weighted price; biggest first.
+    // v2 adds the baseline: `protected` is what stays, `converts` what the
+    // plan may take (above the floor, capped by the allowance).
     reinvestWaiting: async (addr) => {
       const meta = (await assetMeta()) || {};
       const idxs = Object.keys(meta).map(Number);
