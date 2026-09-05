@@ -279,8 +279,14 @@
     let data = SEL.deposit + word(amountWei) + word(96) + (code ? bytes32(code) : word(0)) + word(brokers.length);
     for (const id of brokers) data += word(id);
     if (S.allowance < amountWei) {
-      await tx("allowing the pool to take $9TO5", () => F.send(CFG.token, SEL.approve + word(P) + word((1n << 256n) - 1n), 0n, S.account));
-      if (S.allowance < amountWei) return; // refresh() re-read it; the approval did not land
+      // two confirmations the first time: the allowance, then the chip-in. Say so,
+      // and go straight on to the chip-in once the allowance has landed — the
+      // allowance re-read after the block can lag a beat, and a silent stop here
+      // read as "nothing happened" (the treasury's first chip-in, 2026-09-05).
+      toast("first time: two confirmations — allow the pool to take $9TO5, then the chip-in");
+      let landed = false;
+      await tx("allowing the pool to take $9TO5", () => F.send(CFG.token, SEL.approve + word(P) + word((1n << 256n) - 1n), 0n, S.account), async () => { landed = true; });
+      if (!landed) return; // rejected or failed: the toast said so
     }
     // an honest limit: deposit() has no internal try/catch, so the estimate is
     // real; +25% margin. The wallet quotes limit × max fee, so a fixed 600k
@@ -397,7 +403,8 @@
     const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">
       ${S.account ? `
       <div class="amt"><input type="text" inputmode="decimal" id="op-amt" placeholder="${fmt(T.minDeposit) + " min"}"><button class="chip" data-act="min" type="button">MIN</button><button class="chip" data-act="max" type="button">MAX</button></div>
-      ${S.brokers.length ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> clock in ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of my ${S.brokersEligible} hired brokers` : `my ${S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"}`} <span class="dim">(${(Math.min(10000 + S.brokers.length * T.boostBps, cap) / 10000).toFixed(1)}×${S.brokersEligible > S.brokers.length ? ", the cap" : ""})</span></label>` : (S.account && S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already clocked in today</div>` : "")}
+      ${S.brokers.length ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> clock in ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of my ${S.brokersEligible} hired brokers` : `my ${S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"}`} <span class="dim">→ ${(Math.min(10000 + S.brokers.length * T.boostBps, cap) / 10000).toFixed(1)}× odds</span></label>
+      <div class="fine">each hired broker you clock in adds ${T.boostBps / 100}% to your chance today, up to ${cap / 10000}× (${maxUseful()} brokers)${S.brokersEligible > maxUseful() ? " — past that they cannot add more, so only " + maxUseful() + " are sent" : ""}. A broker counts once a day.</div>` : (S.account && S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already clocked in today</div>` : "")}
       <button class="go" data-act="chip" ${left > 0 ? "" : "disabled"}>${left > 0 ? "CHIP IN" : "CLOSED — NEXT POOL AT THE BELL"}</button>
       <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${S.referrer !== ZERO ? " · sent by " + short(S.referrer) : refCode() ? " · sent by <b>" + esc(refCode()) + "</b>" : ""}</div>
       <div class="echo" id="op-echo"></div>
@@ -441,7 +448,7 @@
     try {
       await load();
       if (S.account) await loadBrokers();
-    } catch (e) { /* keep the last paint; the next poll retries */ }
+    } catch (e) { console.warn("office pool: read failed, will retry: " + (e && e.stack || e)); }
     render();
     schedule();
   }
