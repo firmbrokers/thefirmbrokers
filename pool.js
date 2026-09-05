@@ -393,7 +393,7 @@
     const odds = myW > 0n && tot > 0n ? (Number(tot) / Number(myW)).toLocaleString("en-US", { maximumFractionDigits: 1 }) : null;
     const mult = 10000 + T.boostBps * (me ? me.brokers : S.brokers.length);
     const cap = T.boostCapBps;
-    const multX = (n) => (Math.min(10000 + T.boostBps * n, cap) / 10000).toFixed(1) + "×";
+    const multX = (n) => { const x = Math.min(10000 + T.boostBps * n, cap) / 10000; return (Number.isInteger(x) ? x : x.toFixed(1)) + "×"; };
     const bellNY = S.closesAt ? nyTime(S.closesAt) : "4:00 PM";
     const youWon = (a) => same(a, S.account);
     const buyHref = CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : null;
@@ -421,7 +421,7 @@
       <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
       <div class="pot">${r ? fmt(r.pot) + " $9TO5" : "—"}</div>
       <div class="one">chip in $9TO5 before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
-      <div class="fine">${r ? [ethStr(r.pot), r.seed > 0n ? `${fmt(r.seed)} seeded` : "", `${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)} chipped in`].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
+      <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
       <div class="row">
         <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? `<span class="long">${nyTime(S.closesAt, true)} NY${localTime(S.closesAt)} · draw 5 min after the bell</span><span class="short">${nyTime(S.closesAt)} NY${localTime(S.closesAt, true)} · draw +5 min</span>` : ""}</div></div>
         ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} $9TO5</div><div class="fine">${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}</div></div>
@@ -493,7 +493,7 @@
         const st = h.state === 2 ? (h.playerCount === 0 ? "nobody came · carried" : "") : h.state === 3 ? "abandoned · refunds open" : "waiting for its draw";
         const name = (a) => (youWon(a) ? `<b class="won">YOU</b>` : `<a href="${explorer(a)}" rel="noopener">${short(a)}</a>`);
         const drawn = h.state === 2 && h.playerCount > 0;
-        return `<div class="r${youWon(h.refundWinner) || youWon(h.jackpotWinner) ? " me" : ""}"><div class="line"><b>${nyTime(h.closesAt, true)}</b>${drawn ? (h.jackpotWinner !== ZERO ? `<span>jackpot <b>${fmt(h.jackpotPaid)}</b> → ${name(h.jackpotWinner)}</span>` : `<span class="dim">the refund was the whole jackpot</span>`) : `<span>${fmt(h.pot)} $9TO5</span>`}<span class="dim">${h.playerCount} players</span>${st ? `<span class="dim">${st}</span>` : ""}</div>
+        return `<div class="r${youWon(h.refundWinner) || youWon(h.jackpotWinner) ? " me" : ""}"><div class="line"><b>${nyTime(h.closesAt, true)}<span class="dim"> · ${h.playerCount} players</span></b>${drawn ? (h.jackpotWinner !== ZERO ? `<span>jackpot <b>${fmt(h.jackpotPaid)}</b> → ${name(h.jackpotWinner)}</span>` : `<span class="dim">the refund was the whole jackpot</span>`) : `<span>${fmt(h.pot)} $9TO5</span>`}${st ? `<span class="dim">${st}</span>` : ""}</div>
           ${drawn ? `<div class="line"><span>money back ${fmt(h.refundPaid)} → ${name(h.refundWinner)}</span><a class="dim" href="${drandUrl(h.beaconRound)}" rel="noopener">beacon ${h.beaconRound} ↗</a></div>` : ""}</div>`;
       }).join("") : `<div class="dim">${S.loaded ? "none yet" : "loading…"}</div>`}</div></div></div>`;
 

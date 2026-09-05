@@ -56,7 +56,8 @@ input { font: inherit; }
 .desk details summary::-webkit-details-marker { display: none; }
 .desk details summary::before { content: "? "; color: var(--gold); }
 .grid3 { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #12301f; }
-.grid3 .brk { font-size: 17px; }
+.grid3 .brk { font-size: 17px; white-space: nowrap; }
+.grid3 .who { min-width: 0; overflow-wrap: anywhere; }
 .one .short, .board .cd + .fine .short { display: none; }
 .grid3.head { color: var(--grey); font-size: 16px; border-bottom: 1px solid #1c4a2e; }
 .grid3 .n { color: var(--crtbright); white-space: nowrap; text-align: right; }
