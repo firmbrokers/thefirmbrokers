@@ -502,7 +502,9 @@
     const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">${deskBody}</div></div></div>`;
 
     const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
-      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>`
+      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button></div>
+      ${window.__POOL_CARD ? `<button class="go" data-act="card" style="margin-top:8px">MAKE MY CARD · POST ON X</button>` : `<a class="chip" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:8px" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a>`}
+      <div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>`
       : `<div class="fine">pick a name once, then share your link or the name. Whoever arrives through it has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time.</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
     </div></div>` : "";
 
@@ -578,6 +580,14 @@
     if (act === "claimref") return claimReferral();
     if (act === "claimall") return (async () => { await claimDividends(); await claimReferral(); })();
     if (act === "setcode") { const i = document.getElementById("op-code"); return setCode(i && i.value); }
+    if (act === "card") {
+      const r = S.cur;
+      const link = `${pageLink()}?ref=${S.code}`;
+      const jackpot = r ? fmt(r.pot) : "today's";
+      const postText = (CFG.poolPost || "i'm in today's office pool at @thefirmbrokers: {jackpot} $9TO5 jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 $9TO5").replace("{jackpot}", jackpot).replace("{link}", link);
+      window.__POOL_CARD.open({ code: S.code, link, jackpot, bell: S.closesAt ? nyTime(S.closesAt) : "4:00 PM", postText });
+      return;
+    }
     if (act === "copy") { const c = host.querySelector(".ref code"); if (c && navigator.clipboard) navigator.clipboard.writeText(c.textContent).then(() => toast("copied", true)); return; }
     if (act === "bell") return ringBell(Number(b.dataset.id));
   }

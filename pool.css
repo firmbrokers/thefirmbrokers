@@ -124,6 +124,17 @@ input { font: inherit; }
 .rules { color: var(--cream); font-size: 19px; line-height: 1.3; }
 .rules p { margin: 6px 0; }
 .op-foot { text-align: center; color: var(--grey); font-size: 18px; margin-top: 20px; }
+/* the referral card modal */
+.pc-overlay { position: fixed; inset: 0; background: rgba(6, 8, 12, .82); z-index: 8; display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 24px 12px; }
+.pc-box { width: min(760px, 100%); background: var(--cab); border: 3px solid var(--ink2); box-shadow: 0 4px 0 var(--rim); padding: 14px; }
+.pc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.pc-row { display: flex; gap: 10px; align-items: center; margin: 6px 0 10px; }
+.pc-row input { flex: 1; height: 40px; padding: 0 10px; background: #0b1a11; border: 3px solid var(--ink2); color: var(--crtbright); font-size: 20px; }
+.pc-card canvas { width: 100%; height: auto; display: block; border: 3px solid var(--ink2); image-rendering: auto; }
+.pc-post { margin: 10px 0; }
+.pc-text { white-space: pre-wrap; background: #0b0e13; border: 3px solid var(--ink2); padding: 8px 10px; color: var(--cream); font-size: 19px; line-height: 1.3; }
+.pc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pc-actions .go { flex: 1; min-width: 200px; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); max-width: calc(100% - 32px); background: #0b0e13; border: 3px solid var(--ink2); box-shadow: 0 4px 0 var(--rim); color: var(--cream); padding: 10px 14px; font-size: 20px; z-index: 9; display: none; }
 .toast.on { display: block; }
 .toast.ok { color: var(--green); } .toast.bad { color: var(--red); }
