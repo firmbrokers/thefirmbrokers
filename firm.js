@@ -1052,13 +1052,27 @@
       try {
         // MetaMask refuses a batch of more than ten calls ("Batch size cannot
         // exceed 10", seen 2026-09-02 with 50 setSplits), so a roster goes in
-        // pages of ten: five confirmations for fifty brokers, not fifty
+        // pages of ten: five confirmations for fifty brokers, not fifty.
+        // A call marked `solo` (a token approval) never rides a batch: inside
+        // one MetaMask shows "Unnecessary permission — you're giving someone
+        // else permission to withdraw your tokens" (seen 2026-09-05 on the
+        // 401(k) move), while on its own it shows the ordinary spending-cap
+        // screen. Order is kept: batches are cut around the solo calls.
         const PAGE = 10;
-        let sent = 0;
-        while (sent < calls.length) {
+        let sent = 0, i = 0;
+        while (i < calls.length) {
+          if (calls[i].solo) {
+            if (onStep) onStep(sent, calls.length, false);
+            await waitForTx(await send(calls[i].to, calls[i].data, 0n, from, calls[i].gas));
+            i++; sent++;
+            continue;
+          }
+          let j = i;
+          while (j < calls.length && !calls[j].solo && j - i < PAGE) j++;
           if (onStep) onStep(sent, calls.length, true);
-          await sendCalls(calls.slice(sent, sent + PAGE), from);
-          sent += Math.min(PAGE, calls.length - sent);
+          if (j - i === 1) await waitForTx(await send(calls[i].to, calls[i].data, 0n, from, calls[i].gas));
+          else await sendCalls(calls.slice(i, j), from);
+          sent += j - i; i = j;
         }
         return { batched: true, done: calls.length };
       } catch (e) {
@@ -1260,11 +1274,11 @@
     // ([{token, amount}], the holder's own numbers), then enrol
     reinvestEnrollCalls: (vaultIds, allowances) => [
       ...vaultIds.map((id) => ({ to: CFG.engine, data: SEL.setCollectMode + word(id) + word(1) })),
-      ...allowances.map((x) => ({ to: x.token, data: SEL.approve + word(CFG.reinvest) + word(x.amount) })),
+      ...allowances.map((x) => ({ to: x.token, data: SEL.approve + word(CFG.reinvest) + word(x.amount), solo: true })),
       { to: CFG.reinvest, data: SEL.enroll },
     ],
     reinvestLeaveCall: () => ({ to: CFG.reinvest, data: SEL.leave }),
-    reinvestApproveCall: (token, amount) => ({ to: token, data: SEL.approve + word(CFG.reinvest) + word(amount == null ? (1n << 256n) - 1n : amount) }),
+    reinvestApproveCall: (token, amount) => ({ to: token, data: SEL.approve + word(CFG.reinvest) + word(amount == null ? (1n << 256n) - 1n : amount), solo: true }),
     // v2: keep what I hold now
     reinvestProtectCall: () => ({ to: CFG.reinvest, data: SEL.protect }),
     // v2: convert exactly `amount` of asset `idx` from my own wallet, no cut
@@ -1279,7 +1293,7 @@
     },
     // leaving the old plan for good: every allowance to it revoked, then leave
     reinvestMigrateCalls: (allowedTokens, wasEnrolled) => [
-      ...allowedTokens.map((t) => ({ to: t, data: SEL.approve + word(CFG.reinvestV1) + word(0) })),
+      ...allowedTokens.map((t) => ({ to: t, data: SEL.approve + word(CFG.reinvestV1) + word(0), solo: true })),
       ...(wasEnrolled ? [{ to: CFG.reinvestV1, data: SEL.leave }] : []),
     ],
     // (v1's sweep([self]) helper is gone on purpose: on v2 that path takes the
