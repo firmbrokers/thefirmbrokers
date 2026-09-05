@@ -219,7 +219,7 @@
       let remembered = null;
       try { remembered = localStorage.getItem(WALLET_KEY); } catch (e) {}
       const saved = chosen || (remembered && list.find((x) => x.info.rdns === remembered));
-      if (!saved && list.length > 1) { S.pickWallet = list; render(); return; } // more than one wallet: ask, like the street does
+      if (!saved && list.length > 1) { S.pickWallet = list; render(); toast("this browser has more than one wallet — pick the one to clock in with"); return; }
       const pick = saved || list[0];
       if (!pick) return toast("no wallet in this browser. Open this page in your wallet app", false);
       F.setProvider(pick.provider);
@@ -472,7 +472,7 @@
     let deskBody;
     if (!S.account) {
       deskBody = S.pickWallet
-        ? `<div class="lab">WHICH WALLET?</div><div class="presets">${S.pickWallet.map((x, i) => `<button class="chip" data-act="wallet" data-i="${i}" type="button">${esc(x.info.name)}</button>`).join("")}</div><div class="fine">this browser has more than one</div>`
+        ? `<div class="lab">WHICH WALLET?</div>${S.pickWallet.map((x, i) => `<button class="go" data-act="wallet" data-i="${i}" type="button">CLOCK IN WITH ${esc(x.info.name).toUpperCase()}</button>`).join("")}<div class="fine">this browser has more than one wallet</div>`
         : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell${sender ? ` · sent by <b>${sender}</b>` : ""}</div>${badCode}`;
     } else {
       const brokerLine = S.brokers.length
@@ -560,7 +560,7 @@
     if (!b) return;
     const act = b.dataset.act;
     const amt = () => document.getElementById("op-amt");
-    if (act === "connect") return connect().catch((err) => toast(humanError(err), false));
+    if (act === "connect") { toast("opening your wallet…"); return connect().catch((err) => toast(humanError(err), false)); }
     if (act === "min") { if (amt()) amt().value = fmt(terms().minDeposit, 0); return; }
     if (act === "max") { if (amt()) amt().value = fmt(S.balance, 0); return; }
     if (act === "preset") { if (amt()) amt().value = Number(b.dataset.n).toLocaleString("en-US"); return; }
