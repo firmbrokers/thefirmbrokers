@@ -349,8 +349,9 @@
   function drandUrl(round) { return `https://api.drand.sh/v2/beacons/quicknet/rounds/${round}`; }
   /// the post is the same anti-phishing shape as the application post: the site's
   /// own page, nothing else linked
+  const pageLink = () => `${location.origin}/pool`; // the clean URL, whichever way the visitor arrived
   function xIntent(code) {
-    const link = `${location.origin}${location.pathname}?ref=${code}`;
+    const link = `${pageLink()}?ref=${code}`;
     const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in $9TO5 before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 $9TO5").replace("{link}", link);
     return "https://x.com/intent/post?text=" + encodeURIComponent(textOf);
   }
@@ -409,7 +410,7 @@
     </div></div></div>`;
 
     const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
-      ${S.code ? `<div class="link"><code>${esc(location.origin + location.pathname)}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">5% of every chip-in from whoever arrives through it, for life</div>`
+      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">5% of every chip-in from whoever arrives through it, for life</div>`
       : `<div class="fine">pick a name once; 5% of every chip-in from whoever arrives through your link, for life</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
     </div></div>` : "";
 

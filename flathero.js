@@ -373,7 +373,7 @@
     if (window.Firm && window.Firm.CFG && window.Firm.CFG.pool) {
       const pool = el("button", null, "THE OFFICE POOL");
       pool.type = "button";
-      pool.addEventListener("click", () => { location.href = "pool.html"; });
+      pool.addEventListener("click", () => { location.href = "/pool"; });
       chips.appendChild(pool);
     }
     // the allowlist checker — guarded, so a stale cached page without
