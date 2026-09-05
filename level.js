@@ -3674,7 +3674,7 @@
 
     if (!st.enrolled) {
       box.innerHTML = `
-        ${oldPlan ? `<div class="st">ON THE OLD PLAN</div><p class="fine">The old plan has stopped; your pay waits in your wallet until you move. One click moves you: a few wallet prompts, nothing else to do.</p>` : `<div class="st">NOT ENROLLED</div>`}
+        ${oldPlan ? `<div class="st">ON THE OLD PLAN</div><p class="fine">The old plan has stopped; your pay waits in your wallet until you move. Moving is the same as enrolling: a wallet prompt per salary asset, then one to enrol.</p>` : `<div class="st">NOT ENROLLED</div>`}
         <div class="bar"><button class="fb-btn small enrol" type="button">${oldPlan ? "MOVE TO THE NEW PLAN" : "ENROL"}</button></div>
         <div class="fine caps">…</div>`;
       capsFor(salaryIdxs).then((caps) => {
@@ -3684,12 +3684,13 @@
       box.querySelector(".enrol").addEventListener("click", async () => {
         const caps = await capsFor(salaryIdxs);
         const vaulted = state.brokers.filter((b) => b.active && !b.collect);
-        const calls = [
-          ...F.reinvestEnrollCalls(vaulted.map((b) => b.id), caps.map((x) => ({ token: x.token, amount: x.amount }))),
-          ...(oldPlan ? F.reinvestMigrateCalls(v1.allowed, v1.enrolled) : []),
-        ];
+        // the fewest prompts: one approval per salary asset (never batched: the
+        // wallet warns on a batched approval), then one batch for the rest. The
+        // old plan needs nothing: it can no longer sweep, and its allowance is the
+        // holder's to revoke in their wallet if they care to.
+        const calls = F.reinvestEnrollCalls(vaulted.map((b) => b.id), caps.map((x) => ({ token: x.token, amount: x.amount })));
         const ok = await runList(calls, oldPlan ? "moving to the new plan" : "enrolling", () =>
-          `enrolled — every paycheck from here on becomes $9TO5${oldPlan ? "; the old plan is closed for this wallet" : ""}`);
+          `enrolled — every paycheck from here on becomes $9TO5`);
         if (ok) { await refreshBrokers(); build401kInto(card); }
       });
       return;
@@ -3699,7 +3700,6 @@
       <div class="st on">ENROLLED${since ? " · SINCE " + since : ""}</div>
       <div class="r tot"><span>converted so far</span><b>${fmtCompact(st.converted)} $9TO5</b></div>
       ${low.length ? `<div class="fine">The cap for ${low.map((w) => w.symbol).join(", ")} is nearly used up.</div><div class="bar"><button class="fb-btn small topup" type="button">RAISE THE CAP</button></div>` : ""}
-      ${oldPlan ? `<div class="fine">One step of the move is still open: leaving the old plan.</div><div class="bar"><button class="fb-btn small revoke" type="button">FINISH THE MOVE</button></div>` : ""}
       <div class="bar"><button class="fb-btn small ghost leave" type="button">LEAVE THE PLAN</button></div>`;
     const topup = box.querySelector(".topup");
     if (topup) topup.addEventListener("click", async () => {
