@@ -584,8 +584,11 @@
       const r = S.cur;
       const link = `${pageLink()}?ref=${S.code}`;
       const jackpot = r ? fmt(r.pot) : "today's";
-      const postText = (CFG.poolPost || "i'm in today's office pool at @thefirmbrokers: {jackpot} $9TO5 jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 $9TO5").replace("{jackpot}", jackpot).replace("{link}", link);
-      window.__POOL_CARD.open({ code: S.code, link, jackpot, bell: S.closesAt ? nyTime(S.closesAt) : "4:00 PM", postText });
+      const inToday = !!(S.me && S.me.deposited > 0n);
+      const lead = inToday ? "i'm in today's office pool at @thefirmbrokers" : "the office pool at @thefirmbrokers";
+      const postText = (CFG.poolPost || "{lead}: {jackpot} $9TO5 jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 $9TO5").replace("{lead}", lead).replace("{jackpot}", jackpot).replace("{link}", link);
+      const date = S.closesAt ? new Date(S.closesAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : "";
+      window.__POOL_CARD.open({ code: S.code, link, jackpot, bell: S.closesAt ? nyTime(S.closesAt) : "4:00 PM", date, inToday, postText });
       return;
     }
     if (act === "copy") { const c = host.querySelector(".ref code"); if (c && navigator.clipboard) navigator.clipboard.writeText(c.textContent).then(() => toast("copied", true)); return; }

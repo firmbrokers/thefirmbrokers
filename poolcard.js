@@ -19,8 +19,9 @@
     return new Promise((res) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
-      img.onload = () => res(img);
-      img.onerror = () => res(null);
+      const t = setTimeout(() => res(null), 3000); // slow avatar: the silhouette, silently
+      img.onload = () => { clearTimeout(t); res(img); };
+      img.onerror = () => { clearTimeout(t); res(null); };
       img.src = "https://unavatar.io/x/" + encodeURIComponent(handle) + "?fallback=false";
     });
   }
@@ -53,7 +54,7 @@
     for (let size = 28; size >= 16; size -= 2) { x.font = size + "px 'Press Start 2P', monospace"; if (x.measureText(who).width <= PS + 40) break; }
     x.fillText(who, PX + PS / 2, PY + PS + 62);
     x.fillStyle = "#67b184"; x.font = "18px 'Press Start 2P', monospace";
-    x.fillText("is in today's pool", PX + PS / 2, PY + PS + 98);
+    x.fillText(d.inToday ? "is in today's pool" : "plays the office pool", PX + PS / 2, PY + PS + 98);
 
     // the right column: the jackpot is the hero
     const RX = 440;
@@ -64,7 +65,7 @@
       x.fillText(text, RX, y);
     };
     fit("THE OFFICE POOL · FIRM BROKERS", 112, "#ffc933", 700, 22, 14);
-    fit("TODAY'S JACKPOT", 168, "#67b184", 700, 20, 14);
+    fit("TODAY'S JACKPOT" + (d.date ? " · " + d.date.toUpperCase() : ""), 168, "#67b184", 700, 20, 14);
     x.save();
     x.shadowColor = "#b6ffcf"; x.shadowBlur = 30;
     fit(d.jackpot + " $9TO5", 262, "#b6ffcf", 700, 72, 40);
@@ -85,7 +86,13 @@
   function close() { if (modal) modal.remove(); modal = null; document.removeEventListener("keydown", onKey); }
   function onKey(e) { if (e.key === "Escape") close(); }
 
-  const cardBlob = () => new Promise((res) => { const cv = document.createElement("canvas"); drawCard(cv, state); cv.toBlob(res, "image/png"); });
+  /// a tainted canvas (an avatar without CORS) throws on export: draw again without it
+  const cardBlob = () => new Promise((res) => {
+    const cv = document.createElement("canvas");
+    drawCard(cv, state);
+    try { cv.toBlob(res, "image/png"); }
+    catch (e) { state.pfp = null; drawCard(cv, state); try { cv.toBlob(res, "image/png"); } catch (e2) { res(null); } }
+  });
   const isTouch = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
 
   /// d: { code, link, jackpot (formatted), bell ("4:00 PM"), postText }
@@ -100,7 +107,7 @@
       <div class="pc-card"><canvas></canvas></div>
       <div class="pc-post"><div class="dim">the post</div><div class="pc-text"></div></div>
       <div class="pc-actions"><button class="go pc-share" type="button">POST ON X</button><button class="chip pc-dl" type="button">DOWNLOAD</button><button class="chip pc-copy" type="button">COPY LINK</button></div>
-      <div class="fine pc-hint">the card goes with the post: on a phone the share sheet opens X with it attached; on a desktop it is copied — press ⌘V (ctrl+V) in the post box.</div></div>`;
+      <div class="fine pc-hint">${isTouch() ? "the card goes with the post" : "the card goes with the post: it is copied when the post box opens — press ⌘V (ctrl+V) to attach it."}</div></div>`;
     document.body.appendChild(modal);
     document.addEventListener("keydown", onKey);
     modal.addEventListener("click", (e) => { if (e.target === modal) close(); });
