@@ -116,7 +116,7 @@
   const S = {
     account: null, cur: null, curId: 0, closesAt: 0, delay: 300, skew: 0, count: 0,
     players: [], feed: [], history: [], due: [], me: null, claimable: 0n, refOwed: 0n, code: "", referrer: ZERO,
-    knobs: null, refOwner: ZERO, balance: 0n, allowance: 0n, brokers: [], brokersOwned: 0, brokersEligible: 0, useBrokers: true, ethPer: null, loaded: false, busy: false,
+    knobs: null, refOwner: ZERO, potShown: 0n, seenDeposits: 0, balance: 0n, allowance: 0n, brokers: [], brokersOwned: 0, brokersEligible: 0, useBrokers: true, ethPer: null, loaded: false, busy: false,
   };
 
   // ---------------------------------------------------------------- chain
@@ -360,6 +360,23 @@
     t.textContent = msg; t.className = "toast on" + (ok === true ? " ok" : ok === false ? " bad" : "");
     clearTimeout(toast._t); toast._t = setTimeout(() => { t.className = "toast"; }, ok === undefined ? 30000 : 6000);
   }
+  /// the jackpot rolls up to its new value rather than jumping
+  function countUp(el) {
+    if (!el) return;
+    const target = BigInt(el.dataset.pot || "0");
+    const from = S.potShown && S.potShown < target ? S.potShown : target;
+    S.potShown = target;
+    const num = el.querySelector(".num");
+    if (!num || from === target) return;
+    const t0 = performance.now(), dur = 900;
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      const v = from + (target - from) * BigInt(Math.round(e * 1000)) / 1000n;
+      num.textContent = fmt(v);
+      if (k < 1 && num.isConnected) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
   function drandUrl(round) { return `https://api.drand.sh/v2/beacons/quicknet/rounds/${round}`; }
   /// the post is the same anti-phishing shape as the application post: the site's
   /// own page, nothing else linked
@@ -417,9 +434,20 @@
       banner += `</div>`;
     }
 
+    const tickerItems = [];
+    if (r) tickerItems.push(`<span class="up">TODAY'S JACKPOT ${fmt(r.pot)} $9TO5</span> · closes ${bellNY} NY`);
+    for (const h of S.history.filter((x) => x.state === 2 && x.playerCount > 0).slice(0, 6)) {
+      tickerItems.push(h.jackpotWinner !== ZERO ? `${nyTime(h.closesAt, true)} · jackpot <span class="up">${fmt(h.jackpotPaid)}</span> → ${short(h.jackpotWinner)}` : `${nyTime(h.closesAt, true)} · money back ${fmt(h.refundPaid)} → ${short(h.refundWinner)}`);
+    }
+    if (!tickerItems.length) tickerItems.push("THE OFFICE POOL · every day · one jackpot · the closing bell");
+    const tape = tickerItems.join(" &nbsp;&nbsp;·&nbsp;&nbsp; ") + " &nbsp;&nbsp;·&nbsp;&nbsp; ";
+    // the tape is two identical halves and slides exactly one half, so it loops
+    // without a seam and is full from the first frame (no lead-in padding)
+    const half = tape.repeat(Math.max(2, Math.ceil(2400 / Math.max(80, tape.replace(/<[^>]+>/g, "").length * 11))));
+    const ticker = `<div class="op-ticker"><div class="tape">${half}${half}</div></div>`;
     const board = `<div class="cab board"><div class="scr">${banner}
       <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
-      <div class="pot">${r ? fmt(r.pot) + " $9TO5" : "—"}</div>
+      <div class="pot${left > 0 && left <= 600 ? " hot2" : left > 0 && left <= 3600 ? " hot1" : ""}" data-pot="${r ? r.pot.toString() : "0"}"><span class="num">${r ? fmt(S.potShown && S.potShown < r.pot ? S.potShown : r.pot) : "—"}</span>${r ? ` <span class="unit">$9TO5</span>` : ""}</div>
       <div class="one">chip in $9TO5 before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
       <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
       <div class="row">
@@ -479,14 +507,14 @@
     </div></div>` : "";
 
     const ranked = S.players.slice().sort((a, b) => (b.v.deposited > a.v.deposited ? 1 : -1)).slice(0, 10);
-    const lead = `<div class="cab"><div class="scr"><div class="lab">TODAY'S BOARD</div>
+    const lead = `<div class="cab floor"><div class="scr"><div class="lab">TODAY'S BOARD</div>
       <div class="grid3 head"><span>player<span class="long"> · brokers counted</span></span><span>chipped in<span class="long"> · earned in dividends</span></span></div>
       <div class="list">${ranked.length ? ranked.map((p, i) =>
         `<div class="grid3${same(p.addr, S.account) ? " me" : ""}"><span class="who">${i + 1}. ${same(p.addr, S.account) ? "<b class='won'>YOU</b>" : `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`}${p.v.brokers ? ` <span class="dim brk" title="${p.v.brokers} brokers counted · ${multX(p.v.brokers)}">+${p.v.brokers} · ${multX(p.v.brokers)}</span>` : ""}</span><span class="n">${fmt(p.v.deposited)}<span class="dim sub"><span class="dot"> · </span>earned ${fmt(p.v.divEarned)}</span></span></div>`).join("")
-        : `<div class="dim">${S.loaded ? "nobody yet" : "loading…"}</div>`}</div></div></div>`;
-
-    const feed = `<div class="cab"><div class="scr"><div class="lab">JUST NOW</div>
-      <div class="list">${S.feed.length ? S.feed.map((d) => `<div class="r${same(d.player, S.account) ? " me" : ""}"><span class="who">${same(d.player, S.account) ? "you" : short(d.player)} chipped in</span><span class="n">${fmt(d.amount)} <span class="dim">${ago(d.at)} ago</span></span></div>`).join("") : `<div class="dim">${S.loaded ? "quiet so far" : "loading…"}</div>`}</div></div></div>`;
+        : `<div class="dim">${S.loaded ? "nobody yet" : "loading…"}</div>`}</div>
+      <div class="lab" style="margin-top:14px">JUST NOW</div>
+      <div class="list">${S.feed.length ? S.feed.map((d, i) => `<div class="r${same(d.player, S.account) ? " me" : ""}${S.seenDeposits && S.count - i > S.seenDeposits ? " new" : ""}"><span class="who">${same(d.player, S.account) ? "you" : short(d.player)} chipped in</span><span class="n">${fmt(d.amount)} <span class="dim">${ago(d.at)} ago</span></span></div>`).join("") : `<div class="dim">${S.loaded ? "quiet so far" : "loading…"}</div>`}</div></div></div>`;
+    const feed = "";
 
     const hist = `<div class="cab hist"><div class="scr"><div class="lab">PAST POOLS</div>
       <div class="list">${S.history.length ? S.history.map((h) => {
@@ -498,12 +526,14 @@
       }).join("") : `<div class="dim">${S.loaded ? "none yet" : "loading…"}</div>`}</div></div></div>`;
 
     const rules = `<div class="cab rules"><div class="lab">HOUSE RULES</div>
-      <p>Chip in $9TO5 any time before the bell. Every chip-in grows the jackpot, and <b>${T.divBps / 100}%</b> of it is paid out on the spot to everyone already in that day (pro-rata, your own earlier chip-ins included), with <b>${T.refBps / 100}%</b> to whoever sent you.</p>
-      <p>At the bell one player takes the jackpot. Another gets their money back first (up to the jackpot). Your chance is your chip-ins, boosted <b>${T.boostBps / 100}%</b> per hired broker you count that day, up to <b>${cap / 10000}×</b>. A chip-in is final.</p>
-      <p>The number is drand's public beacon for a round fixed in advance, verified by the contract. Closes <b>${bellNY} New York</b>, drawn five minutes later. The fine print is in the <a href="/docs#pool">handbook</a>.</p></div>`;
+      <p><b>1.</b> Chip in $9TO5 before the ${bellNY} New York bell. <b>${T.divBps / 100}%</b> of every chip-in is paid out on the spot to everyone already in that day; <b>${T.refBps / 100}%</b> goes to whoever sent you.</p>
+      <p><b>2.</b> Five minutes after the bell, drand's public beacon picks two players: one takes the jackpot, one gets their money back. Your chance is your chip-ins, up to <b>${cap / 10000}×</b> with hired brokers counted. A chip-in is final.</p>
+      <p><b>3.</b> The contract checks the beacon itself; nobody at the firm can pick or delay it. Fine print: the <a href="/docs#pool">handbook</a>.</p></div>`;
 
     // the bell panel (a missed draw, rare) goes after the desk: on a phone it was pushing CHIP IN below the first screen
-    host.innerHTML = board + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + bell + hist + rules;
+    host.innerHTML = ticker + board + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + bell + hist + rules;
+    countUp(host.querySelector(".board .pot"));
+    S.seenDeposits = S.count;
     const a = host.querySelector("#op-amt"), c = host.querySelector("#op-code"), b = host.querySelector("#op-brk"), rf = host.querySelector("#op-ref");
     if (a && keep.amt) a.value = keep.amt;
     if (c && keep.code) c.value = keep.code;
