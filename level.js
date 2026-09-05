@@ -3634,52 +3634,23 @@
   }
   async function build401kInto(card) {
     card.innerHTML = `<h2>The 401(k)</h2>
-      <p class="lead">Every paycheck becomes $9TO5. Only pay that arrives after you enrol is converted — what you hold now stays yours. You set how much the plan may take, in each asset, and you can raise or lower it any time.</p>
+      <p class="lead">Every paycheck becomes $9TO5, automatically. Only pay that arrives after you enrol is converted; what you hold now stays yours.</p>
       <div class="k401"><div class="st">reading…</div></div>`;
     const box = card.querySelector(".k401");
     if (!state.account) { box.innerHTML = `<div class="st">connect your wallet to enrol</div>`; return; }
     let st, waiting, v1;
     const meta = state.assetMeta || {};
     const salaryIdxs = salaryAssetsOf(state.brokers);
-    const salaryTokens = salaryIdxs.map((i) => meta[i] && meta[i].token).filter(Boolean);
     try {
       [st, waiting, v1] = await Promise.all([F.reinvestStatus(state.account), F.reinvestWaiting(state.account), F.reinvestV1Status ? F.reinvestV1Status(state.account, Object.values(meta).map((m) => m.token)) : { enrolled: false, allowed: [] }]);
     } catch (e) { box.innerHTML = `<div class="st bad">could not read the plan — ${humanError(e)}</div>`; return; }
     if (!document.body.contains(card)) return;
     const since = st.since ? new Date(st.since * 1000).toLocaleDateString() : "";
-    const fmtA = (w, x) => fmtUnits(x, w.decimals);
-    // one row per asset held: what stays, what the plan may take, the cap
-    const rows = waiting.map((w) => `<div class="r"><span>${w.symbol}</span><b>${fmtA(w, w.balance)}</b><i>${w.protected > 0n ? `${fmtA(w, w.protected)} stays · ` : ""}${w.above > 0n ? (w.converts > 0n ? `converts ${fmtA(w, w.converts)}` : `<button class="fb-btn tiny allow" data-idx="${w.idx}" type="button">ALLOW</button>`) : "nothing new"}${w.allowance > 0n && w.allowance < (1n << 200n) ? ` · cap ${fmtA(w, w.allowance)}` : ""}</i></div>`).join("");
     const oldPlan = v1 && (v1.enrolled || v1.allowed.length);
-    box.innerHTML = `
-      <div class="st${st.enrolled ? " on" : ""}">${st.enrolled ? `ENROLLED${since ? " · SINCE " + since : ""}` : "NOT ENROLLED"}</div>
-      <div class="r tot"><span>converted so far</span><b>${fmtCompact(st.converted)} $9TO5</b></div>
-      ${oldPlan && !st.enrolled ? `<div class="warn">This wallet is still on the OLD plan, which converted whole balances. Nothing converts until you move; your pay sits in your wallet meanwhile. Moving is one list: enrol here with your caps, then leave the old plan and revoke what it was allowed.</div>` : ""}
-      ${oldPlan && st.enrolled ? `<div class="warn">The old plan still has an open allowance from this wallet${v1.allowed.length ? ` (${v1.allowed.length} asset${v1.allowed.length === 1 ? "" : "s"})` : ""}. It cannot sweep any more, but tidy it: <button class="fb-btn tiny revoke" type="button">REVOKE</button></div>` : ""}
-      <div class="wait"><em>${waiting.length ? "in this wallet now" : "nothing waiting in this wallet"}</em>${rows}</div>
-      <div class="quote"></div>
-      <div class="bar">
-        <button class="fb-btn small enrol" type="button">${st.enrolled ? "LEAVE THE PLAN" : oldPlan ? "MOVE TO THE NEW PLAN" : "ENROL"}</button>
-        ${st.enrolled && F.reinvestProtectCall ? `<button class="fb-btn small ghost keep" type="button">KEEP WHAT I HOLD NOW</button>` : ""}
-      </div>
-      ${F.reinvestSweepAmountCall && waiting.length ? `<div class="conv"><em>convert an amount now (old holdings included, on purpose)</em><div class="row"><select class="asset">${waiting.map((w) => `<option value="${w.idx}">${w.symbol}</option>`).join("")}</select><input type="text" class="amt" inputmode="decimal" placeholder="amount"><button class="fb-btn small ghost now" type="button">CONVERT</button></div></div>` : ""}
-      <div class="fine">Enrolling asks for a spending cap per asset, about 30 days of your pay, and you can edit the numbers before you sign. When a cap runs low the card says so.</div>`;
 
-    // what the next sweep would fetch for the biggest pile that may convert
-    const top = waiting.find((w) => w.above > 0n) || waiting[0];
-    if (top) {
-      (async () => {
-        try {
-          const amt = top.above > 0n ? top.above : top.balance;
-          const q = await F.reinvestQuote(top.idx, amt, true);
-          const line = box.querySelector(".quote");
-          if (line) line.textContent = `${fmtA(top, amt)} ${top.symbol} ≈ ${fmtEth(q.ethOut, 6)} ETH ≈ ${fmtCompact(q.tokensOut)} $9TO5 right now`;
-        } catch (e) { /* the line stays empty */ }
-      })();
-    }
-
-    // ---- the caps: ≈30 days of this wallet's pay, in each asset's own units
+    // ---- the cap: ≈6 months of this wallet's pay, in each asset's own units, set silently
     const perHourEth = state.brokers.reduce((s, b) => s + (b.active ? (b.accruing || 0n) : 0n), 0n);
+    const MONTHS = 6n;
     async function capsFor(idxs) {
       const out = [];
       for (const i of idxs) {
@@ -3689,86 +3660,65 @@
         const unit = 10n ** BigInt(m.decimals);
         const shareBps = state.brokers.reduce((s, b) => s + (b.active ? (b.split.find((x) => x.idx === i) ? BigInt(b.split.find((x) => x.idx === i).bps) : (b.split.length ? 0n : (i === defaultIdx() ? 10000n : 0n))) : 0n), 0n);
         const n = BigInt(state.brokers.filter((b) => b.active).length) || 1n;
-        const monthEth = (perHourEth * 24n * 30n * shareBps) / (10000n * n);
-        let amount = rate > 0n && monthEth > 0n ? (monthEth * unit) / rate : 0n;
-        // a floor: worth ~0.05 ETH, so a wallet whose pay we cannot measure still gets a workable cap
-        const floor = rate > 0n ? (50_000_000_000_000_000n * unit) / rate : unit * 100n;
+        const periodEth = (perHourEth * 24n * 30n * MONTHS * shareBps) / (10000n * n);
+        let amount = rate > 0n && periodEth > 0n ? (periodEth * unit) / rate : 0n;
+        // a floor worth ~0.1 ETH, so a wallet whose pay we cannot measure still gets a workable cap
+        const floor = rate > 0n ? (100_000_000_000_000_000n * unit) / rate : unit * 200n;
         if (amount < floor) amount = floor;
-        out.push({ idx: i, token: m.token, symbol: m.symbol, decimals: m.decimals, amount, days: monthEth > 0n ? 30 : 0 });
+        out.push({ idx: i, token: m.token, symbol: m.symbol, decimals: m.decimals, amount });
       }
       return out;
     }
-    function askCaps(caps, onOk) {
-      const pop = popoverShell();
-      const c = el("div", "fb-card");
-      c.innerHTML = `<h2>HOW MUCH MAY THE PLAN TAKE?</h2><p>A cap per asset. Only pay that arrives after you enrol counts against it; what you hold now is never touched. About 30 days of pay is a good cap — the card asks you to renew when it runs low.</p>
-        <div class="caps">${caps.map((x, i) => `<label><span>${x.symbol}</span><input type="text" inputmode="decimal" data-i="${i}" value="${fmtUnits(x.amount, x.decimals)}"></label>`).join("")}</div>
-        <div class="bar"><button class="fb-btn small ok" type="button">SIGN</button><button class="fb-btn small ghost no" type="button">CANCEL</button></div>`;
-      pop.appendChild(c); document.body.appendChild(pop);
-      c.querySelector(".no").addEventListener("click", closePopover);
-      c.querySelector(".ok").addEventListener("click", () => {
-        const picked = caps.map((x, i) => { const v = parseUnits(c.querySelector(`input[data-i="${i}"]`).value, x.decimals); return v == null ? null : Object.assign({}, x, { amount: v }); });
-        if (picked.some((x) => x == null)) { toast("one of the numbers is not a number", false); return; }
-        closePopover(); onOk(picked);
-      });
-    }
+    // an allowance that has run under a month of pay gets topped up on a visit
+    const low = st.enrolled ? waiting.filter((w) => salaryIdxs.includes(w.idx) && w.allowance < w.above) : [];
 
-    box.querySelector(".enrol").addEventListener("click", async () => {
-      if (st.enrolled) {
-        const ok = await runList([F.reinvestLeaveCall()], "leaving", () => "you left the plan. Caps stay until you lower them in your wallet");
-        if (ok) build401kInto(card);
-        return;
-      }
-      const caps = await capsFor(salaryIdxs);
-      askCaps(caps, async (picked) => {
+    if (!st.enrolled) {
+      box.innerHTML = `
+        ${oldPlan ? `<div class="st">ON THE OLD PLAN</div><p class="fine">The old plan has stopped. Nothing converts until you move; your pay sits in your wallet meanwhile. One click enrols you here, leaves the old plan and revokes what it was allowed.</p>` : `<div class="st">NOT ENROLLED</div>`}
+        <div class="bar"><button class="fb-btn small enrol" type="button">${oldPlan ? "MOVE TO THE NEW PLAN" : "ENROL"}</button></div>
+        <div class="fine caps">…</div>`;
+      capsFor(salaryIdxs).then((caps) => {
+        const line = box.querySelector(".caps");
+        if (line) line.textContent = caps.length ? `the plan may take up to ${caps.map((c) => `${fmtUnits(c.amount, c.decimals)} ${c.symbol}`).join(" · ")} of future pay (about six months); what you hold now is never touched` : "hire a broker first: the plan converts his pay";
+      });
+      box.querySelector(".enrol").addEventListener("click", async () => {
+        const caps = await capsFor(salaryIdxs);
         const vaulted = state.brokers.filter((b) => b.active && !b.collect);
-        // the valuable part first (enrol + caps on the new plan), the old plan's
-        // leave and revokes last: a holder who abandons half-way on a wallet that
-        // cannot batch still converts on v2, and with v1's runner off the revokes
-        // are belt-and-braces rather than urgent
         const calls = [
-          ...F.reinvestEnrollCalls(vaulted.map((b) => b.id), picked.map((x) => ({ token: x.token, amount: x.amount }))),
+          ...F.reinvestEnrollCalls(vaulted.map((b) => b.id), caps.map((x) => ({ token: x.token, amount: x.amount }))),
           ...(oldPlan ? F.reinvestMigrateCalls(v1.allowed, v1.enrolled) : []),
         ];
         const ok = await runList(calls, oldPlan ? "moving to the new plan" : "enrolling", () =>
-          `enrolled — ${vaulted.length ? `${vaulted.length} broker${vaulted.length === 1 ? "" : "s"} switched to paying your wallet, ` : ""}${picked.length} cap${picked.length === 1 ? "" : "s"} set${oldPlan ? ", the old plan left and its allowances revoked" : ""}`);
+          `enrolled — every paycheck from here on becomes $9TO5${oldPlan ? "; the old plan is closed for this wallet" : ""}`);
         if (ok) { await refreshBrokers(); build401kInto(card); }
       });
-    });
-    box.querySelectorAll(".allow").forEach((btn) => btn.addEventListener("click", async () => {
-      const w = waiting.find((x) => x.idx === Number(btn.dataset.idx));
-      if (!w) return;
-      const caps = await capsFor([w.idx]);
-      askCaps(caps, async (picked) => {
-        const ok = await runList([F.reinvestApproveCall(w.token, picked[0].amount)], "setting the cap", () => `${w.symbol} cap set — the next sweep converts what arrived`);
-        if (ok) build401kInto(card);
-      });
-    }));
-    const revoke = box.querySelector(".revoke");
-    if (revoke) revoke.addEventListener("click", async () => {
-      const ok = await runList(F.reinvestMigrateCalls(v1.allowed, v1.enrolled), "closing the old plan", () => "the old plan is closed for this wallet — nothing is allowed to it any more");
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="st on">ENROLLED${since ? " · SINCE " + since : ""} · ${fmtCompact(st.converted)} $9TO5 CONVERTED SO FAR</div>
+      ${low.length ? `<div class="fine">the allowance for ${low.map((w) => w.symbol).join(", ")} is running low · <button class="fb-btn tiny topup" type="button">TOP UP</button></div>` : ""}
+      ${oldPlan ? `<div class="fine">the old plan still has an allowance from this wallet · <button class="fb-btn tiny revoke" type="button">REVOKE</button></div>` : ""}
+      <div class="fine links"><a href="#" class="keep">deposited something you want to keep? keep it</a> · <a href="#" class="leave">leave the plan</a></div>`;
+    const topup = box.querySelector(".topup");
+    if (topup) topup.addEventListener("click", async () => {
+      const caps = await capsFor(low.map((w) => w.idx));
+      const ok = await runList(caps.map((c) => F.reinvestApproveCall(c.token, c.amount)), "topping up", () => "topped up — the next sweep converts what arrived");
       if (ok) build401kInto(card);
     });
-    const keep = box.querySelector(".keep");
-    if (keep) keep.addEventListener("click", async () => {
+    const revoke = box.querySelector(".revoke");
+    if (revoke) revoke.addEventListener("click", async () => {
+      const ok = await runList(F.reinvestMigrateCalls(v1.allowed, v1.enrolled), "closing the old plan", () => "the old plan is closed for this wallet");
+      if (ok) build401kInto(card);
+    });
+    box.querySelector(".keep").addEventListener("click", async (e) => {
+      e.preventDefault();
       const ok = await runList([F.reinvestProtectCall()], "keeping what you hold", () => "done — everything in the wallet right now stays yours; only pay from here on converts");
       if (ok) build401kInto(card);
     });
-    const now = box.querySelector(".now");
-    if (now) now.addEventListener("click", async () => {
-      const idx = Number(box.querySelector(".conv .asset").value);
-      const w = waiting.find((x) => x.idx === idx);
-      const amount = w ? parseUnits(box.querySelector(".conv .amt").value, w.decimals) : null;
-      if (!w || amount == null || amount === 0n) { toast("type the amount to convert", false); return; }
-      if (amount > w.balance) { toast(`you hold ${fmtA(w, w.balance)} ${w.symbol}`, false); return; }
-      let q;
-      try { q = await F.reinvestQuote(w.idx, amount, true); } catch (e) { toast(humanError(e), false); return; }
-      if (!q.tokensOut) { toast("too small to swap right now", false); return; }
-      const minOut = (q.tokensOut * 96n) / 100n; // the sell may land up to 3% under the TWAP, the buy moves too
-      const calls = [];
-      if (w.allowance < amount) calls.push(F.reinvestApproveCall(w.token, amount));
-      calls.push(F.reinvestSweepAmountCall(w.idx, amount, minOut));
-      const ok = await runList(calls, "converting", () => `converted ${fmtA(w, amount)} ${w.symbol} into $9TO5 — at least ${fmtCompact(minOut)}`);
+    box.querySelector(".leave").addEventListener("click", async (e) => {
+      e.preventDefault();
+      const ok = await runList([F.reinvestLeaveCall()], "leaving", () => "you left the plan");
       if (ok) build401kInto(card);
     });
   }
