@@ -439,12 +439,12 @@
     for (const h of S.history.filter((x) => x.state === 2 && x.playerCount > 0).slice(0, 6)) {
       tickerItems.push(h.jackpotWinner !== ZERO ? `${nyTime(h.closesAt, true)} · jackpot <span class="up">${fmt(h.jackpotPaid)}</span> → ${short(h.jackpotWinner)}` : `${nyTime(h.closesAt, true)} · money back ${fmt(h.refundPaid)} → ${short(h.refundWinner)}`);
     }
-    if (!tickerItems.length) tickerItems.push("THE OFFICE POOL · every day · one jackpot · the closing bell");
+    // the tape earns its place once there is history to roll; before the first
+    // draw it would only repeat the hero above it
     const tape = tickerItems.join(" &nbsp;&nbsp;·&nbsp;&nbsp; ") + " &nbsp;&nbsp;·&nbsp;&nbsp; ";
-    // the tape is two identical halves and slides exactly one half, so it loops
-    // without a seam and is full from the first frame (no lead-in padding)
+    // two identical halves sliding exactly one half: seamless, full from the first frame
     const half = tape.repeat(Math.max(2, Math.ceil(2400 / Math.max(80, tape.replace(/<[^>]+>/g, "").length * 11))));
-    const ticker = `<div class="op-ticker"><div class="tape">${half}${half}</div></div>`;
+    const ticker = tickerItems.length > 1 ? `<div class="op-ticker"><div class="tape">${half}${half}</div></div>` : "";
     const board = `<div class="cab board"><div class="scr">${banner}
       <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
       <div class="pot${left > 0 && left <= 600 ? " hot2" : left > 0 && left <= 3600 ? " hot1" : ""}" data-pot="${r ? r.pot.toString() : "0"}"><span class="num">${r ? fmt(S.potShown && S.potShown < r.pot ? S.potShown : r.pot) : "—"}</span>${r ? ` <span class="unit">$9TO5</span>` : ""}</div>
