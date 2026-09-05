@@ -52,14 +52,14 @@ window.FIRM_CFG = {
 
   // ---- the auction (PLAN 2) ----
   // Empty = the building keeps its current content and no auction UI is built.
-  auction: "0x577dc35527c1ad0eEa02c17FCd30B6D1E6FfA55f",      // AuctionHouse address
-  bonusPool: "0xdbf59e9Cca84BCFa13A1505f9967eC8782440C05",    // BonusPool address
-  auctionToken: "0x6245e67affA44a23077f0Ea7f981a8DC743a0c47", // the bid token (FRONG). Symbol/decimals are read on-chain.
+  auction: "0x86ca9F9a4733A60C180A512AbC5a7272DD795aec",      // AuctionHouse address
+  bonusPool: "0x0D14533213C09E979d8DE000D40161189cb233a1",    // BonusPool address
+  auctionToken: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc", // the bid token ($9TO5). Symbol/decimals are read on-chain.
   // The bid token's dEaD balance at the moment the house was deployed, printed
   // by DeployFrongAuction. The room shows balanceOf(dEaD) MINUS this, so BURNED
   // is what this house burned and not what the token's whole history left
   // there. FRONG's is ~5.5e24; leaving this at 0 opens the room on a lie.
-  burnBaseline: "6001467830834659062971827",
+  burnBaseline: "305325000000000000000000000",
   hammerLocal: "5:00 PM New York",
   // Which decor the sale room builds. Comma-separated, any of:
   //   panel  wainscot + brass dado on the solid wall runs

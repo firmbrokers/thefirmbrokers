@@ -3111,7 +3111,7 @@
       // the tower wall already says one a day / 105% / hammer at five; this
       // board says the two things it does not
       return '<span class="hd">TODAY\'S LOT</span>' +
-        '<span class="dt">Viewing inside.<br>Bid at the desk, in FRONG</span>';
+        '<span class="dt">Viewing inside.<br>Bid at the desk, in $9TO5</span>';
     }
     // after the cut the booth is the list desk: the sign says so and invites
     // the check, instead of vanishing (a silent booth reads as broken)
@@ -4356,7 +4356,7 @@
       // never learned the site's daily event exists, let alone that it sells
       if (auctionLive() && window.__AUCTION && window.__AUCTION.lastHammer) {
         const a = el("div", "fb-card");
-        a.innerHTML = `<h2>THE AUCTION HOUSE</h2><p>One broker a day on the stage, bidding in ${CFG.featureAsset || "FRONG"}, hammer at five New York. Outbid and you get 105% back. Walk the street to bid.</p><p class="fb-mintnote">Reading the last hammer…</p>`;
+        a.innerHTML = `<h2>THE AUCTION HOUSE</h2><p>One broker a day on the stage, bidding in $9TO5, hammer at five New York. Outbid and you get 105% back. Walk the street to bid.</p><p class="fb-mintnote">Reading the last hammer…</p>`;
         room.appendChild(a);
         window.__AUCTION.lastHammer(F, CFG).then((h) => {
           const note = a.querySelector(".fb-mintnote");
