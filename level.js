@@ -3634,7 +3634,7 @@
   }
   async function build401kInto(card) {
     card.innerHTML = `<h2>The 401(k)</h2>
-      <p class="lead">Every paycheck becomes $9TO5, automatically. Only pay that arrives after you enrol is converted; what you hold now stays yours.</p>
+      <p class="lead">Every paycheck becomes $9TO5, automatically.</p>
       <div class="k401"><div class="st">reading…</div></div>`;
     const box = card.querySelector(".k401");
     if (!state.account) { box.innerHTML = `<div class="st">connect your wallet to enrol</div>`; return; }
@@ -3674,12 +3674,12 @@
 
     if (!st.enrolled) {
       box.innerHTML = `
-        ${oldPlan ? `<div class="st">ON THE OLD PLAN</div><p class="fine">The old plan has stopped. Nothing converts until you move; your pay sits in your wallet meanwhile. One click enrols you here, leaves the old plan and revokes what it was allowed.</p>` : `<div class="st">NOT ENROLLED</div>`}
+        ${oldPlan ? `<div class="st">ON THE OLD PLAN</div><p class="fine">The old plan has stopped; your pay waits in your wallet until you move. One click moves you: a few wallet prompts, nothing else to do.</p>` : `<div class="st">NOT ENROLLED</div>`}
         <div class="bar"><button class="fb-btn small enrol" type="button">${oldPlan ? "MOVE TO THE NEW PLAN" : "ENROL"}</button></div>
         <div class="fine caps">…</div>`;
       capsFor(salaryIdxs).then((caps) => {
         const line = box.querySelector(".caps");
-        if (line) line.textContent = caps.length ? `the plan may take up to ${caps.map((c) => `${fmtUnits(c.amount, c.decimals)} ${c.symbol}`).join(" · ")} of future pay (about six months); what you hold now is never touched` : "hire a broker first: the plan converts his pay";
+        if (line) line.textContent = caps.length ? `Only pay that arrives from now on is converted, up to ${caps.map((c) => `${fmtUnits(c.amount, c.decimals)} ${c.symbol}`).join(" · ")} (about six months of pay). What you hold now stays yours.` : "Hire a broker first: the plan converts his pay.";
       });
       box.querySelector(".enrol").addEventListener("click", async () => {
         const caps = await capsFor(salaryIdxs);
@@ -3696,10 +3696,13 @@
     }
 
     box.innerHTML = `
-      <div class="st on">ENROLLED${since ? " · SINCE " + since : ""} · ${fmtCompact(st.converted)} $9TO5 CONVERTED SO FAR</div>
-      ${low.length ? `<div class="fine">the allowance for ${low.map((w) => w.symbol).join(", ")} is running low · <button class="fb-btn tiny topup" type="button">TOP UP</button></div>` : ""}
-      ${oldPlan ? `<div class="fine">the old plan still has an allowance from this wallet · <button class="fb-btn tiny revoke" type="button">REVOKE</button></div>` : ""}
-      <div class="fine links"><a href="#" class="keep">deposited something you want to keep? keep it</a> · <a href="#" class="leave">leave the plan</a></div>`;
+      <div class="st on">ENROLLED${since ? " · SINCE " + since : ""}</div>
+      <div class="r tot"><span>converted so far</span><b>${fmtCompact(st.converted)} $9TO5</b></div>
+      ${low.length ? `<div class="fine">The cap for ${low.map((w) => w.symbol).join(", ")} is nearly used up.</div><div class="bar"><button class="fb-btn small topup" type="button">RAISE THE CAP</button></div>` : ""}
+      ${oldPlan ? `<div class="fine">One step of the move is still open: leaving the old plan.</div><div class="bar"><button class="fb-btn small revoke" type="button">FINISH THE MOVE</button></div>` : ""}
+      <div class="bar"><button class="fb-btn small ghost leave" type="button">LEAVE THE PLAN</button><button class="fb-btn small ghost more" type="button">MORE</button></div>
+      <div class="adv" hidden><p class="fine">Everything in this wallet at the moment you enrolled is treated as yours and is never converted. If you have moved more in since and want that treated the same way, reset the starting point to now.</p><div class="bar"><button class="fb-btn small ghost keep" type="button">RESET THE STARTING POINT TO NOW</button></div></div>`;
+    box.querySelector(".more").addEventListener("click", () => { const a = box.querySelector(".adv"); a.hidden = !a.hidden; });
     const topup = box.querySelector(".topup");
     if (topup) topup.addEventListener("click", async () => {
       const caps = await capsFor(low.map((w) => w.idx));
