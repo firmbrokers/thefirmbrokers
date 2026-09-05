@@ -369,6 +369,13 @@
     pay.type = "button";
     pay.addEventListener("click", () => { location.href = "apply"; });
     chips.appendChild(pay);
+    // THE OFFICE POOL — only once config names the contract (pool.html is inert before that)
+    if (window.Firm && window.Firm.CFG && window.Firm.CFG.pool) {
+      const pool = el("button", null, "THE OFFICE POOL");
+      pool.type = "button";
+      pool.addEventListener("click", () => { location.href = "pool.html"; });
+      chips.appendChild(pool);
+    }
     // the allowlist checker — guarded, so a stale cached page without
     // wlcheck.js simply shows no chip rather than a dead button
     // and not once every broker is minted: level.js raises __FB_SOLD_OUT from

@@ -506,6 +506,19 @@ footer a{color:var(--ink-2)}
 
   <p>You hire and promote at the furnace in The Bank. Hire him first. The chain refuses
     to promote a broker who was never hired, so you cannot waste a burn by doing it backwards.</p>
+  <h3 id="pool">The Office Pool</h3>
+  <p>Every day the office runs a pool in $9TO5. Chip in any time before the closing bell
+    (4 PM New York). Of each chip-in, 25% goes to everyone already in that day, pro-rata
+    to what they put in (your own earlier chip-ins included), 5% to whoever sent you,
+    10% to the house, the rest to the pot.</p>
+  <p>At the bell one player gets their money back (up to the pot) and another takes what
+    is left. Your chance is what you chipped in, plus 10% for every hired broker you clock
+    in that day, up to 2&times;. A chip-in is final.</p>
+  <p>The number is <a href="https://drand.love" rel="noopener">drand</a>'s public beacon for
+    a round fixed in advance, and the contract checks the beacon's signature itself: nobody
+    at the firm can pick or delay it. The auction house's bonus pool seeds the pot.
+    Dividends and referral rewards are yours to claim any time.</p>
+  <p><a href="pool.html"><strong>The Office Pool &rarr;</strong></a></p>
 </section>
 
 <section id="merge">
@@ -807,7 +820,7 @@ footer a{color:var(--ink-2)}
 
 </div>
 
-<script src="config.js?v=1788622833"></script>
+<script src="config.js?v=1788625555"></script>
 <script>
 // Addresses come from config.js (window.FIRM_CFG), never hardcoded here, so this
 // page cannot drift out of sync with the rest of the site or show a stale address.

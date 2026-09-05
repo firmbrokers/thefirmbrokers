@@ -22,6 +22,9 @@ window.FIRM_CFG = {
   // anti-phishing rule as the mint and the token: nothing else on the site ever
   // offers a CASHCAT buy. Empty = the plate is not built.
   cashcatBuyUrl: "https://www.letscash.fun/token/0x020bfC650A365f8BB26819deAAbF3E21291018b4",
+  // THE OFFICE POOL (pool.html) — OfficePool, deployed 2026-09-05 16:22Z, block 55259924,
+  // reusing the proven drand verifier 0xf17f…4e9. Empty = the page says it has not opened.
+  pool: "0xba74bFbfa33296052c47149bb805C396ee608c2B",
   explorer: "https://robinhoodchain.blockscout.com",
 
   // ---- fill these at launch ----

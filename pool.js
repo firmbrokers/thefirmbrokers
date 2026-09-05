@@ -1,0 +1,493 @@
+/* ===========================================================================
+   THE OFFICE POOL — one pool a day in $9TO5, drawn at the closing bell.
+
+   Registers window.__POOL = { page } and is mounted by pool.html (and, later,
+   by the street: level.js will call it guarded, like auction.js). Reads go
+   through F.callBatch, writes through F.send; everything the page needs is a
+   view on the contract — no indexer, no worker, no logs.
+
+   Inert until config.js names the contract (CFG.pool): the page then says the
+   pool has not opened and does nothing else. The contract address is NEVER
+   taken from the URL (anti-phishing rule, same as the token and the mint).
+   =========================================================================== */
+(function () {
+  "use strict";
+  const F = window.Firm;
+  if (!F) return;
+  const CFG = F.CFG;
+  const { word, toBig } = F;
+
+  const SEL = {
+    deposit: "0xb927dab6", registerBrokers: "0xfb9a75f4", claimDividends: "0xccbba739", claimReferral: "0xe02f1ebd",
+    setCode: "0xb9ef767f", draw: "0x23906963",
+    roundView: "0xdb5b4737", currentRound: "0x8a19c8bc", playerView: "0xcaeacdb9", players: "0x1f5053a1",
+    deposits: "0x0f430645", depositCount: "0xa537f3c9", recentRounds: "0xf36ea453", dueForDraw: "0xf0c0f269",
+    roundsOf: "0x8820a363", claimableDividends: "0x062c1746", referralOwed: "0x994ec7c7", codeOf: "0x2cfc2716",
+    codeOwner: "0x11ad2f34", referrer: "0x2cf003c2", roundCount: "0x127f0b3f", knobs: "0x48fe7e53", brokerUsed: "0xa314afcf",
+    beaconDelay: "0x925e2416",
+    allowance: "0xdd62ed3e", balanceOf: "0x70a08231", approve: "0x095ea7b3", isActive: "0x82afd23b",
+    quoteBuy: "0x4beb394c", // Reinvest401k.quoteBuy(uint256): the pot in ETH, optional
+  };
+  const DEC = 18n;
+  const REF_KEY = "firmbrokers.pool.ref.v1";
+  const POLL_IDLE = 20000, POLL_HOT = 4000, HOT_WINDOW = 600;
+  const DRAND = ["https://api.drand.sh", "https://api2.drand.sh", "https://api3.drand.sh", "https://drand.cloudflare.com"];
+  const ZERO = "0x0000000000000000000000000000000000000000";
+
+  // ---------------------------------------------------------------- helpers
+  const w = (hex, i) => hex.slice(2 + i * 64, 2 + (i + 1) * 64);
+  const big = (hex, i) => BigInt("0x" + w(hex, i));
+  const num = (hex, i) => Number(big(hex, i));
+  const addr = (hex, i) => "0x" + w(hex, i).slice(24);
+  const short = (a) => (a && a !== ZERO ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&lt;", '"': "&quot;" }[c]));
+  const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+  const same = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+  const bytes32 = (str) => { let h = ""; for (const ch of str) h += ch.charCodeAt(0).toString(16).padStart(2, "0"); return h.padEnd(64, "0"); };
+  const fromBytes32 = (hex) => { let s = ""; for (let i = 0; i < 64; i += 2) { const c = parseInt(hex.slice(i, i + 2), 16); if (!c) break; s += String.fromCharCode(c); } return s; };
+  const validCode = (s) => /^[a-z0-9]{3,20}$/.test(s);
+
+  /// 1,234,567 → "1.23M", 12,345 → "12,345", never scientific
+  function fmt(units, digits) {
+    const n = Number(units) / 1e18;
+    if (digits != null) return n.toLocaleString("en-US", { maximumFractionDigits: digits });
+    if (n >= 1e6) return (n / 1e6).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "M";
+    if (n >= 1e4) return (n / 1e3).toLocaleString("en-US", { maximumFractionDigits: 1 }) + "k";
+    return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  /// "12,345" · "12.5k" · "1.2m" → wei, null if it is not a number
+  function parseAmount(str) {
+    let t = String(str || "").trim().toLowerCase().replace(/[\s,_]/g, "");
+    let mul = 1n;
+    if (t.endsWith("k")) { mul = 1000n; t = t.slice(0, -1); } else if (t.endsWith("m")) { mul = 1000000n; t = t.slice(0, -1); }
+    if (!/^\d+(\.\d+)?$/.test(t)) return null;
+    const [i, f = ""] = t.split(".");
+    const frac = (f + "0".repeat(18)).slice(0, 18);
+    try { return (BigInt(i) * 10n ** DEC + BigInt(frac)) * mul; } catch (e) { return null; }
+  }
+  const nyTime = (ts, withDate) => new Date(ts * 1000).toLocaleString("en-US", Object.assign({ timeZone: "America/New_York", hour: "numeric", minute: "2-digit" }, withDate ? { month: "short", day: "numeric" } : {}));
+  const ago = (ts) => { const s = Math.max(0, Math.floor(Date.now() / 1000) - ts); return s < 60 ? s + "s" : s < 3600 ? Math.floor(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h" : Math.floor(s / 86400) + "d"; };
+  const countdown = (left) => { if (left <= 0) return "0:00"; const h = Math.floor(left / 3600), m = Math.floor((left % 3600) / 60), s = left % 60; return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`; };
+
+  // ---------------------------------------------------------------- decoders
+  /// Round is a struct of statics with a nested Knobs: 20 flat words.
+  function decodeRound(hex) {
+    if (!hex || hex.length < 2 + 64 * 20) return null;
+    return {
+      closesAt: num(hex, 0), beaconRound: num(hex, 1), state: num(hex, 2), playerCount: num(hex, 3),
+      deposits: big(hex, 4), totalWeight: big(hex, 5), pot: big(hex, 6), seed: big(hex, 7), acc: big(hex, 8),
+      refundWinner: addr(hex, 9), jackpotWinner: addr(hex, 10), refundPaid: big(hex, 11), jackpotPaid: big(hex, 12),
+      rand: "0x" + w(hex, 13),
+      minDeposit: big(hex, 14), divBps: num(hex, 15), refBps: num(hex, 16), houseBps: num(hex, 17), boostBps: num(hex, 18), boostCapBps: num(hex, 19),
+    };
+  }
+  const decodePlayer = (hex, o = 0) => (!hex || hex.length < 2 + 64 * (o + 8)) ? null : {
+    idx: num(hex, o), brokers: num(hex, o + 1), deposited: big(hex, o + 2), weight: big(hex, o + 3),
+    divEarned: big(hex, o + 4), divClaimable: big(hex, o + 5), totalWeight: big(hex, o + 6), abandonClaimed: num(hex, o + 7) === 1,
+  };
+  function decodeUintArray(hex) {
+    if (!hex || hex.length < 130) return [];
+    const off = num(hex, 0) / 32, n = num(hex, off);
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(big(hex, off + 1 + i));
+    return out;
+  }
+  /// players(): (address[] addrs, PlayerView[] views)
+  function decodePlayers(hex) {
+    if (!hex || hex.length < 130) return [];
+    const oa = num(hex, 0) / 32, ov = num(hex, 1) / 32;
+    const n = num(hex, oa);
+    const out = [];
+    for (let i = 0; i < n; i++) out.push({ addr: addr(hex, oa + 1 + i), v: decodePlayer(hex, ov + 1 + i * 8) });
+    return out;
+  }
+  /// deposits(): Deposit[] of (player, amount, at)
+  function decodeDeposits(hex) {
+    if (!hex || hex.length < 130) return [];
+    const o = num(hex, 0) / 32, n = num(hex, o);
+    const out = [];
+    for (let i = 0; i < n; i++) out.push({ player: addr(hex, o + 1 + i * 3), amount: big(hex, o + 2 + i * 3), at: num(hex, o + 3 + i * 3) });
+    return out;
+  }
+
+  // ---------------------------------------------------------------- state
+  const S = {
+    account: null, cur: null, curId: 0, closesAt: 0, delay: 300, skew: 0, count: 0,
+    players: [], feed: [], history: [], due: [], me: null, claimable: 0n, refOwed: 0n, code: "", referrer: ZERO,
+    knobs: null, balance: 0n, allowance: 0n, brokers: [], brokersOwned: 0, brokersEligible: 0, useBrokers: true, ethPer: null, loaded: false, busy: false,
+  };
+
+  // ---------------------------------------------------------------- chain
+  async function load() {
+    const P = CFG.pool;
+    const head = await F.callBatch([
+      { to: P, data: SEL.currentRound }, { to: P, data: SEL.roundCount }, { to: P, data: SEL.beaconDelay },
+      { to: P, data: SEL.dueForDraw }, { to: P, data: SEL.recentRounds + word(8) }, { to: P, data: SEL.knobs },
+    ]);
+    // the terms a round opening now would take (the board's rules before the first chip-in of a day)
+    if (head[5] && head[5].length >= 2 + 64 * 6) S.knobs = { minDeposit: big(head[5], 0), divBps: num(head[5], 1), refBps: num(head[5], 2), houseBps: num(head[5], 3), boostBps: num(head[5], 4), boostCapBps: num(head[5], 5) };
+    const cr = head[0];
+    S.curId = num(cr, 0); S.closesAt = num(cr, 1); const open = num(cr, 2) === 1;
+    // count down against the CHAIN's clock: a device that is off by minutes is the difference between chipping in and not
+    if (cr.length >= 2 + 64 * 4) S.skew = Math.floor(Date.now() / 1000) - num(cr, 3);
+    const roundCount = num(head[1], 0);
+    S.delay = num(head[2], 0) || 300;
+    S.due = decodeUintArray(head[3]).map(Number);
+    const recent = decodeUintArray(head[4]).map(Number).filter((id) => id !== S.curId || !open);
+
+    const reqs = [];
+    if (open) {
+      reqs.push({ to: P, data: SEL.roundView + word(S.curId) });
+      reqs.push({ to: P, data: SEL.depositCount + word(S.curId) });
+    }
+    for (const id of recent) reqs.push({ to: P, data: SEL.roundView + word(id) });
+    if (S.account) {
+      reqs.push({ to: P, data: SEL.claimableDividends + word(S.account) });
+      reqs.push({ to: P, data: SEL.referralOwed + word(S.account) });
+      reqs.push({ to: P, data: SEL.codeOf + word(S.account) });
+      reqs.push({ to: P, data: SEL.referrer + word(S.account) });
+      reqs.push({ to: CFG.token, data: SEL.balanceOf + word(S.account) });
+      reqs.push({ to: CFG.token, data: SEL.allowance + word(S.account) + word(P) });
+      if (open) reqs.push({ to: P, data: SEL.playerView + word(S.curId) + word(S.account) });
+    }
+    if (CFG.reinvest) reqs.push({ to: CFG.reinvest, data: SEL.quoteBuy + word(10n ** 16n) });
+    const res = reqs.length ? await F.callBatch(reqs) : [];
+    let k = 0;
+    if (open) {
+      S.cur = decodeRound(res[k++]);
+      S.count = num(res[k++], 0);
+    } else { S.cur = null; S.count = 0; S.players = []; }
+    S.history = [];
+    for (const id of recent) { const r = decodeRound(res[k++]); if (r) S.history.push(Object.assign({ id }, r)); }
+    if (S.account) {
+      S.claimable = big(res[k++], 0); S.refOwed = big(res[k++], 0); S.code = fromBytes32(w(res[k++], 0)); S.referrer = addr(res[k++], 0);
+      S.balance = big(res[k++], 0); S.allowance = big(res[k++], 0);
+      S.me = open ? decodePlayer(res[k++]) : null;
+    }
+    if (CFG.reinvest) { const q = res[k++]; S.ethPer = q && q.length >= 66 && big(q, 0) > 0n ? Number(10n ** 16n) / Number(big(q, 0)) : null; }
+    // every player (players are in join order; the board is top-10 by deposit,
+    // so a page cannot be skipped) and the last 12 deposits, in one batch
+    if (open && S.cur && S.cur.playerCount > 0) {
+      const PAGE = 200, MAX = 4000;
+      const n = Math.min(S.cur.playerCount, MAX);
+      const pages = [];
+      for (let from = 1; from <= n; from += PAGE) pages.push({ to: P, data: SEL.players + word(S.curId) + word(from) + word(PAGE) });
+      const from = Math.max(0, S.count - 12);
+      pages.push({ to: P, data: SEL.deposits + word(S.curId) + word(from) + word(12) });
+      const d = await F.callBatch(pages);
+      S.players = [];
+      for (let i = 0; i < pages.length - 1; i++) S.players.push(...decodePlayers(d[i]));
+      S.feed = decodeDeposits(d[pages.length - 1]).reverse();
+    } else { S.players = []; S.feed = []; }
+    S.roundCount = roundCount;
+    S.loaded = true;
+  }
+
+  /// the wallet's hired brokers not yet used this round
+  async function loadBrokers() {
+    S.brokers = [];
+    if (!S.account) return;
+    // before the first chip-in of a day there is no round yet: nothing is used, every hired broker counts
+    const roundId = S.cur ? S.curId : 0;
+    let ids = [];
+    try { ids = await F.tokensOf(S.account); } catch (e) { return; }
+    ids = ids.map((x) => BigInt(x));
+    S.brokersOwned = ids.length;
+    if (!ids.length) return;
+    const reqs = [];
+    for (const id of ids) { reqs.push({ to: CFG.nft, data: SEL.isActive + word(id) }); if (roundId) reqs.push({ to: CFG.pool, data: SEL.brokerUsed + word(roundId) + word(id) }); }
+    const res = await F.callBatch(reqs);
+    const eligible = [];
+    const per = roundId ? 2 : 1;
+    ids.forEach((id, i) => { if (toBig(res[i * per]) === 1n && (!roundId || toBig(res[i * per + 1]) === 0n)) eligible.push(id); });
+    S.brokersEligible = eligible.length;
+    // only as many as the multiplier can use: past the cap they cost gas for nothing
+    S.brokers = eligible.slice(0, maxUseful());
+  }
+  const terms = () => S.cur || S.knobs || { minDeposit: 10000n * 10n ** 18n, divBps: 2500, refBps: 500, houseBps: 1000, boostBps: 1000, boostCapBps: 20000 };
+  const maxUseful = () => { const t = terms(); return Math.max(0, Math.ceil((t.boostCapBps - 10000) / t.boostBps)); };
+
+  // ---------------------------------------------------------------- wallet
+  const WALLET_KEY = "firmbrokers.wallet.v1";
+  async function connect() {
+    const list = F.wallets();
+    if (!F.hasChosen()) {
+      let remembered = null;
+      try { remembered = localStorage.getItem(WALLET_KEY); } catch (e) {}
+      const saved = remembered && list.find((x) => x.info.rdns === remembered);
+      const pick = saved || list[0];
+      if (!pick) return toast("no wallet in this browser. Open this page in your wallet app", false);
+      F.setProvider(pick.provider);
+    }
+    const p = F.provider();
+    const accounts = await p.request({ method: "eth_requestAccounts" });
+    S.account = accounts[0];
+    try { await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CFG.chainHex }] }); }
+    catch (e) {
+      if (e && e.code === 4902) await p.request({ method: "wallet_addEthereumChain", params: [{ chainId: CFG.chainHex, chainName: CFG.chainName, rpcUrls: [CFG.rpcs[0]], nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 } }] });
+    }
+    if (p.on) p.on("accountsChanged", (a) => { S.account = a[0] || null; S.me = null; refresh(); });
+    await refresh();
+  }
+
+  async function tx(label, fn, after) {
+    if (S.busy) return;
+    S.busy = true;
+    try {
+      toast(label + "…");
+      const hash = await fn();
+      toast("sent, waiting for the block…");
+      await F.waitForTx(hash);
+      toast(label + ": done", true);
+      if (after) await after();
+    } catch (e) {
+      toast(humanError(e), false);
+    } finally { S.busy = false; }
+    await refresh();
+  }
+  function humanError(e) {
+    const m = String(e?.shortMessage || e?.message || e || "");
+    if (/reject|denied|cancel/i.test(m)) return "cancelled in the wallet";
+    // wallets surface revert DATA more often than error names: match both
+    if (/BadAmount|0x749b5939/.test(m)) return "below the minimum for this round, or not a whole amount";
+    if (/BadBroker|0xef6303e2/.test(m)) return "one of those brokers is not yours, not hired, or already counted today";
+    if (/RoundNotClosed|0x29e3b953/.test(m)) return "the bell has not rung yet";
+    if (/RoundNotOpen|0x402bc007/.test(m)) return "that round is already settled";
+    if (/NotAPlayer|0xabca3517/.test(m)) return "chip in first, then clock in brokers";
+    if (/CodeTaken|0x6af0cefe/.test(m)) return "that name is taken, or you already have one";
+    if (/BadCode|0x6c4ae96c/.test(m)) return "3 to 20 lowercase letters or digits";
+    if (/NothingToClaim|0x969bf728/.test(m)) return "nothing to claim";
+    if (/TooEarly|0x085de625/.test(m)) return "too early";
+    if (/BadBeacon|0x50264bfe|bad beacon/i.test(m)) return "that is not the round's beacon";
+    if (/TransferFailed|0x90b8ec18/.test(m)) return "the token transfer failed";
+    if (/insufficient/i.test(m)) return "not enough ETH for gas";
+    return m.length > 160 ? m.slice(0, 160) + "…" : m || "something went wrong";
+  }
+
+  // ---------------------------------------------------------------- actions
+  function refCode() {
+    let c = "";
+    try { c = new URL(location.href).searchParams.get("ref") || localStorage.getItem(REF_KEY) || ""; } catch (e) {}
+    c = String(c).toLowerCase();
+    return validCode(c) ? c : "";
+  }
+  async function chipIn(amountWei) {
+    const P = CFG.pool;
+    const brokers = S.useBrokers ? S.brokers : [];
+    const code = S.referrer === ZERO ? refCode() : "";
+    // deposit(uint128 amount, uint256[] brokerIds, bytes32 refCode)
+    let data = SEL.deposit + word(amountWei) + word(96) + (code ? bytes32(code) : word(0)) + word(brokers.length);
+    for (const id of brokers) data += word(id);
+    if (S.allowance < amountWei) {
+      await tx("allowing the pool to take $9TO5", () => F.send(CFG.token, SEL.approve + word(P) + word((1n << 256n) - 1n), 0n, S.account));
+      if (S.allowance < amountWei) return; // refresh() re-read it; the approval did not land
+    }
+    // an honest limit: deposit() has no internal try/catch, so the estimate is
+    // real; +25% margin. The wallet quotes limit × max fee, so a fixed 600k
+    // read as dollars for a charge of cents. Fallback to the measured ceiling
+    // (the first chip-in of a day opens the round: 473k, + 45k per broker).
+    const fallback = BigInt(600000 + 45000 * brokers.length);
+    let limit = fallback;
+    try {
+      const est = await F.provider().request({ method: "eth_estimateGas", params: [{ from: S.account, to: P, data }] });
+      const g = (BigInt(est) * 125n) / 100n;
+      if (g > 150000n && g < fallback * 2n) limit = g;
+    } catch (e) { /* the wallet could not estimate: the ceiling stands */ }
+    await tx("chipping in", () => F.send(P, data, 0n, S.account, limit));
+  }
+  async function claimDividends() {
+    const ids = decodeUintArray((await F.callBatch([{ to: CFG.pool, data: SEL.roundsOf + word(S.account) }]))[0]);
+    if (!ids.length) return;
+    // only the rounds with something to claim, newest first, at most 20 per transaction
+    const views = await F.callBatch(ids.map((id) => ({ to: CFG.pool, data: SEL.playerView + word(id) + word(S.account) })));
+    const pick = ids.filter((id, i) => { const v = decodePlayer(views[i]); return v && v.divClaimable > 0n; }).reverse().slice(0, 20);
+    if (!pick.length) return toast("nothing to claim yet", false);
+    let data = SEL.claimDividends + word(32) + word(pick.length);
+    for (const id of pick) data += word(id);
+    await tx("claiming dividends", () => F.send(CFG.pool, data, 0n, S.account, BigInt(120000 + 60000 * pick.length)));
+  }
+  const claimReferral = () => tx("claiming referral rewards", () => F.send(CFG.pool, SEL.claimReferral, 0n, S.account, 120000n));
+  async function setCode(code) {
+    code = String(code || "").trim().toLowerCase();
+    if (!validCode(code)) return toast("3 to 20 letters or digits, lowercase", false);
+    const taken = (await F.callBatch([{ to: CFG.pool, data: SEL.codeOwner + "0x".slice(0, 0) + bytes32(code) }]))[0];
+    if (taken && addr(taken, 0) !== ZERO) return toast("that name is taken", false);
+    await tx("setting your link", () => F.send(CFG.pool, SEL.setCode + bytes32(code), 0n, S.account, 120000n));
+  }
+  /// the bell: the beacon from drand, straight into draw(). Anyone may.
+  async function ringBell(id) {
+    const r = decodeRound((await F.callBatch([{ to: CFG.pool, data: SEL.roundView + word(id) }]))[0]);
+    if (!r) return;
+    let sig = null;
+    if (r.playerCount > 0) {
+      const CHAIN = "52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971";
+      outer: for (const base of DRAND) {
+        for (const path of [`/v2/beacons/quicknet/rounds/${r.beaconRound}`, `/${CHAIN}/public/${r.beaconRound}`]) {
+          try {
+            const res = await fetch(base + path, { signal: AbortSignal.timeout(8000) });
+            if (!res.ok) continue;
+            const j = await res.json();
+            if (Number(j.round) === r.beaconRound && /^[0-9a-f]{96}$/i.test(j.signature)) { sig = j.signature.toLowerCase(); break outer; }
+          } catch (e) { /* next */ }
+        }
+      }
+      if (!sig) return toast("the beacon is not out yet — try again in a moment", false);
+    }
+    const sigHex = sig || "";
+    const data = SEL.draw + word(id) + word(64) + word(sigHex.length / 2) + (sigHex ? sigHex.padEnd(128, "0") : "");
+    await tx("ringing the bell", () => F.send(CFG.pool, data, 0n, S.account, 900000n));
+  }
+
+  // ---------------------------------------------------------------- render
+  let host = null, timer = null, ticker = null;
+  function toast(msg, ok) {
+    const t = document.getElementById("op-toast");
+    if (!t) return;
+    t.textContent = msg; t.className = "toast on" + (ok === true ? " ok" : ok === false ? " bad" : "");
+    clearTimeout(toast._t); toast._t = setTimeout(() => { t.className = "toast"; }, ok === undefined ? 30000 : 6000);
+  }
+  function drandUrl(round) { return `https://api.drand.sh/v2/beacons/quicknet/rounds/${round}`; }
+  /// the post is the same anti-phishing shape as the application post: the site's
+  /// own page, nothing else linked
+  function xIntent(code) {
+    const link = `${location.origin}${location.pathname}?ref=${code}`;
+    const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in $9TO5 before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 $9TO5").replace("{link}", link);
+    return "https://x.com/intent/post?text=" + encodeURIComponent(textOf);
+  }
+  function explorer(a) { return `${CFG.explorer}/address/${a}`; }
+
+  function render() {
+    if (!host) return;
+    // never wipe what someone is typing: re-render after the field is left
+    const active = document.activeElement;
+    if (active && host.contains(active) && (active.tagName === "INPUT")) { render.pending = true; return; }
+    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked };
+    const r = S.cur;
+    const now = Math.floor(Date.now() / 1000) - S.skew;
+    const left = S.closesAt - now;
+    const me = S.me;
+    const eth = (units) => (S.ethPer ? ` <span class="dim">≈ ${(Number(units) / 1e18 * S.ethPer).toLocaleString("en-US", { maximumFractionDigits: 3 })} ETH</span>` : "");
+    const myW = me ? me.weight : 0n;
+    const tot = r ? r.totalWeight : 0n;
+    const odds = myW > 0n && tot > 0n ? (Number(tot) / Number(myW)).toLocaleString("en-US", { maximumFractionDigits: 1 }) : null;
+    const T = terms();
+    const mult = 10000 + T.boostBps * (me ? me.brokers : S.brokers.length);
+    const cap = T.boostCapBps;
+
+    const rules = `<div class="cab rules"><div class="lab">HOUSE RULES</div>
+      <p>Chip in $9TO5 any time before the bell. Of every chip-in, <b>${T.divBps / 100}%</b> goes to everyone already in today (pro-rata, your own earlier chip-ins included), <b>${T.refBps / 100}%</b> to whoever sent you, <b>${T.houseBps / 100}%</b> to the house, the rest to the pot.</p>
+      <p>At the bell one player gets their money back (up to the pot). Another takes what is left. Your chance is your chip-ins, boosted <b>${T.boostBps / 100}%</b> per hired broker you clock in today, up to <b>${cap / 10000}×</b>. A chip-in is final.</p>
+      <p>The number is drand's public beacon for a round fixed in advance, verified by the contract. Closes <b>${S.closesAt ? nyTime(S.closesAt) : "4:00 PM"} New York</b>, drawn five minutes later.</p></div>`;
+
+    const board = `<div class="cab board"><div class="scr">
+      <div class="lab">${r ? "TODAY'S POT" : "THE POT"}</div>
+      <div class="pot">${r ? fmt(r.pot) + " $9TO5" : "—"}</div>
+      <div class="fine">${r ? (r.seed > 0n ? `seeded with ${fmt(r.seed)} by the house · ` : "") + `${r.playerCount} player${r.playerCount === 1 ? "" : "s"} · ${fmt(r.deposits)} chipped in` + eth(r.pot) : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div>
+      <div class="row">
+        <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? nyTime(S.closesAt, true) + " NY · drawn +5 min" : ""}</div></div>
+        ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} $9TO5</div><div class="fine">${me.brokers} broker${me.brokers === 1 ? "" : "s"} · ${(Number(Math.min(mult, cap)) / 10000).toFixed(1)}×</div></div>
+        <div><div class="lab">YOUR CHANCE</div><div class="hi">${odds ? "1 in " + odds : "—"}</div><div class="fine">${me.divEarned > 0n ? "earned " + fmt(me.divEarned) + " today" : ""}</div></div>` : ""}
+      </div></div></div>`;
+
+    const bell = S.due.length ? `<div class="cab"><div class="scr"><div class="lab">THE BELL</div><div>round ${S.due[0]} has closed and nobody has rung it.</div>
+      <button class="go" data-act="bell" data-id="${S.due[0]}" ${S.account ? "" : "disabled"} style="margin-top:8px">RING THE BELL</button>
+      <div class="fine">fetches the beacon and hands it to the contract · anyone may</div></div></div>` : "";
+
+    const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">
+      ${S.account ? `
+      <div class="amt"><input type="text" inputmode="decimal" id="op-amt" placeholder="${fmt(T.minDeposit) + " min"}"><button class="chip" data-act="min" type="button">MIN</button><button class="chip" data-act="max" type="button">MAX</button></div>
+      ${S.brokers.length ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> clock in ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of my ${S.brokersEligible} hired brokers` : `my ${S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"}`} <span class="dim">(${(Math.min(10000 + S.brokers.length * T.boostBps, cap) / 10000).toFixed(1)}×${S.brokersEligible > S.brokers.length ? ", the cap" : ""})</span></label>` : (S.account && S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already clocked in today</div>` : "")}
+      <button class="go" data-act="chip" ${left > 0 ? "" : "disabled"}>${left > 0 ? "CHIP IN" : "CLOSED — NEXT POOL AT THE BELL"}</button>
+      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${S.referrer !== ZERO ? " · sent by " + short(S.referrer) : refCode() ? " · sent by <b>" + esc(refCode()) + "</b>" : ""}</div>
+      <div class="echo" id="op-echo"></div>
+      <div class="lab" style="margin-top:6px">YOURS TO CLAIM</div>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <span>dividends <b>${fmt(S.claimable)}</b></span><button class="chip" data-act="claimdiv" ${S.claimable > 0n ? "" : "disabled"}>CLAIM</button>
+        <span>referrals <b>${fmt(S.refOwed)}</b></span><button class="chip" data-act="claimref" ${S.refOwed > 0n ? "" : "disabled"}>CLAIM</button>
+      </div>`
+      : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell</div>`}
+    </div></div></div>`;
+
+    const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
+      ${S.code ? `<div class="link"><code>${esc(location.origin + location.pathname)}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">5% of every chip-in from whoever arrives through it, for life</div>`
+      : `<div class="fine">pick a name once; 5% of every chip-in from whoever arrives through your link, for life</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
+    </div></div>` : "";
+
+    const lead = `<div class="cab"><div class="scr"><div class="lab">TODAY'S BOARD</div>
+      <div class="list">${S.players.length ? S.players.slice().sort((a, b) => (b.v.deposited > a.v.deposited ? 1 : -1)).slice(0, 10).map((p, i) =>
+        `<div class="r${same(p.addr, S.account) ? " me" : ""}"><span class="who">${i + 1}. <a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>${p.v.brokers ? ` <span class="dim">+${p.v.brokers}</span>` : ""}</span><span class="n">${fmt(p.v.deposited)} <span class="dim">· earned ${fmt(p.v.divEarned)}</span></span></div>`).join("")
+        : `<div class="dim">—</div>`}</div></div></div>`;
+
+    const feed = `<div class="cab"><div class="scr"><div class="lab">JUST NOW</div>
+      <div class="list">${S.feed.length ? S.feed.map((d) => `<div class="r${same(d.player, S.account) ? " me" : ""}"><span class="who">${short(d.player)} chipped in</span><span class="n">${fmt(d.amount)} <span class="dim">${ago(d.at)} ago</span></span></div>`).join("") : `<div class="dim">—</div>`}</div></div></div>`;
+
+    const hist = `<div class="cab hist"><div class="scr"><div class="lab">PAST POOLS</div>
+      <div class="list">${S.history.length ? S.history.map((h) => {
+        const st = h.state === 2 ? (h.playerCount === 0 ? "nobody came · carried" : "") : h.state === 3 ? "abandoned · refunds open" : "waiting for the bell";
+        return `<div class="r"><div class="line"><b>${nyTime(h.closesAt, true)}</b><span>${fmt(h.refundPaid + h.jackpotPaid + h.pot)} $9TO5</span><span class="dim">${h.playerCount} players</span>${st ? `<span class="dim">${st}</span>` : ""}</div>
+          ${h.state === 2 && h.playerCount > 0 ? `<div class="line"><span>money back: <a href="${explorer(h.refundWinner)}" rel="noopener">${short(h.refundWinner)}</a> ${fmt(h.refundPaid)}</span>${h.jackpotWinner !== ZERO ? `<span>the pot: <a href="${explorer(h.jackpotWinner)}" rel="noopener">${short(h.jackpotWinner)}</a> <b>${fmt(h.jackpotPaid)}</b></span>` : `<span class="dim">the refund was the whole pot</span>`}<a class="dim" href="${drandUrl(h.beaconRound)}" rel="noopener">beacon ${h.beaconRound} ↗</a></div>` : ""}</div>`;
+      }).join("") : `<div class="dim">none yet</div>`}</div></div></div>`;
+
+    host.innerHTML = board + bell + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + hist + rules;
+    const a = host.querySelector("#op-amt"), c = host.querySelector("#op-code"), b = host.querySelector("#op-brk");
+    if (a && keep.amt) a.value = keep.amt;
+    if (c && keep.code) c.value = keep.code;
+    if (b && keep.brk != null) b.checked = keep.brk;
+  }
+
+  // ---------------------------------------------------------------- wiring
+  async function refresh() {
+    try {
+      await load();
+      if (S.account) await loadBrokers();
+    } catch (e) { /* keep the last paint; the next poll retries */ }
+    render();
+    schedule();
+  }
+  function schedule() {
+    clearTimeout(timer);
+    const left = S.closesAt - (Math.floor(Date.now() / 1000) - S.skew);
+    timer = setTimeout(refresh, left > 0 && left <= HOT_WINDOW ? POLL_HOT : POLL_IDLE);
+  }
+  function onClick(e) {
+    const b = e.target.closest("[data-act]");
+    if (!b) return;
+    const act = b.dataset.act;
+    const amt = () => document.getElementById("op-amt");
+    if (act === "connect") return connect().catch((err) => toast(humanError(err), false));
+    if (act === "min") { if (amt()) amt().value = fmt(terms().minDeposit, 0); return; }
+    if (act === "max") { if (amt()) amt().value = fmt(S.balance, 0); return; }
+    if (act === "chip") {
+      if (S.closesAt && Math.floor(Date.now() / 1000) - S.skew >= S.closesAt) { refresh(); return toast("closed — the next pool opens at the bell", false); }
+      const v = parseAmount(amt() && amt().value);
+      if (v == null) return toast("type an amount of $9TO5, like 25,000 or 25k", false);
+      if (v < terms().minDeposit) return toast(`the minimum today is ${fmt(terms().minDeposit)} $9TO5`, false);
+      if (v > S.balance) return toast("that is more than you have", false);
+      const brk = document.getElementById("op-brk"); S.useBrokers = !brk || brk.checked;
+      return chipIn(v);
+    }
+    if (act === "claimdiv") return claimDividends();
+    if (act === "claimref") return claimReferral();
+    if (act === "setcode") { const i = document.getElementById("op-code"); return setCode(i && i.value); }
+    if (act === "copy") { const c = host.querySelector(".ref code"); if (c && navigator.clipboard) navigator.clipboard.writeText(c.textContent).then(() => toast("copied", true)); return; }
+    if (act === "bell") return ringBell(Number(b.dataset.id));
+  }
+
+  function page(mount) {
+    host = mount;
+    if (!CFG.pool) {
+      host.innerHTML = `<div class="cab"><div class="scr"><div class="lab">THE OFFICE POOL</div><div>has not opened yet. When it does, this page is where it happens.</div></div></div>`;
+      return;
+    }
+    // remember who sent you, for your first chip-in
+    try { const c = new URL(location.href).searchParams.get("ref"); if (c && validCode(c.toLowerCase())) localStorage.setItem(REF_KEY, c.toLowerCase()); } catch (e) {}
+    host.addEventListener("click", onClick);
+    host.addEventListener("focusout", () => { if (render.pending) { render.pending = false; setTimeout(render, 50); } });
+    render();
+    refresh();
+    clearInterval(ticker);
+    ticker = setInterval(() => { const cd = host.querySelector(".board .cd"); if (cd && S.closesAt) { const left = S.closesAt - (Math.floor(Date.now() / 1000) - S.skew); cd.textContent = countdown(left); cd.classList.toggle("hot", left > 0 && left <= HOT_WINDOW); } }, 1000);
+  }
+
+  window.__POOL = { page, decodeRound, decodePlayer, decodePlayers, decodeDeposits, parseAmount, fmt, bytes32, fromBytes32 };
+})();
