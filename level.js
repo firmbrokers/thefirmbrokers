@@ -3707,18 +3707,7 @@
       const ok = await runList(caps.map((c) => F.reinvestApproveCall(c.token, c.amount)), "topping up", () => "topped up — the next sweep converts what arrived");
       if (ok) build401kInto(card);
     });
-    const revoke = box.querySelector(".revoke");
-    if (revoke) revoke.addEventListener("click", async () => {
-      const ok = await runList(F.reinvestMigrateCalls(v1.allowed, v1.enrolled), "closing the old plan", () => "the old plan is closed for this wallet");
-      if (ok) build401kInto(card);
-    });
-    box.querySelector(".keep").addEventListener("click", async (e) => {
-      e.preventDefault();
-      const ok = await runList([F.reinvestProtectCall()], "keeping what you hold", () => "done — everything in the wallet right now stays yours; only pay from here on converts");
-      if (ok) build401kInto(card);
-    });
-    box.querySelector(".leave").addEventListener("click", async (e) => {
-      e.preventDefault();
+    box.querySelector(".leave").addEventListener("click", async () => {
       const ok = await runList([F.reinvestLeaveCall()], "leaving", () => "you left the plan");
       if (ok) build401kInto(card);
     });
