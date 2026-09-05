@@ -274,7 +274,8 @@
   async function chipIn(amountWei) {
     const P = CFG.pool;
     const brokers = S.useBrokers ? S.brokers : [];
-    const code = S.referrer === ZERO ? refCode() : "";
+    const typed = (host.querySelector("#op-ref") || {}).value;
+    const code = S.referrer === ZERO ? (typed && validCode(String(typed).trim().toLowerCase()) ? String(typed).trim().toLowerCase() : refCode()) : "";
     // deposit(uint128 amount, uint256[] brokerIds, bytes32 refCode)
     let data = SEL.deposit + word(amountWei) + word(96) + (code ? bytes32(code) : word(0)) + word(brokers.length);
     for (const id of brokers) data += word(id);
@@ -368,7 +369,7 @@
     // never wipe what someone is typing: re-render after the field is left
     const active = document.activeElement;
     if (active && host.contains(active) && (active.tagName === "INPUT")) { render.pending = true; return; }
-    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked };
+    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, ref: (host.querySelector("#op-ref") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked };
     const r = S.cur;
     const now = Math.floor(Date.now() / 1000) - S.skew;
     const left = S.closesAt - now;
@@ -404,9 +405,11 @@
       ${S.account ? `
       <div class="amt"><input type="text" inputmode="decimal" id="op-amt" placeholder="${fmt(T.minDeposit) + " min"}"><button class="chip" data-act="min" type="button">MIN</button><button class="chip" data-act="max" type="button">MAX</button></div>
       ${S.brokers.length ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> clock in ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of my ${S.brokersEligible} hired brokers` : `my ${S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"}`} <span class="dim">→ ${(Math.min(10000 + S.brokers.length * T.boostBps, cap) / 10000).toFixed(1)}× odds</span></label>
-      <div class="fine">each hired broker you clock in adds ${T.boostBps / 100}% to your chance today, up to ${cap / 10000}× (${maxUseful()} brokers)${S.brokersEligible > maxUseful() ? " — past that they cannot add more, so only " + maxUseful() + " are sent" : ""}. A broker counts once a day.</div>` : (S.account && S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already clocked in today</div>` : "")}
+      <div class="fine">each hired broker you clock in adds ${T.boostBps / 100}% to your chance today, up to ${cap / 10000}× (${maxUseful()} brokers). ${S.brokersEligible > maxUseful() ? `You have ${S.brokersEligible} hired; ${maxUseful()} is the most that can count, so ${maxUseful()} are clocked in. ` : ""}Clocking in only tells the pool to count them: your brokers stay in your wallet and keep earning. A broker counts once a day.</div>` : (S.account && S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already clocked in today</div>` : "")}
       <button class="go" data-act="chip" ${left > 0 ? "" : "disabled"}>${left > 0 ? "CHIP IN" : "CLOSED — NEXT POOL AT THE BELL"}</button>
-      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${S.referrer !== ZERO ? " · sent by " + short(S.referrer) : refCode() ? " · sent by <b>" + esc(refCode()) + "</b>" : ""}</div>
+      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${S.referrer !== ZERO ? " · sent by " + short(S.referrer) : ""}</div>
+      ${S.referrer === ZERO && !(me && me.deposited > 0n) ? `<div class="amt"><input type="text" id="op-ref" placeholder="sent by someone? their name (optional)" value="${esc(refCode())}" autocapitalize="off" spellcheck="false"></div>
+      <div class="fine">if a player sent you here, put their name (or arrive through their link and it is filled in). It is fixed on your first chip-in: from then on 5% of every chip-in you make goes to them, and never comes out of your share. Leave it empty and that 5% goes to the pot.</div>` : ""}
       <div class="echo" id="op-echo"></div>
       <div class="lab" style="margin-top:6px">YOURS TO CLAIM</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -417,8 +420,8 @@
     </div></div></div>`;
 
     const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
-      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">5% of every chip-in from whoever arrives through it, for life</div>`
-      : `<div class="fine">pick a name once; 5% of every chip-in from whoever arrives through your link, for life</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
+      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button><a class="chip" style="display:inline-flex;align-items:center;text-decoration:none" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a></div><div class="fine">share it. Whoever arrives through it (or types your name) has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time. It never comes out of their share.</div>`
+      : `<div class="fine">pick a name once, then share your link or the name. Whoever arrives through it has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time.</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
     </div></div>` : "";
 
     const lead = `<div class="cab"><div class="scr"><div class="lab">TODAY'S BOARD</div>
@@ -437,8 +440,9 @@
       }).join("") : `<div class="dim">none yet</div>`}</div></div></div>`;
 
     host.innerHTML = board + bell + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + hist + rules;
-    const a = host.querySelector("#op-amt"), c = host.querySelector("#op-code"), b = host.querySelector("#op-brk");
+    const a = host.querySelector("#op-amt"), c = host.querySelector("#op-code"), b = host.querySelector("#op-brk"), rf = host.querySelector("#op-ref");
     if (a && keep.amt) a.value = keep.amt;
+    if (rf && keep.ref != null) rf.value = keep.ref;
     if (c && keep.code) c.value = keep.code;
     if (b && keep.brk != null) b.checked = keep.brk;
   }
