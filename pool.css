@@ -38,7 +38,8 @@ input { font: inherit; }
 @media (prefers-reduced-motion: reduce) { .op-ticker .tape { animation: none; } }
 
 /* the board: the jackpot is the hero */
-.board .pot { font-family: var(--fd); font-size: 48px; line-height: 56px; color: var(--crtbright); text-shadow: 0 0 18px #b6ffcf66, 0 0 40px #6fe08c33; margin: 8px 0 6px; word-break: break-all; }
+.board .pot { font-family: var(--fd); font-size: 48px; line-height: 56px; color: var(--crtbright); text-shadow: 0 0 18px #b6ffcf66, 0 0 40px #6fe08c33; margin: 8px 0 6px; }
+.board .pot .num, .board .pot .unit { display: inline-block; white-space: nowrap; }
 .board .pot .unit { font-size: inherit; color: var(--crtink); text-shadow: 0 0 12px #67b18455; }
 .board .hero { text-align: center; }
 .board .hero .one { max-width: 760px; margin-left: auto; margin-right: auto; }
