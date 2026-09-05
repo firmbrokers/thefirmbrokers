@@ -366,9 +366,13 @@
 
   function render() {
     if (!host) return;
-    // never wipe what someone is typing: re-render after the field is left
+    // never wipe what someone is typing: skip this paint; the next poll paints.
+    // (Only text fields. And NEVER re-render on blur: the blur fires on the
+    // mouse-down of the button being clicked, and a re-render before the
+    // mouse-up replaces that button, so the click never happens — "the
+    // buttons need two clicks", 2026-09-05.)
     const active = document.activeElement;
-    if (active && host.contains(active) && (active.tagName === "INPUT")) { render.pending = true; return; }
+    if (active && host.contains(active) && active.tagName === "INPUT" && active.type === "text") return;
     const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, ref: (host.querySelector("#op-ref") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked };
     const r = S.cur;
     const now = Math.floor(Date.now() / 1000) - S.skew;
@@ -494,7 +498,6 @@
     // remember who sent you, for your first chip-in
     try { const c = new URL(location.href).searchParams.get("ref"); if (c && validCode(c.toLowerCase())) localStorage.setItem(REF_KEY, c.toLowerCase()); } catch (e) {}
     host.addEventListener("click", onClick);
-    host.addEventListener("focusout", () => { if (render.pending) { render.pending = false; setTimeout(render, 50); } });
     render();
     refresh();
     clearInterval(ticker);
