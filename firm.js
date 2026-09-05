@@ -1220,12 +1220,19 @@
       for (const i of idxs) {
         reqs.push({ to: meta[i].token, data: SEL.balanceOf + word(addr) });
         reqs.push({ to: meta[i].token, data: SEL.allowance + word(addr) + word(CFG.reinvest) });
+        reqs.push({ to: CFG.reinvest, data: SEL.baseline + word(addr) + word(i) }); // v1 answers nothing: floor 0
       }
       const r = await callBatch(reqs);
       const held = [];
       idxs.forEach((i, j) => {
-        const balance = big(r[j * 2]);
-        if (balance > 0n) held.push({ idx: i, token: meta[i].token, symbol: meta[i].symbol, decimals: meta[i].decimals, balance, allowance: big(r[j * 2 + 1]), value: 0n });
+        const balance = big(r[j * 3]);
+        if (balance > 0n) {
+          const allowance = big(r[j * 3 + 1]);
+          const floor = big(r[j * 3 + 2]);
+          const prot = floor < balance ? floor : balance;
+          const above = balance - prot;
+          held.push({ idx: i, token: meta[i].token, symbol: meta[i].symbol, decimals: meta[i].decimals, balance, allowance, protected: prot, converts: above < allowance ? above : allowance, above, value: 0n });
+        }
       });
       if (held.length) {
         const v = await callBatch(held.map((h) => ({ to: CFG.reinvest, data: SEL.twapEthOut + word(h.idx) + word(h.balance) })));
