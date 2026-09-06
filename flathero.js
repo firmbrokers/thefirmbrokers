@@ -378,7 +378,7 @@
     }
     // THE RECORDS ROOM — hourly pay slips, read from the chain; needs the engine
     if (window.Firm && window.Firm.CFG && window.Firm.CFG.engine) {
-      const rec = el("button", null, "PAY SLIPS");
+      const rec = el("button", null, "SLIPS");
       rec.type = "button";
       rec.addEventListener("click", () => { location.href = "/records"; });
       chips.appendChild(rec);
