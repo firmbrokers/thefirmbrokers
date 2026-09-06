@@ -94,7 +94,7 @@
     x: START_X, y: 0, vx: 0, vy: 0, facing: 1,
     keys: {}, frozen: false, mode: "street", streetX: START_X, roomW: 0,
     cueKey: null, cueW: 0, thoughtW: 0, thoughtH: 0, agentLineW: 0, agentLineH: 0, agentLineL: 0, boothEl: null,
-    tokenLive: false, mintOpen: false, stats: null,
+    tokenLive: !!(window.FIRM_CFG && window.FIRM_CFG.token), mintOpen: false, stats: null,
     brokers: [], assetMeta: null, account: null,
     fusePick: new Set(), wheelVel: 0,
     // the trading floor: which three are out front, and the roster menu's own
@@ -1193,6 +1193,39 @@
   }
 
   // ------------------------------------------------------------ HUD
+  /// The JACKPOT tile carries today's pot. Two reads (the open round's id,
+  /// then its view) on the same cadence as the stats; a failed read leaves
+  /// the last number standing, and no pool in config leaves the static words.
+  const POOL_SEL = { currentRound: "0x8a19c8bc", roundView: "0xdb5b4737" };
+  /// five characters at most ("1.23M", "12.3M", "124k"): the phone tile has
+  /// room for exactly that beside its five neighbours
+  function fmtPot(units) {
+    const n = Number(units) / 1e18;
+    const f = (v, d) => v.toLocaleString("en-US", { maximumFractionDigits: d });
+    if (n >= 1e8) return f(n / 1e6, 0) + "M";
+    if (n >= 1e7) return f(n / 1e6, 1) + "M";
+    if (n >= 1e6) return f(n / 1e6, 2) + "M";
+    if (n >= 1e5) return f(n / 1e3, 0) + "k";
+    if (n >= 1e4) return f(n / 1e3, 1) + "k";
+    return f(n, 0);
+  }
+  async function refreshPot() {
+    const out = $("fb-jackpot-pot");
+    if (!out || !CFG.pool) return;
+    const tile = $("fb-poolbtn"), unit = tile && tile.querySelector(".unit");
+    const say = (words, live) => { out.textContent = words; if (unit) unit.textContent = live ? " $9TO5" : ""; if (tile) tile.classList.toggle("is-live", !!live); };
+    try {
+      const cur = (await F.callBatch([{ to: CFG.pool, data: POOL_SEL.currentRound }]))[0];
+      if (!cur || cur.length < 2 + 64 * 3) return;
+      const id = BigInt("0x" + cur.slice(2, 66));
+      const open = BigInt("0x" + cur.slice(2 + 128, 2 + 192)) === 1n;
+      if (!open) { say("opens at the bell", false); return; }
+      const rv = (await F.callBatch([{ to: CFG.pool, data: POOL_SEL.roundView + F.word(id) }]))[0];
+      if (!rv || rv.length < 2 + 64 * 7) return;
+      const pot = BigInt("0x" + rv.slice(2 + 64 * 6, 2 + 64 * 7));
+      say(fmtPot(pot), true);
+    } catch (e) { /* the last number stands */ }
+  }
   function paintHud() {
     const s = state.stats;
 
@@ -4349,7 +4382,7 @@
     // the street. "LEVEL" and "FLAT" were engine vocabulary — the user asked
     // what "LEVEL" even did, which is the whole review.
     const fb = $("fb-flatbtn");
-    if (fb) fb.textContent = on ? "STREET" : "PAGE";
+    if (fb) { const w = on ? "STREET" : "PAGE"; fb.dataset.mode = on ? "flat" : "street"; fb.title = w; fb.setAttribute("aria-label", w); }
     if (remember) localStorage.setItem(FLAT_KEY, on ? "flat" : "level");
     if (on) buildFlat();
     else if (window.__CITY_ENSURE) window.__CITY_ENSURE();
@@ -4565,6 +4598,8 @@
   } catch (e) { /* no font loading api: the first measurement stands */ }
   refreshStats();
   setInterval(refreshStats, 60000);
+  refreshPot();
+  setInterval(refreshPot, 60000);
 
   /// THE HAMMER, on the street. The auction is the site's daily event and
   /// nothing outside the room said a lot had sold. Once a lot closes, anyone

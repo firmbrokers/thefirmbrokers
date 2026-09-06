@@ -140,6 +140,40 @@ button { font-family: inherit; cursor: pointer; }
 /* the one HUD button that sells something, so it carries the CTA gold */
 .fb-hudbtn.buy { background: var(--gold); color: var(--ink); box-shadow: 0 0 0 3px #3a4148, 0 0 16px #ffc93355; }
 .fb-hudbtn.buy:hover { background: #ffd964; color: var(--ink); }
+/* The two buttons that make money are TILES: the zone recipe (a small label
+   over a big data line) at zone height, so BUY and JACKPOT read as places and
+   the utility buttons beside them read as chrome. BUY keeps the solid gold;
+   JACKPOT wears the lit-zone ring and carries the live pot in the data line. */
+.fb-break { display: none; }
+.fb-hudbtn.tile {
+  flex: 0 0 auto; min-width: max-content;
+  flex-direction: column; justify-content: center; gap: 4px;
+  padding: 9px 16px 10px;
+}
+.fb-hudbtn.tile small {
+  font-family: var(--font-display); font-size: 7px; text-transform: uppercase;
+  color: var(--gold-deep); white-space: nowrap;
+}
+.fb-hudbtn.tile span {
+  font-family: var(--font-data); font-size: 17px; line-height: 1;
+  color: #6fe08c; text-shadow: 0 0 6px #6fe08c44; white-space: nowrap; text-transform: none;
+}
+.fb-hudbtn.tile span b, .fb-hudbtn.tile span i, .fb-hudbtn.tile small b { font-weight: normal; font-style: normal; }
+.fb-hudbtn.tile:hover small { color: var(--gold); }
+/* both money tiles wear the lit-zone ring (user's call 2026-09-06: the solid
+   gold BUY looked like a different kind of thing from JACKPOT beside it) */
+.fb-hudbtn.tile.buy { background: linear-gradient(#10151d, #0a0e14); color: var(--gold-deep); }
+.fb-hudbtn.tile.buy, .fb-hudbtn.tile.jackpot { box-shadow: 0 0 0 3px var(--gold), 0 0 20px #ffc93340, inset 0 0 20px rgba(0, 0, 0, 0.35); }
+.fb-hudbtn.tile.buy small, .fb-hudbtn.tile.jackpot small { color: var(--gold); text-shadow: 0 0 8px #ffc93370; }
+.fb-hudbtn.tile.buy span, .fb-hudbtn.tile.jackpot span { color: #9fe0af; }
+.fb-hudbtn.tile.buy:hover, .fb-hudbtn.tile.jackpot:hover { background: linear-gradient(#10151d, #0a0e14); box-shadow: 0 0 0 3px #ffd964, 0 0 24px #ffc93366, inset 0 0 20px rgba(0, 0, 0, 0.3); }
+.fb-hudbtn.tile.buy:hover small, .fb-hudbtn.tile.buy:hover span { color: #fff1b8; }
+/* the flat-page toggle is a glyph like the follow link; data-mode picks which */
+.fb-hudbtn.icon { padding: 0 13px; }
+.fb-hudbtn.icon svg { display: block; width: 14px; height: 14px; fill: currentColor; }
+.fb-hudbtn.icon .g-street { display: none; }
+.fb-hudbtn.icon[data-mode="flat"] .g-page { display: none; }
+.fb-hudbtn.icon[data-mode="flat"] .g-street { display: block; }
 
 .fb-controls {
   /* Anchored to the zone bar, not to --ground-h. This is HUD chrome, not world
@@ -344,11 +378,9 @@ button { font-family: inherit; cursor: pointer; }
   to   { box-shadow: inset 0 0 0 2px #ffd966, 0 0 0 3px #2a3036, 0 0 30px #ffc93362, 0 0 80px #ffc9332a, 6px 7px 0 rgba(25, 19, 9, 0.34); }
 }
 @media (prefers-reduced-motion: reduce) { .fb-hire .board { animation: none; } }
-/* the same door on every screen: a HUD button beside BUY, outlined in gold so
-   it does not fight the solid BUY, and dropped on phones where the sign and
-   the flat chip already carry it and a sixth button would cost a row */
-.fb-hudbtn.pay { color: var(--gold); box-shadow: inset 0 0 0 2px var(--gold), 0 0 12px #ffc9332e; }
-.fb-hudbtn.pay:hover { background: #2a2f36; color: #fff1b8; }
+/* the same door on every screen: a plain HUD button (its gold ring went on
+   2026-09-06 — it was fighting BUY for the eye), dropped on phones where the
+   sign and the flat chip already carry it and a sixth button would cost a row */
 @media (max-width: 480px) {
   .fb-hudbtn.pay { display: none; }
   /* 520 wide would meet both edges of a 390 phone; 340 keeps the same centre */
@@ -784,6 +816,8 @@ body.flat-mode .fb-stage, body.flat-mode .fb-controls { display: none; }
   /* equal shares of ONE row however many zones there are: calc(25% - 8px)
      assumed four, and a fifth (Cash Cat) wrapped the bar to three rows */
   .fb-zonebtn { flex: 1 1 0; }
+  .fb-break { display: block; flex: 0 0 100%; height: 0; margin-top: -5px; }
+  body.paneled .fb-break { display: none; }
   /* inside a room the zones give their row up: STREET takes you back, and the
      room's name says where you are. Measured 3 rows at 390/360 before this. */
   body.paneled .fb-zonebtn { display: none; }
@@ -794,7 +828,23 @@ body.flat-mode .fb-stage, body.flat-mode .fb-controls { display: none; }
   }
   /* An icon has a size of its own and no text to lose, so it takes what it
      needs and leaves the rest of the row to the words. */
-  .fb-hudbtn.x { flex: 0 0 auto; padding: 10px 12px; }
+  .fb-hudbtn.x, .fb-hudbtn.icon { flex: 0 0 auto; padding: 10px 9px; }
+  /* six buttons share the second row at 390px, with the pot's number on one
+     of them: the gaps and paddings are what the row can spare */
+  .fb-zonebar { gap: 5px; }
+  .fb-hudbtn { padding: 10px 6px; }
+  /* the money tiles stay two lines but compact, at the row's own height:
+     BUY over $9TO5, JACKPOT over the number. Six buttons share this row at
+     390px (344px of bar at 360px), and one-line tiles measured 50px too wide
+     for it. They take twice a small button's share of what is left. */
+  .fb-hudbtn.tile { flex: 2 1 auto; min-width: 0; gap: 2px; padding: 7px 5px; }
+  .fb-hudbtn.tile small { font-size: 7px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .fb-hudbtn.tile span { font-size: 10px; }
+  .fb-hudbtn.tile.buy span { display: none; }
+  /* JACKPOT on a phone is the word and the number: no unit, and no words at
+     all until the pot has been read */
+  .fb-hudbtn.tile.jackpot span i { display: none; }
+  .fb-hudbtn.tile.jackpot:not(.is-live) span { display: none; }
   /* BACK TO THE STREET is a sentence, and a sentence claims a whole row to
      itself once the follow link is beside it. The zone buttons solved this
      first: keep the meaning, spend fewer characters. */

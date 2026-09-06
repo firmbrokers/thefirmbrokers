@@ -17,8 +17,8 @@
   <meta name="twitter:image" content="https://thefirmbrokers.com/og-street.png">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
-  <link rel="stylesheet" href="level.css?v=1788645405">
-  <link rel="stylesheet" href="xapply.css?v=1788645405">
+  <link rel="stylesheet" href="level.css?v=1788713032">
+  <link rel="stylesheet" href="xapply.css?v=1788713032">
 </head>
 <body>
 
@@ -33,24 +33,35 @@
   <div id="fb-flat" class="fb-flat"></div>
 
   <nav id="fb-zonebar" class="fb-zonebar" aria-label="zones">
-    <a id="fb-buybtn" class="fb-hudbtn buy" href="#" target="_blank" rel="noopener" style="display:none">BUY $9TO5</a>
-    <a id="fb-docsbtn" class="fb-hudbtn" href="/docs" target="_blank" rel="noopener">DOCS</a>
+    <!-- The bar's hierarchy (2026-09-06, user's order): the two buttons that
+         make money are zone-sized tiles, the rest are small. BUY carries the
+         solid gold; JACKPOT carries the live pot (level.js writes it). On a
+         phone both tiles fold to one line so the bar stays two rows. -->
+    <!-- the row break a phone needs between the zones and these: the zones
+         size from nothing (flex-basis 0) and would otherwise pull the first
+         tile up beside them. A room hides the zones, so it hides this too. -->
+    <i class="fb-break" aria-hidden="true"></i>
+    <a id="fb-buybtn" class="fb-hudbtn tile buy" href="#" target="_blank" rel="noopener" style="display:none"><small>BUY <b class="tok">$9TO5</b></small><span>the token</span></a>
+    <a id="fb-poolbtn" class="fb-hudbtn tile jackpot" href="/pool"><small>JACKPOT</small><span><b id="fb-jackpot-pot">today's pot</b><i class="unit"></i></span></a>
     <a id="fb-marketbtn" class="fb-hudbtn" href="/market">MARKET</a>
-    <a id="fb-poolbtn" class="fb-hudbtn" href="/pool">POOL</a>
+    <a id="fb-paybtn" class="fb-hudbtn pay" href="apply" target="_blank" rel="noopener"
+       title="Build a campaign: your token, paid to brokers as wages"><span class="long">BE THE PAYCHECK</span><span class="short">PAYCHECK</span></a>
+    <a id="fb-docsbtn" class="fb-hudbtn" href="/docs" target="_blank" rel="noopener">DOCS</a>
     <!-- The follow link, permanent: the bar is the only chrome that survives
          every mode, so this is the one place it is always reachable. The href
          is written here so it works before a single script runs, and level.js
          overwrites it from CFG.x on load — the handle has been renamed three
          times and the two must never disagree. handle.mjs holds that down. -->
-    <a id="fb-paybtn" class="fb-hudbtn pay" href="apply" target="_blank" rel="noopener"
-       title="Build a campaign: your token, paid to brokers as wages">BE THE PAYCHECK</a>
     <a id="fb-xbtn" class="fb-hudbtn x" href="https://x.com/thefirmbrokers" target="_blank"
        rel="noopener" title="Firm Brokers on X" aria-label="Firm Brokers on X"><svg viewBox="0 0 24 24"
        aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a>
     <!-- THE LIST button (#fb-wlbtn) is created by level.js beside DOCS,
          guarded on window.__WL_CHECK — one source, not two -->
 
-    <button id="fb-flatbtn" class="fb-hudbtn" type="button">PAGE</button>
+    <!-- PAGE / STREET as a glyph: a page of lines from the street, a road
+         from the page. level.js flips data-mode and the label; the word
+         lives in aria-label so the tests and screen readers still read it. -->
+    <button id="fb-flatbtn" class="fb-hudbtn icon" type="button" title="PAGE" aria-label="PAGE" data-mode="street"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="g-page" d="M5 2h9l5 5v15H5V2zm8 1.5V8h4.5L13 3.5zM7 11h10v1.5H7V11zm0 3.5h10V16H7v-1.5zm0 3.5h7v1.5H7V18z"/><path class="g-street" d="M9 2h6l4 20H5L9 2zm2.25 2v3h1.5V4h-1.5zm0 6v3h1.5v-3h-1.5zm0 6v3h1.5v-3h-1.5z"/></svg></button>
     <!-- Two labels, the way the zone buttons carry theirs: the sentence where
          there is room for it, one short pair of words on a phone. Adding the
          follow link put the bar over its second row inside a room, and a
@@ -60,19 +71,19 @@
 
   <div id="fb-toast" class="fb-toast"></div>
 
-  <script src="config.js?v=1788645405"></script>
-  <script src="firm.js?v=1788645405"></script>
-  <script src="city.js?v=1788645405"></script>
-  <script src="lobby.js?v=1788645405"></script>
-  <script src="flathero.js?v=1788645405"></script>
-  <script src="xapply.js?v=1788645405"></script>
+  <script src="config.js?v=1788713032"></script>
+  <script src="firm.js?v=1788713032"></script>
+  <script src="city.js?v=1788713032"></script>
+  <script src="lobby.js?v=1788713032"></script>
+  <script src="flathero.js?v=1788713032"></script>
+  <script src="xapply.js?v=1788713032"></script>
   <!-- registers window.__AUCTION; level.js calls it guarded, so this file
        being absent or stale is a working page, not a broken room -->
-  <script src="auction.js?v=1788645405"></script>
-<script src="cashcat.js?v=1788645405"></script>
+  <script src="auction.js?v=1788713032"></script>
+<script src="cashcat.js?v=1788713032"></script>
   <!-- registers window.__CAMPAIGN (sponsored campaigns); level.js calls it guarded -->
-  <script src="campaign.js?v=1788712229"></script>
-  <script src="level.js?v=1788645405"></script>
+  <script src="campaign.js?v=1788713032"></script>
+  <script src="level.js?v=1788713032"></script>
 <!-- SELF-HEAL. index.html is served cache-control: max-age=600, so for ten
      minutes after a deploy a returning visitor holds the previous index, which
      carries the previous ?v= stamps and therefore loads the previous JS as a
