@@ -192,10 +192,29 @@
   const optInManyTx = (F, c, ids, from) =>
     F.send(c.address, SEL.optInMany + F.word(32) + F.word(ids.length) + ids.map((i) => F.word(i)).join(""), 0n, from, 200_000 + 250_000 * ids.length);
   // claim walks every tranche the holder has and prunes the finished ones
-  // (~24k each), so the budget has to count them (audit F4).
+  // (~24k each), so the CEILING has to count them (audit F4). The wallet
+  // prints gas limit × max fee as the price, so that ceiling read as "$0.50
+  // of ETH for $0.10 of FRONG" (holder, 2026-09-06) against a real charge of
+  // 10–20 cents. claim() has no try/catch anywhere on its path (unlike
+  // deliver/harvest/sync, whose estimates are the trap firm.js describes), so
+  // the node's estimate is the true cost: ×1.5 covers the L1 data component
+  // and tranches moving between the estimate and inclusion — the limit is
+  // free, only gas used is charged. The ceiling is kept as the fallback when
+  // the estimate is unreachable or reverts (the wallet then shows its own
+  // failure, exactly as before), and as the cap.
+  const claimGas = (est, ceiling) => {
+    if (!est || est <= 0n) return ceiling;
+    const padded = Number((est * 3n) / 2n);
+    return Math.min(ceiling, Math.max(120_000, padded));
+  };
   const claimTx = async (F, c, ids, from) => {
     const n = Number(hexU(await F.call(c.address, SEL.trancheCount + F.word(from))));
-    return F.send(c.address, SEL.claim + F.word(32) + F.word(ids.length) + ids.map((i) => F.word(i)).join(""), 0n, from, 200_000 + 120_000 * ids.length + 40_000 * n);
+    const data = SEL.claim + F.word(32) + F.word(ids.length) + ids.map((i) => F.word(i)).join("");
+    const ceiling = 200_000 + 120_000 * ids.length + 40_000 * n;
+    let gas = ceiling;
+    try { gas = claimGas(await F.estimateGas(c.address, data, from), ceiling); }
+    catch (e) { /* a revert: the ceiling stands and the wallet says why, as before */ }
+    return F.send(c.address, data, 0n, from, gas);
   };
 
   // ---------------------------------------------------------------- surfaces
