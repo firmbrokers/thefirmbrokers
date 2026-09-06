@@ -8,6 +8,10 @@
        applies from (hire, promotion, merge, deactivation).
      - Delivered(tokenId, asset, ethIn, out): a payday — credit turned into the
        asset and sent.
+     - Transfer(from, to, tokenId) on the NFT: who held the broker when. A slip
+       belongs to whoever held him that hour, a payday to whoever received it,
+       so a sold broker keeps his hours on the seller's records and starts the
+       buyer's where they end.
    A slip for hour H = pot_H × (your weight in H) / (total weight in H), the
    exact arithmetic the engine does when it settles, so the slips add up to the
    number on the PAYDAY machine.
@@ -28,10 +32,11 @@
     SETTLED: "0x866f813a2289b14a1e94be9b6a7db4b5ad759df3fb1466245f650642f3cc7a56", // RoundSettled(uint256,uint256,uint256)
     SYNCED: "0x9aa1a56064c83c34d45ce0f34a60a04b6c6fd4bf28b61a19c16235ebedb30b19", // Synced(uint256,uint256,uint256)
     DELIVERED: "0x8110a247e3bf84088ca20c991ad431b68293ca3bdfe626df91b9744bf4d7b9ce", // Delivered(uint256,uint8,uint256,uint256)
+    TRANSFER: "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef", // Transfer(address,address,uint256)
   };
   const SEL = { twapQuote: "0x6e3e495e", pendingEth: "0xccc73973" };
   const KEY_ROUNDS = "firmbrokers.records.rounds.v1";
-  const KEY_WALLET = "firmbrokers.records.wallet.v1."; // + address
+  const KEY_WALLET = "firmbrokers.records.wallet.v2."; // + address
   const PAGE_BLOCKS = 1_500_000; // one getLogs per ~2 days of chain; the helper bisects on error
   const ZERO = "0x0000000000000000000000000000000000000000";
 
@@ -51,7 +56,7 @@
 
   // ---------------------------------------------------------------- state
   const S = {
-    account: null, view: null, ids: [], rounds: [], syncs: {}, deliveries: [], pending: 0n, usdPerEth: null, meta: null,
+    account: null, view: null, ids: [], owned: [], rounds: [], syncs: {}, deliveries: [], transfers: {}, pending: 0n, usdPerEth: null, meta: null,
     days: 1, filterId: 0, loaded: false, loading: "", error: "", pickWallet: null,
   };
 
@@ -84,26 +89,50 @@
     S.rounds = c.rows.filter(([r]) => !seen.has(r) && seen.add(r)).map(([r, pot, tw, block]) => ({ r, pot: BigInt(pot), tw: BigInt(tw), block })).sort((x, y) => x.block - y.block);
   }
 
-  /// the viewed wallet's brokers, their weight history and their paydays
+  /// every broker the viewed wallet ever held, who held each one when, their
+  /// weight history and their paydays
   async function loadWallet(head) {
     const me = S.view.toLowerCase();
-    S.ids = (await F.tokensOf(S.view)).map((x) => Number(x));
     const key = KEY_WALLET + me;
     let c = readCache(key);
-    const idKey = S.ids.join(",");
-    if (!c || c.v !== 1 || c.ids !== idKey) c = { v: 1, ids: idKey, to: CFG.deployBlock - 1, syncs: [], deliveries: [] };
-    if (S.ids.length && head > c.to) {
-      const topicsOf = (ids) => ids.map((id) => "0x" + word(id));
-      for (let i = 0; i < S.ids.length; i += 100) {
-        const group = S.ids.slice(i, i + 100);
-        const sy = await scan({ address: CFG.engine, topics: [TOPIC.SYNCED, topicsOf(group)] }, c.to + 1, head);
+    if (!c || c.v !== 2) c = null;
+    // brokers ever received: the cache's set plus anything received since
+    const ever = new Set(c ? c.ids : []);
+    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, c ? c.to + 1 : CFG.deployBlock, head);
+    for (const l of recv) ever.add(Number(BigInt(l.topics[3])));
+    const ids = [...ever].sort((a, b) => a - b);
+    // a new broker needs his whole history: start the cache over (rare)
+    if (!c || c.ids.join(",") !== ids.join(",")) c = { v: 2, ids, to: CFG.deployBlock - 1, transfers: [], syncs: [], deliveries: [] };
+    if (ids.length && head > c.to) {
+      const topicsOf = (g) => g.map((id) => "0x" + word(id));
+      for (let i = 0; i < ids.length; i += 100) {
+        const group = ids.slice(i, i + 100);
+        // the three histories of a group side by side: three requests in flight
+        // is well under the public node's patience, and a first visit that
+        // took 50 s for four brokers one request at a time (2026-09-06) is a
+        // page nobody waits for
+        const [tr, sy, dl] = await Promise.all([
+          scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, null, topicsOf(group)] }, c.to + 1, head),
+          scan({ address: CFG.engine, topics: [TOPIC.SYNCED, topicsOf(group)] }, c.to + 1, head),
+          scan({ address: CFG.engine, topics: [TOPIC.DELIVERED, topicsOf(group)] }, c.to + 1, head),
+        ]);
+        for (const l of tr) c.transfers.push([Number(BigInt(l.topics[3])), "0x" + l.topics[1].slice(26).toLowerCase(), "0x" + l.topics[2].slice(26).toLowerCase(), Number(BigInt(l.blockNumber)), Number(BigInt(l.logIndex || 0))]);
         for (const l of sy) c.syncs.push([Number(BigInt(l.topics[1])), big(l.data, 0).toString(), Number(big(l.data, 1)), Number(BigInt(l.blockNumber)), Number(BigInt(l.logIndex || 0))]);
-        const dl = await scan({ address: CFG.engine, topics: [TOPIC.DELIVERED, topicsOf(group)] }, c.to + 1, head);
         for (const l of dl) c.deliveries.push([Number(BigInt(l.topics[1])), Number(BigInt(l.topics[2])), big(l.data, 0).toString(), big(l.data, 1).toString(), Number(BigInt(l.blockNumber)), l.transactionHash]);
       }
       c.to = head;
       writeCache(key, c);
     }
+    S.ids = ids;
+    S.transfers = {};
+    const seenT = new Set();
+    for (const [id, from, to, block, li] of c.transfers) {
+      const k = `${id}:${block}:${li}`;
+      if (seenT.has(k)) continue; seenT.add(k);
+      (S.transfers[id] = S.transfers[id] || []).push({ from, to, block, li });
+    }
+    for (const id in S.transfers) S.transfers[id].sort((a, b) => a.block - b.block || a.li - b.li);
+    S.owned = ids.filter((id) => ownerAt(id, Infinity) === me);
     S.syncs = {};
     const seenS = new Set();
     for (const [id, wgt, from, block, li] of c.syncs) {
@@ -114,15 +143,24 @@
     for (const id in S.syncs) S.syncs[id].sort((a, b) => a.block - b.block || a.li - b.li);
     const seenD = new Set();
     S.deliveries = c.deliveries.filter(([id, asset, , , , tx]) => { const k = `${tx}:${id}:${asset}`; return !seenD.has(k) && seenD.add(k); }).map(([id, asset, ethIn, out, block, tx]) => ({ id, asset, ethIn: BigInt(ethIn), out: BigInt(out), block, tx }));
-    // the authoritative "on the machine" number and the dollar rate, one batch
-    const reqs = S.ids.map((id) => ({ to: CFG.engine, data: SEL.pendingEth + word(id) }));
+    // the authoritative "on the machine" number (the brokers held NOW) and the dollar rate, one batch
+    const reqs = S.owned.map((id) => ({ to: CFG.engine, data: SEL.pendingEth + word(id) }));
     reqs.push({ to: CFG.engine, data: SEL.twapQuote + word(11) + word(10n ** 18n) });
     const res = await F.callBatch(reqs);
     S.pending = 0n;
-    for (let i = 0; i < S.ids.length; i++) S.pending += res[i] && res[i].length >= 66 ? big(res[i], 0) : 0n;
-    const q = res[S.ids.length];
+    for (let i = 0; i < S.owned.length; i++) S.pending += res[i] && res[i].length >= 66 ? big(res[i], 0) : 0n;
+    const q = res[S.owned.length];
     S.usdPerEth = q && q.length >= 66 && big(q, 0) > 0n ? big(q, 0) : null;
     try { S.meta = await F.assetMeta(); } catch (e) { S.meta = null; }
+  }
+
+  /// who held a broker at a block: the last transfer at or before it
+  function ownerAt(id, block) {
+    const ts = S.transfers[id];
+    if (!ts || !ts.length) return null;
+    let o = null;
+    for (const t of ts) { if (t.block <= block) o = t.to; else break; }
+    return o;
   }
 
   // ---------------------------------------------------------------- the model
@@ -159,10 +197,11 @@
   /// with paydays slotted into the hour they happened in
   function build() {
     const ids = idsInView();
+    const me = S.view.toLowerCase();
     const slips = [];
     for (const rd of S.rounds) {
       let myW = 0;
-      for (const id of ids) myW += weightAt(id, rd.r);
+      for (const id of ids) if (ownerAt(id, rd.block) === me) myW += weightAt(id, rd.r);
       if (myW === 0 || rd.tw === 0n) continue;
       const pay = ((rd.pot * 10n ** 18n) / rd.tw) * BigInt(myW) / 10n ** 18n;
       slips.push({ kind: "hour", r: rd.r, block: rd.block, pot: rd.pot, tw: rd.tw, myW, pay });
@@ -170,7 +209,7 @@
     // paydays: one row per transaction, summed over the brokers in view
     const byTx = {};
     for (const d of S.deliveries) {
-      if (!ids.includes(d.id)) continue;
+      if (!ids.includes(d.id) || ownerAt(d.id, d.block) !== me) continue;
       const t = byTx[d.tx] || (byTx[d.tx] = { kind: "payday", tx: d.tx, block: d.block, r: roundOfBlock(d.block), ethIn: 0n, out: {}, brokers: new Set() });
       t.ethIn += d.ethIn; t.out[d.asset] = (t.out[d.asset] || 0n) + d.out; t.brokers.add(d.id);
     }
@@ -243,24 +282,24 @@
     const n = idsInView().length;
     head = `<div class="cab"><div class="scr">
       <div class="lab">RECORDS FOR</div>
-      <div class="who"><a href="${explorer(S.view)}" rel="noopener">${S.view === S.account ? "YOU · " : ""}${short(S.view)}</a> · ${S.ids.length} broker${S.ids.length === 1 ? "" : "s"}${S.loading ? ` · <span class="dim">${esc(S.loading)}</span>` : ""}</div>
+      <div class="who"><a href="${explorer(S.view)}" rel="noopener">${S.view === S.account ? "YOU · " : ""}${short(S.view)}</a> · ${S.owned.length} broker${S.owned.length === 1 ? "" : "s"}${S.ids.length > S.owned.length ? ` <span class="dim">· ${S.ids.length - S.owned.length} held before</span>` : ""}${S.loading ? ` · <span class="dim">${esc(S.loading)}</span>` : ""}</div>
       ${S.error ? `<div class="fine bad">${esc(S.error)}</div>` : ""}
       ${model ? `<div class="totals">
         <div><div class="lab">ON THE PAYDAY MACHINE NOW</div><div class="hi">${fmtEth(S.pending)} ETH</div><div class="fine">${fmtUsd(S.pending)}${fmtUsd(S.pending) ? " · " : ""}earned, not yet delivered</div></div>
-        <div><div class="lab">SLIPS SINCE LAST PAYDAY</div><div class="hi">${fmtEth(model.sincePayday)} ETH</div><div class="fine">${model.lastPayday ? `last payday ${dayLabel(model.lastPayday.r)} ${hourLabel(model.lastPayday.r)}` : "no payday yet"}</div></div>
+        <div><div class="lab">SLIPS SINCE LAST PAYDAY</div><div class="hi">${fmtEth(model.sincePayday)} ETH</div><div class="fine">${model.lastPayday ? `last payday ${dayLabel(model.lastPayday.r)} ${hourLabel(model.lastPayday.r)}` : "no payday yet"}${S.ids.length > S.owned.length && model.sincePayday > S.pending ? " · part of it left with brokers since sold" : ""}</div></div>
         <div><div class="lab">EARNED ALL TIME</div><div class="hi">${fmtEth(model.allTime)} ETH</div><div class="fine">${fmtUsd(model.allTime)}${fmtUsd(model.allTime) ? " · " : ""}every hour on record</div></div>
       </div>` : ""}
       <div class="ctl">
         <span class="dim">show</span>
         ${[1, 7, 30, 0].map((d) => `<button class="chip${S.days === d ? " on" : ""}" data-act="days" data-d="${d}" type="button">${d === 0 ? "ALL" : d === 1 ? "24H" : d + "D"}</button>`).join("")}
-        ${S.ids.length > 1 ? `<select id="rr-id" class="sel"><option value="0">all ${S.ids.length} brokers</option>${S.ids.map((id) => `<option value="${id}"${S.filterId === id ? " selected" : ""}>broker #${id}</option>`).join("")}</select>` : ""}
+        ${S.ids.length > 1 ? `<select id="rr-id" class="sel"><option value="0">all ${S.ids.length} brokers</option>${S.ids.map((id) => `<option value="${id}"${S.filterId === id ? " selected" : ""}>broker #${id}${S.owned.includes(id) ? "" : ownerAt(id, Infinity) === ZERO ? " · merged" : " · sold"}</option>`).join("")}</select>` : ""}
         <button class="chip" data-act="switch" type="button">ANOTHER WALLET</button>
       </div>
     </div></div>`;
 
     let body = "";
     if (!model) body = `<div class="cab"><div class="scr"><div class="fine">${S.loading || "reading the chain…"}</div></div></div>`;
-    else if (!S.ids.length) body = `<div class="cab"><div class="scr"><div class="fine">this wallet holds no brokers.</div></div></div>`;
+    else if (!S.ids.length) body = `<div class="cab"><div class="scr"><div class="fine">this wallet has never held a broker.</div></div></div>`;
     else {
       const since = S.days ? Math.floor(Date.now() / 1000) - S.days * 86400 : 0;
       const rows = model.rows.filter((r) => (r.r + (r.kind === "hour" ? 0 : 1)) * 3600 >= since);
@@ -288,7 +327,7 @@
   const intro = () => `<div class="cab"><div class="scr rules"><div class="lab">HOW TO READ A SLIP</div>
     <p><b>Every hour</b> the engine closes the books: the fees that arrived are divided among every hired broker by weight. A slip is one hour: the firm's whole pot, your brokers' weight against everyone's, and your share of it. The slips add up to the number on the PAYDAY machine.</p>
     <p><b>PAYDAY</b> rows are deliveries: the hours since the last one, turned into the assets your brokers chose and sent. An hour with no fees writes no slip.</p>
-    <p class="fine">Hours are New York time, labelled by the hour they close. Weights count from the settle after a hire or promotion; a wallet's brokers are read from the chain, so a broker sold since shows on the buyer's records from his rehire on.</p></div></div>`;
+    <p class="fine">Hours are New York time, labelled by the hour they close. Weights count from the settle after a hire or promotion. A broker you sold keeps his hours here for as long as he was yours, and his buyer's records start where yours end; pay he had earned but not yet been paid travels with him, so that last payday lands on the buyer's records.</p></div></div>`;
 
   // ---------------------------------------------------------------- wiring
   async function view(address) {
