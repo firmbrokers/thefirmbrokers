@@ -40,6 +40,10 @@ window.FIRM_CFG = {
   token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc",      // $9TO5 — launched 2026-08-28 14:28Z, tx 0x2d4de33c…5b2b
   splitter: "0x4DCf83f40D43DB0484A06049E07326F3B17F338E",   // the letscash fee splitter (80% engine / 20% treasury, immutable)
   treasury: "0x30D9057f9D0439Cb772032D9DBf95c1c8A65E0ba",   // the treasury (launch.env TREASURY/TEAM); docs.html reads its $9TO5 balance for the public supply table
+  // THE AUTO PAYDAY — the keeper's sweep (keeper/keeper.mjs SWEEP_* defaults and
+  // keeper/.env), mirrored so the floor can say when it pays. Wei as strings.
+  // test/keeper-sweep-config.mjs fails when these drift from the keeper.
+  sweep: { minWei: "2000000000000000", txMinWei: "20000000000000000", maxWaitRounds: 48, afterSec: 1200, slotsMax: 200, idsMax: 100, chunksMax: 3, assetChunksMax: 2 },
   deployBlock: 48370000, // scan start = the token launch (2026-08-28 14:28Z). Every broker anyone owns was minted after this except our reserve #1; keeps the owned-broker scan inside the range every public RPC serves.
 
   // ---- the mint: on OpenSea (decided 2026-08-25) ----

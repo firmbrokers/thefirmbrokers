@@ -2230,8 +2230,24 @@
       </div>
       <div class="crank"><i class="boss"></i><i class="arm"></i><i class="handle"></i></div>
       <i class="plinth p1"></i><i class="plinth p2"></i>`);
-    m.title = "collect your brokers' pay";
+    m.title = window.__AUTOPAY ? "collect your brokers' pay · when idle, click for the auto payday" : "collect your brokers' pay";
     let pooling = false;
+    // the dim button line takes turns with the auto-payday counter ("AUTO PAY
+    // 0.013/0.02"), so the floor answers "when do I get paid" without a click
+    if (window.__AUTOPAY) {
+      window.__AUTOPAY.load().catch(() => {});
+      let flip = false;
+      const rot = setInterval(() => {
+        if (!document.body.contains(m)) return clearInterval(rot);
+        const b = m.querySelector(".btn.dim");
+        if (!b || armed) return;
+        const line = window.__AUTOPAY.summaryLine();
+        if (!line) return;
+        if (b.dataset.orig === undefined) b.dataset.orig = b.textContent;
+        flip = !flip;
+        b.textContent = flip ? line : b.dataset.orig;
+      }, 6000);
+    }
     const setFace = (html, on) => {
       if (!document.body.contains(m)) return;
       armed = on;
@@ -2297,6 +2313,8 @@
       if (out) { connect(); return; }
       if (m.classList.contains("working")) return;
       if (!armed) {
+        // the answer to "when do I get paid": the keeper's own plan, in a card
+        if (window.__AUTOPAY) { window.__AUTOPAY.openPopover(bs); return; }
         if (pooling) { toast("your pay is settled and waiting for the pool to be deep enough to swap; the payroll sweep pays it out once an hour. Nothing to click, nothing lost"); return; }
         toast(`your pay is building — it becomes collectable at the top of the hour (${String(59 - new Date().getUTCMinutes()).padStart(2, "0")} min), when the whole floor's payday pot fills`); return;
       }
@@ -3599,6 +3617,7 @@
       </header>
       <div class="scr">
         <div><span>paid in</span><i>${paidIn}</i></div>
+        ${window.__AUTOPAY ? window.__AUTOPAY.brokerRow(b) : ""}
         ${flat ? "" : `<div><span>on the floor</span><i>${seat >= 0 ? "DESK " + (seat + 1) : "not at a desk"}</i></div>`}
       </div>${holdings ? `<div class="chips">${holdings}</div>` : ""}`;
 
