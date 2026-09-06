@@ -365,7 +365,7 @@
       chips.appendChild(b);
     });
     // the same door the street's hiring sign opens: a project's way in
-    const pay = el("button", null, "BE THE PAYCHECK");
+    const pay = el("button", null, "SPONSOR");
     pay.type = "button";
     pay.addEventListener("click", () => { location.href = "apply"; });
     chips.appendChild(pay);
