@@ -310,12 +310,22 @@
   async function chipIn(amountWei) {
     const P = CFG.pool;
     const brokers = S.useBrokers ? S.brokers : [];
-    const typed = String((host.querySelector("#op-ref") || {}).value || "").trim().toLowerCase();
+    const field = host.querySelector("#op-ref");
+    const typed = String((field || {}).value || "").trim().toLowerCase();
     let code = "";
     if (senderOpen()) {
-      if (typed && validCode(typed)) {
-        if (S.code && typed === S.code) return toast("that is your own name — it cannot send you", false);
-        code = typed;
+      // the field is the sender: prefilled from the link, or typed from a
+      // code somebody gave them. Emptied on purpose = no sender. A code that
+      // is not registered stops here rather than sending 5% to the jackpot
+      // on a typo (the contract accepts anything and silently drops it).
+      if (field) {
+        if (typed) {
+          if (!validCode(typed)) return toast("a code is 3 to 20 letters or digits", false);
+          if (S.code && typed === S.code) return toast("that is your own code — it cannot send you", false);
+          const owner = (await F.callBatch([{ to: P, data: SEL.codeOwner + bytes32(typed) }]))[0];
+          if (!owner || addr(owner, 0) === ZERO) return toast(`code '${typed}' is not registered · check the spelling`, false);
+          code = typed;
+        }
       } else code = linkCode();
     }
     // deposit(uint128 amount, uint256[] brokerIds, bytes32 refCode)
@@ -418,7 +428,7 @@
   const pageLink = () => `${location.origin}/pool`; // the clean URL, whichever way the visitor arrived
   function xIntent(code) {
     const link = `${pageLink()}?ref=${code}`;
-    const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in $9TO5 before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 $9TO5").replace("{link}", link);
+    const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in $9TO5 before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 code {code} \u00b7 $9TO5").replace("{link}", link).replace("{code}", code);
     return "https://x.com/intent/post?text=" + encodeURIComponent(textOf);
   }
   function explorer(a) { return `${CFG.explorer}/address/${a}`; }
@@ -479,7 +489,7 @@
     // buttons need two clicks", 2026-09-05.)
     const active = document.activeElement;
     if (active && host.contains(active) && active.tagName === "INPUT" && active.type === "text") return;
-    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, ref: (host.querySelector("#op-ref") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked, refOpen: !!(host.querySelector("#op-refwhy") || {}).open };
+    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, ref: (host.querySelector("#op-ref") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked };
 
     const r = S.cur;
     const now = Math.floor(Date.now() / 1000) - S.skew;
@@ -578,6 +588,9 @@
       <div class="amt"><input type="text" inputmode="decimal" id="op-amt" placeholder="${fmt(T.minDeposit) + " min"}"></div>
       <div class="presets"><button class="chip" data-act="min" type="button">MIN</button>${[25000, 50000, 100000, 250000].map((n) => `<button class="chip" data-act="preset" data-n="${n}" type="button">${n / 1e3}k</button>`).join("")}<button class="chip" data-act="max" type="button">MAX</button></div>
       ${brokerLine}
+      ${senderOpen() ? `<div class="lab" style="margin-top:8px">REFERRAL CODE</div>
+      <div class="amt"><input type="text" id="op-ref" placeholder="who sent you? · optional" value="${esc(linkCode())}" maxlength="20" autocapitalize="off" spellcheck="false"></div>
+      <div class="fine">${codeKnown ? "filled in from the link you arrived through. " : "got a code from a player? put it here. "}They earn 5% of everything you chip in, never out of your share. Locks at your first chip-in.</div>` : ""}
       <button class="go" data-act="chip" ${left > 0 && !poor ? "" : "disabled"}>${left > 0 ? (me && me.deposited > 0n ? "CHIP IN MORE" : "CHIP IN") : "CLOSED — NEXT POOL AT THE BELL"}</button>
       ${firstTime && !poor ? `<div class="fine">two wallet prompts the first time: 1) allow $9TO5 · 2) chip in</div>` : ""}
       <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${sender ? " · sent by <b>" + sender + "</b>" + senderNote : ""}</div>${badCode}
@@ -588,13 +601,15 @@
         ${S.refOwed > 0n ? `<span>referrals <b>${fmt(S.refOwed)}</b></span><button class="chip" data-act="claimref">CLAIM</button>` : ""}
         ${S.claimable > 0n && S.refOwed > 0n ? `<button class="chip" data-act="claimall">CLAIM ALL</button>` : ""}
       </div>
-      ${senderOpen() && !codeKnown ? `<div class="amt" style="margin-top:8px"><span class="dim" style="align-self:center;white-space:nowrap">sent by:</span><input type="text" id="op-ref" placeholder="name · optional" value="" autocapitalize="off" spellcheck="false"></div>
-      <details id="op-refwhy" ${keep.refOpen ? "open" : ""}><summary class="fine">what is this?</summary><div class="fine">if a player sent you, their name goes here (filled in when you arrive through their link). Fixed on your first chip-in; it pays them 5% of your chip-ins, never out of your share.</div></details>` : ""}`;
+`;
     }
     const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">${deskBody}</div></div></div>`;
 
-    const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
-      ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button></div>
+    const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">${S.code ? "YOUR CODE" : "YOUR CODE & LINK"}</div>
+      ${S.code ? `<div class="link"><code class="big">${esc(S.code)}</code><button class="chip" data-act="copycode">COPY CODE</button></div>
+      <div class="fine">say the code, or send the link · a new player types it in at their first chip-in</div>
+      <div class="lab" style="margin-top:8px">YOUR LINK</div>
+      <div class="link"><code class="lnk">${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY LINK</button></div>
       ${window.__POOL_CARD ? `<button class="go" data-act="card" style="margin-top:8px">MAKE MY CARD · POST ON X</button>` : `<a class="chip" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:8px" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a>`}
       <div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>
       <div class="lab" style="margin-top:10px">SENT BY YOU</div>${referralsBody()}`
@@ -682,12 +697,13 @@
       const jackpot = r ? fmt(r.pot) : "today's";
       const inToday = !!(S.me && S.me.deposited > 0n);
       const lead = inToday ? "i'm in today's office pool at @thefirmbrokers" : "the office pool at @thefirmbrokers";
-      const postText = (CFG.poolPost || "{lead}: {jackpot} $9TO5 jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 $9TO5").replace("{lead}", lead).replace("{jackpot}", jackpot).replace("{link}", link);
+      const postText = (CFG.poolPost || "{lead}: {jackpot} $9TO5 jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 code {code} \u00b7 $9TO5").replace("{lead}", lead).replace("{jackpot}", jackpot).replace("{link}", link).replace("{code}", S.code);
       const date = S.closesAt ? new Date(S.closesAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : "";
       window.__POOL_CARD.open({ code: S.code, link, jackpot, bell: S.closesAt ? nyTime(S.closesAt) : "4:00 PM", date, inToday, postText });
       return;
     }
-    if (act === "copy") { const c = host.querySelector(".ref code"); if (c && navigator.clipboard) navigator.clipboard.writeText(c.textContent).then(() => toast("copied", true)); return; }
+    if (act === "copy") { const c = host.querySelector(".ref code.lnk"); if (c && navigator.clipboard) navigator.clipboard.writeText(c.textContent).then(() => toast("link copied", true)); return; }
+    if (act === "copycode") { if (S.code && navigator.clipboard) navigator.clipboard.writeText(S.code).then(() => toast("code copied", true)); return; }
     if (act === "bell") return ringBell(Number(b.dataset.id));
   }
 

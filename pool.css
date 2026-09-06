@@ -118,6 +118,7 @@ input { font: inherit; }
 /* referral */
 .ref .link { display: flex; gap: 8px; align-items: center; }
 .ref .link code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: #0b1a11; border: 3px solid var(--ink2); padding: 8px 10px; color: var(--crtbright); font-family: var(--fb); font-size: 18px; }
+.ref .link code.big { font-size: 26px; color: var(--gold); letter-spacing: 1px; }
 .ref .set { display: flex; gap: 8px; margin-top: 8px; }
 .ref .set input { flex: 1; height: 44px; padding: 0 12px; background: #0b1a11; border: 3px solid var(--ink2); color: var(--crtbright); font-size: 22px; text-transform: lowercase; }
 
