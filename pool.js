@@ -4,7 +4,9 @@
    Registers window.__POOL = { page } and is mounted by pool.html (and, later,
    by the street: level.js will call it guarded, like auction.js). Reads go
    through F.callBatch, writes through F.send; everything the page needs is a
-   view on the contract — no indexer, no worker, no logs.
+   view on the contract — no indexer, no worker. The one log read is the
+   "SENT BY YOU" list (Referred / ReferralClaimed filtered by the wallet,
+   cached per wallet in localStorage and scanned forward from the last block).
 
    Inert until config.js names the contract (CFG.pool): the page then says the
    pool has not opened and does nothing else. The contract address is NEVER
@@ -30,6 +32,10 @@
   };
   const DEC = 18n;
   const REF_KEY = "firmbrokers.pool.ref.v1";
+  const REFS_KEY = "firmbrokers.pool.refs.v1."; // + wallet: the SENT BY YOU scan cache
+  // keccak of Referred(address,address,bytes32) and ReferralClaimed(address,uint128)
+  const TOPIC_REFERRED = "0xba442039c47ea54000d2f7a9c4aa7cd72a58fc993dc668fb5239b3f598ac9f38";
+  const TOPIC_REF_CLAIMED = "0x47578b51557a1054d7224edb0fdc3fd8974f54ceb0ee2dd4049989e6d973db49";
   const POLL_IDLE = 20000, POLL_HOT = 4000, HOT_WINDOW = 600;
   const DRAND = ["https://api.drand.sh", "https://api2.drand.sh", "https://api3.drand.sh", "https://drand.cloudflare.com"];
   const ZERO = "0x0000000000000000000000000000000000000000";
@@ -116,6 +122,7 @@
   const S = {
     account: null, cur: null, curId: 0, closesAt: 0, delay: 300, skew: 0, count: 0,
     players: [], feed: [], history: [], due: [], me: null, claimable: 0n, refOwed: 0n, code: "", referrer: ZERO,
+    referrerCode: "", inBefore: false, refs: null, refsDirty: false,
     knobs: null, refOwner: ZERO, potShown: 0n, seenDeposits: 0, balance: 0n, allowance: 0n, brokers: [], brokersOwned: 0, brokersEligible: 0, useBrokers: true, ethPer: null, loaded: false, busy: false,
   };
 
@@ -150,6 +157,7 @@
       reqs.push({ to: P, data: SEL.referralOwed + word(S.account) });
       reqs.push({ to: P, data: SEL.codeOf + word(S.account) });
       reqs.push({ to: P, data: SEL.referrer + word(S.account) });
+      reqs.push({ to: P, data: SEL.roundsOf + word(S.account) }); // any chip-in ever? then the sender is settled
       reqs.push({ to: CFG.token, data: SEL.balanceOf + word(S.account) });
       reqs.push({ to: CFG.token, data: SEL.allowance + word(S.account) + word(P) });
       if (open) reqs.push({ to: P, data: SEL.playerView + word(S.curId) + word(S.account) });
@@ -165,8 +173,19 @@
     for (const id of recent) { const r = decodeRound(res[k++]); if (r) S.history.push(Object.assign({ id }, r)); }
     if (S.account) {
       S.claimable = big(res[k++], 0); S.refOwed = big(res[k++], 0); S.code = fromBytes32(w(res[k++], 0)); S.referrer = addr(res[k++], 0);
+      S.inBefore = decodeUintArray(res[k++]).length > 0;
       S.balance = big(res[k++], 0); S.allowance = big(res[k++], 0);
       S.me = open ? decodePlayer(res[k++]) : null;
+      // the sender by name when they have one (one extra call, only while it changes)
+      if (S.referrer !== ZERO && S.referrerCodeFor !== S.referrer) {
+        S.referrerCodeFor = S.referrer;
+        try { S.referrerCode = fromBytes32(w((await F.callBatch([{ to: P, data: SEL.codeOf + word(S.referrer) }]))[0], 0)); } catch (e) { S.referrerCode = ""; }
+      }
+      // your own link in the URL or remembered from an earlier visit: it can
+      // never send you (the contract refuses it), so it must not be shown as
+      // the sender or sit in localStorage waiting to be shown again
+      // ("you're referred by yourself", 2026-09-06)
+      if (same(S.refOwner, S.account)) { try { if (localStorage.getItem(REF_KEY) === refCode()) localStorage.removeItem(REF_KEY); } catch (e) {} }
     }
     if (CFG.reinvest) { const q = res[k++]; S.ethPer = q && q.length >= 66 && big(q, 0) > 0n ? Number(10n ** 16n) / Number(big(q, 0)) : null; }
     // every player (players are in join order; the board is top-10 by deposit,
@@ -246,6 +265,7 @@
       toast("sent, waiting for the block…");
       await F.waitForTx(hash);
       toast(label + ": done", true);
+      S.refsDirty = true;
       if (after) await after();
     } catch (e) {
       toast(humanError(e), false);
@@ -278,11 +298,26 @@
     c = String(c).toLowerCase();
     return validCode(c) ? c : "";
   }
+  /// the link's code when it can actually send this wallet: registered, and not
+  /// the wallet's own
+  const linkCode = () => (refCode() && S.refOwner !== ZERO && !same(S.refOwner, S.account) ? refCode() : "");
+  /// the sender is settled once: by the contract at the first chip-in that
+  /// carries a code. The page sends a code ONLY before the wallet's first
+  /// chip-in, so a link opened later changes nothing (the handbook's rule;
+  /// the contract would still accept a code from an unreferred player, but
+  /// "it changes every time I open a link" is what that read as, 2026-09-06)
+  const senderOpen = () => S.referrer === ZERO && !S.inBefore && !(S.me && S.me.deposited > 0n);
   async function chipIn(amountWei) {
     const P = CFG.pool;
     const brokers = S.useBrokers ? S.brokers : [];
-    const typed = (host.querySelector("#op-ref") || {}).value;
-    const code = S.referrer === ZERO ? (typed && validCode(String(typed).trim().toLowerCase()) ? String(typed).trim().toLowerCase() : (S.refOwner !== ZERO ? refCode() : "")) : "";
+    const typed = String((host.querySelector("#op-ref") || {}).value || "").trim().toLowerCase();
+    let code = "";
+    if (senderOpen()) {
+      if (typed && validCode(typed)) {
+        if (S.code && typed === S.code) return toast("that is your own name — it cannot send you", false);
+        code = typed;
+      } else code = linkCode();
+    }
     // deposit(uint128 amount, uint256[] brokerIds, bytes32 refCode)
     let data = SEL.deposit + word(amountWei) + word(96) + (code ? bytes32(code) : word(0)) + word(brokers.length);
     for (const id of brokers) data += word(id);
@@ -388,6 +423,53 @@
   }
   function explorer(a) { return `${CFG.explorer}/address/${a}`; }
 
+  // ---------------------------------------------------------------- SENT BY YOU
+  /// Who arrived through this wallet's link: the Referred events naming it as
+  /// the referrer (a player is attributed at their first chip-in, so this is
+  /// exactly the list of people whose chip-ins pay it), plus what it has
+  /// claimed so far (ReferralClaimed). Scanned from the pool's first block
+  /// once, then forward from the cached head; the wallet's getLogs when it is
+  /// on this chain, else the primary rpc, bisecting on error like the floor.
+  async function loadReferrals() {
+    if (!S.account || !CFG.poolBlock) return;
+    const me = S.account.toLowerCase();
+    const key = REFS_KEY + me;
+    let cache = null;
+    try { cache = JSON.parse(localStorage.getItem(key) || "null"); } catch (e) {}
+    if (!cache || cache.v !== 1) cache = { v: 1, to: CFG.poolBlock - 1, players: [], claimed: "0" };
+    const head = await F.blockNumber();
+    const from = cache.to + 1;
+    if (head >= from) {
+      const base = { address: CFG.pool };
+      const [sent, claimed] = await Promise.all([
+        F.rpcLogsRange(Object.assign({ topics: [TOPIC_REFERRED, null, "0x" + word(me)] }, base), from, head),
+        F.rpcLogsRange(Object.assign({ topics: [TOPIC_REF_CLAIMED, "0x" + word(me)] }, base), from, head),
+      ]);
+      const seen = new Set(cache.players.map((p) => p.addr));
+      for (const l of sent || []) {
+        const a = "0x" + String(l.topics[1]).slice(26).toLowerCase();
+        if (!seen.has(a)) { seen.add(a); cache.players.push({ addr: a, block: Number(l.blockNumber) }); }
+      }
+      let sum = BigInt(cache.claimed || "0");
+      for (const l of claimed || []) sum += BigInt(l.data);
+      cache.claimed = sum.toString();
+      cache.to = head;
+      try { localStorage.setItem(key, JSON.stringify(cache)); } catch (e) {}
+    }
+    S.refs = { for: me, players: cache.players, claimed: BigInt(cache.claimed || "0") };
+    S.refsDirty = false;
+  }
+  function referralsBody() {
+    const r = S.refs && S.refs.for === String(S.account).toLowerCase() ? S.refs : null;
+    if (!r) return `<div class="fine">${S.refsError ? "could not read the chain — it will retry" : "reading the chain…"}</div>`;
+    const earned = r.claimed + S.refOwed;
+    if (!r.players.length) return `<div class="fine">nobody yet · a player shows up here after their first chip-in through your link</div>`;
+    const list = r.players.slice().reverse().slice(0, 12).map((p) => `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`).join(", ");
+    return `<div class="fine">${r.players.length} player${r.players.length === 1 ? "" : "s"} · earned <b>${fmt(earned)}</b> $9TO5 so far${S.refOwed > 0n ? ` (${fmt(S.refOwed)} to claim)` : ""}</div>
+      <div class="fine">${list}${r.players.length > 12 ? ` and ${r.players.length - 12} more` : ""}</div>
+      <div class="fine">a player shows up here after their first chip-in through your link</div>`;
+  }
+
   function render() {
     if (!host) return;
     // never wipe what someone is typing: skip this paint; the next poll paints.
@@ -414,9 +496,19 @@
     const bellNY = S.closesAt ? nyTime(S.closesAt) : "4:00 PM";
     const youWon = (a) => same(a, S.account);
     const buyHref = CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : null;
-    const codeKnown = !!refCode() && S.refOwner !== ZERO;
-    const sender = S.referrer !== ZERO ? short(S.referrer) : codeKnown ? esc(refCode()) : "";
-    const badCode = refCode() && !codeKnown && S.loaded ? `<div class="fine">link code '${esc(refCode())}' is not registered · their 5% would go to the jackpot</div>` : "";
+    // the sender line. Settled on-chain → their name or address. Not settled
+    // and the link's code is someone else's → shown as pending, locks at the
+    // first chip-in. The wallet's own code → never a sender. Already in
+    // without a sender → a link changes nothing, and says so.
+    const codeKnown = !!linkCode();
+    const ownLink = !!refCode() && !!S.account && same(S.refOwner, S.account);
+    const settled = S.referrer !== ZERO;
+    const sender = settled ? (S.referrerCode ? esc(S.referrerCode) : short(S.referrer)) : codeKnown && (!S.account || senderOpen()) ? esc(refCode()) : "";
+    const senderNote = sender && !settled ? (S.account ? " · locks on your first chip-in" : " · set on your first chip-in") : "";
+    // a settled sender makes every link note moot (their 5% goes to the sender, not the jackpot)
+    let badCode = refCode() && !codeKnown && !ownLink && !settled && S.loaded ? `<div class="fine">link code '${esc(refCode())}' is not registered · their 5% would go to the jackpot</div>` : "";
+    if (ownLink && !settled) badCode = `<div class="fine">that is your own link · it cannot send you, share it</div>`;
+    else if (codeKnown && S.account && !settled && !senderOpen()) badCode = `<div class="fine">link '${esc(refCode())}' changes nothing now · a sender is set on your first chip-in, and you are already in</div>`;
 
     // ---- the results banner: from the draw until the next bell
     const last = S.history.find((h) => h.state === 2 && h.playerCount > 0 && now < h.closesAt + 86400 + 600);
@@ -473,7 +565,7 @@
     if (!S.account) {
       deskBody = S.pickWallet
         ? `<div class="lab">WHICH WALLET?</div>${S.pickWallet.map((x, i) => `<button class="go" data-act="wallet" data-i="${i}" type="button">CLOCK IN WITH ${esc(x.info.name).toUpperCase()}</button>`).join("")}<div class="fine">this browser has more than one wallet</div>`
-        : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell${sender ? ` · sent by <b>${sender}</b>` : ""}</div>${badCode}`;
+        : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell${sender ? ` · sent by <b>${sender}</b>${senderNote}` : ""}</div>${badCode}`;
     } else {
       const brokerLine = S.brokers.length
         ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> count my ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of ${S.brokersEligible}` : S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"} <span class="dim">(${multX(S.brokers.length)})</span></label>
@@ -488,7 +580,7 @@
       ${brokerLine}
       <button class="go" data-act="chip" ${left > 0 && !poor ? "" : "disabled"}>${left > 0 ? (me && me.deposited > 0n ? "CHIP IN MORE" : "CHIP IN") : "CLOSED — NEXT POOL AT THE BELL"}</button>
       ${firstTime && !poor ? `<div class="fine">two wallet prompts the first time: 1) allow $9TO5 · 2) chip in</div>` : ""}
-      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${sender ? " · sent by <b>" + sender + "</b>" : ""}</div>${badCode}
+      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${sender ? " · sent by <b>" + sender + "</b>" + senderNote : ""}</div>${badCode}
       <div class="echo" id="op-echo"></div>
       <div class="lab" style="margin-top:6px">YOURS TO CLAIM</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -496,7 +588,7 @@
         ${S.refOwed > 0n ? `<span>referrals <b>${fmt(S.refOwed)}</b></span><button class="chip" data-act="claimref">CLAIM</button>` : ""}
         ${S.claimable > 0n && S.refOwed > 0n ? `<button class="chip" data-act="claimall">CLAIM ALL</button>` : ""}
       </div>
-      ${S.referrer === ZERO && !codeKnown && !(me && me.deposited > 0n) ? `<div class="amt" style="margin-top:8px"><span class="dim" style="align-self:center;white-space:nowrap">sent by:</span><input type="text" id="op-ref" placeholder="name · optional" value="" autocapitalize="off" spellcheck="false"></div>
+      ${senderOpen() && !codeKnown ? `<div class="amt" style="margin-top:8px"><span class="dim" style="align-self:center;white-space:nowrap">sent by:</span><input type="text" id="op-ref" placeholder="name · optional" value="" autocapitalize="off" spellcheck="false"></div>
       <details id="op-refwhy" ${keep.refOpen ? "open" : ""}><summary class="fine">what is this?</summary><div class="fine">if a player sent you, their name goes here (filled in when you arrive through their link). Fixed on your first chip-in; it pays them 5% of your chip-ins, never out of your share.</div></details>` : ""}`;
     }
     const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">${deskBody}</div></div></div>`;
@@ -504,7 +596,8 @@
     const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">YOUR LINK</div>
       ${S.code ? `<div class="link"><code>${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY</button></div>
       ${window.__POOL_CARD ? `<button class="go" data-act="card" style="margin-top:8px">MAKE MY CARD · POST ON X</button>` : `<a class="chip" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:8px" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a>`}
-      <div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>`
+      <div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>
+      <div class="lab" style="margin-top:10px">SENT BY YOU</div>${referralsBody()}`
       : `<div class="fine">pick a name once, then share your link or the name. Whoever arrives through it has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time.</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
     </div></div>` : "";
 
@@ -549,6 +642,9 @@
       await load();
       if (S.account) await loadBrokers();
     } catch (e) { console.warn("office pool: read failed, will retry: " + (e && e.stack || e)); }
+    if (S.account && (!S.refs || S.refs.for !== S.account.toLowerCase() || S.refsDirty)) {
+      try { await loadReferrals(); S.refsError = false; } catch (e) { S.refsError = true; console.warn("office pool: referral scan failed: " + (e && e.message || e)); }
+    }
     render();
     schedule();
   }
