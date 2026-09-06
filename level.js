@@ -3045,12 +3045,18 @@
       // the headcount joins the money on the same board: hired == isActive,
       // derived from the activation ledger. Hidden (not zero) if the scan
       // fails — "0 brokers hired" would be a lie.
+      // The denominator is the LIVE supply, not the 5,000 minted: every merge
+      // burns a broker (285 gone by 2026-09-06), and "2,455 OF 5,000" read as
+      // half the firm idle when 52% of the brokers that exist were working.
       (async () => {
         try {
-          const hired = await F.hiredCount();
+          const [hired, supplyRaw] = await Promise.all([F.hiredCount(), F.nftNumber("totalSupply").catch(() => 0n)]);
+          const supply = Number(supplyRaw) || 5000;
           const c = board.querySelector(".count");
           if (!c || !document.body.contains(c) || !hired) return;
-          c.textContent = `BROKERS ON PAYROLL · ${hired.toLocaleString()} OF 5,000 · ${(100 * hired / 5000).toFixed(1)}% of the collection working`;
+          c.textContent = `BROKERS ON PAYROLL · ${hired.toLocaleString()} OF ${supply.toLocaleString()} · ${(100 * hired / supply).toFixed(1)}% of the collection working`;
+          const cap = board.querySelector("s");
+          if (cap && supply !== 5000) cap.innerHTML = cap.innerHTML.replace("5,000 brokers", `${supply.toLocaleString()} brokers`);
         } catch (e) { /* stat stays hidden */ }
       })();
       // odometer: the number rolls up on entry, because a number this good
