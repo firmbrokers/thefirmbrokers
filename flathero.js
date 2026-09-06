@@ -376,6 +376,13 @@
       pool.addEventListener("click", () => { location.href = "/pool"; });
       chips.appendChild(pool);
     }
+    // THE RECORDS ROOM — hourly pay slips, read from the chain; needs the engine
+    if (window.Firm && window.Firm.CFG && window.Firm.CFG.engine) {
+      const rec = el("button", null, "PAY SLIPS");
+      rec.type = "button";
+      rec.addEventListener("click", () => { location.href = "/records"; });
+      chips.appendChild(rec);
+    }
     // the allowlist checker — guarded, so a stale cached page without
     // wlcheck.js simply shows no chip rather than a dead button
     // and not once every broker is minted: level.js raises __FB_SOLD_OUT from
