@@ -150,3 +150,9 @@ input { font: inherit; }
   .board .pot { font-size: 36px; line-height: 42px; margin: 4px 0 4px; }
   .cab { margin-bottom: 12px; padding: 10px; }
 }
+/* the live notes under GOT A CODE? and GET MY LINK, and the result chip */
+.fine.ok { color: var(--green); }
+.fine.bad { color: var(--red); }
+.chip.mini { height: 30px; padding: 0 8px; font-size: 7px; vertical-align: middle; margin-left: 6px; }
+.ref .link .dim { white-space: nowrap; }
+.desk input[type=text]:disabled { color: var(--grey); opacity: .75; }

@@ -17,8 +17,9 @@
   <meta name="twitter:image" content="https://thefirmbrokers.com/og-street.png">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
-  <link rel="stylesheet" href="level.css?v=1788713032">
-  <link rel="stylesheet" href="xapply.css?v=1788713032">
+  <link rel="stylesheet" href="level.css?v=1788793051">
+  <link rel="stylesheet" href="branches.css?v=1788793051">
+  <link rel="stylesheet" href="xapply.css?v=1788793051">
 </head>
 <body>
 
@@ -72,20 +73,22 @@
 
   <div id="fb-toast" class="fb-toast"></div>
 
-  <script src="config.js?v=1788718177"></script>
-  <script src="firm.js?v=1788713032"></script>
-  <script src="city.js?v=1788713032"></script>
-  <script src="lobby.js?v=1788713032"></script>
-  <script src="flathero.js?v=1788716544"></script>
-  <script src="xapply.js?v=1788713032"></script>
+  <script src="config.js?v=1788793051"></script>
+  <script src="firm.js?v=1788793051"></script>
+  <script src="city.js?v=1788793051"></script>
+  <script src="lobby.js?v=1788793051"></script>
+  <script src="flathero.js?v=1788793051"></script>
+  <script src="xapply.js?v=1788793051"></script>
   <!-- registers window.__AUCTION; level.js calls it guarded, so this file
        being absent or stale is a working page, not a broken room -->
-  <script src="auction.js?v=1788713032"></script>
-<script src="cashcat.js?v=1788713032"></script>
+  <script src="auction.js?v=1788793051"></script>
+  <script src="branches.js?v=1788793051"></script>
+  <script src="branches-flat.js?v=1788793051"></script>
+<script src="cashcat.js?v=1788793051"></script>
   <!-- registers window.__CAMPAIGN (sponsored campaigns); level.js calls it guarded -->
-  <script src="campaign.js?v=1788713032"></script>
-  <script src="autopay.js?v=1788718177"></script>
-  <script src="level.js?v=1788718177"></script>
+  <script src="campaign.js?v=1788793051"></script>
+  <script src="autopay.js?v=1788793051"></script>
+  <script src="level.js?v=1788793051"></script>
 <!-- SELF-HEAL. index.html is served cache-control: max-age=600, so for ten
      minutes after a deploy a returning visitor holds the previous index, which
      carries the previous ?v= stamps and therefore loads the previous JS as a
@@ -97,16 +100,26 @@
 <script>
 (function () {
   try {
+    // landed here through the self-heal: take the stamp back out of the
+    // address bar so the URL people copy is the plain one
+    if (/[?&]fresh=\d+/.test(location.search)) {
+      var rest = location.search.replace(/[?&]fresh=\d+/, "").replace(/^&/, "?");
+      history.replaceState(null, "", location.pathname + (rest.length > 1 ? rest : "") + location.hash);
+    }
     var tag = document.querySelector('script[src*="auction.js"]');
     var mine = tag && (tag.getAttribute("src").match(/[?&]v=(\d+)/) || [])[1];
     if (!mine) return;                       // unstamped build, nothing to compare
     fetch("build.txt", { cache: "no-store" }).then(function (r) { return r.text(); })
       .then(function (t) {
         var live = String(t).trim();
-        if (!/^\d+$/.test(live) || live === mine) return;
+        // only a NEWER build is worth a reload. Three deploys in a row
+        // re-stamped single tags by hand and left build.txt behind, and this
+        // check then bounced every visitor, once a session, to ?b=<the OLD
+        // stamp> (2026-09-07). An older build.txt is a stale build.txt.
+        if (!/^\d+$/.test(live) || Number(live) <= Number(mine)) return;
         if (sessionStorage.getItem("fb.reloadedFor") === live) return;
         sessionStorage.setItem("fb.reloadedFor", live);
-        location.replace(location.pathname + "?b=" + live + location.hash);
+        location.replace(location.pathname + "?fresh=" + live + location.hash);
       }).catch(function () {});
   } catch (e) {}
 })();

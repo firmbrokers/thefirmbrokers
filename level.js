@@ -7,6 +7,10 @@
   // WORLD_W further down threw "Cannot access 'CASHCAT_LIVE' before
   // initialization" and took the whole street with it.
   const CASHCAT_LIVE = !!(CFG && CFG.cashcatLive);
+  /// THE BRANCH OFFICES: one entry per daily pot the firm runs (config.branches).
+  /// With any entry the tower is the Branch Offices and the Auction House is
+  /// its second floor; with none it stays the Auction House it was.
+  const BRANCHES_LIVE = !!(CFG && Array.isArray(CFG.branches) && CFG.branches.some((b) => b && b.pool && b.token));
   const F = window.Firm;
   const $ = (id) => document.getElementById(id);
   const el = (tag, cls, html) => {
@@ -63,7 +67,9 @@
   const GROUND = () => parseInt(getComputedStyle(document.documentElement).getPropertyValue("--ground-h")) || 220;
   const ZONES = [
     { id: "lobby", name: "The Lobby", short: "LOBBY", does: "start here", x: 200, w: 1350, room: null },
-    { id: "hr", name: "Auction House", short: "AUCTION", does: "broker of the day", x: 1700, w: 900, room: "hr" },
+    BRANCHES_LIVE
+      ? { id: "hr", name: "The Branch Offices", short: "BRANCHES", does: "a pot in every token", x: 1700, w: 900, room: "hr" }
+      : { id: "hr", name: "Auction House", short: "AUCTION", does: "broker of the day", x: 1700, w: 900, room: "hr" },
     { id: "floor", name: "Trading Floor", short: "FLOOR", does: "your brokers", x: 2750, w: 1000, room: "floor" },
     { id: "bank", name: "The Bank", short: "BANK", does: "the money", x: 3900, w: 1000, room: "bank" },
     // the fifth address. Their contract says Cash Cat was the original name for
@@ -103,6 +109,9 @@
     rosterSortId: false,
     // the bank's furnace: who is on the belt, and which rung is aimed at
     furnacePick: null, furnaceTier: null,
+    // the tower's floors: "hall" (the branch offices) or "auction"; set by the
+    // elevator, reset to the hall at the street door
+    hrFloor: "hall", brArrived: false,
     // whose file is open, and what he looked like when it was drawn
     popBrokerId: null, popBrokerSig: null,
   };
@@ -1226,6 +1235,38 @@
       say(fmtPot(pot), true);
     } catch (e) { /* the last number stands */ }
   }
+  /// THE CALL tile: the stock the desk is taking calls on and what each side
+  /// pays right now. Hidden until config names the desk; two reads on the
+  /// pot's cadence; a failed read leaves the last words standing.
+  const CALL_SEL = { currentRound: "0x8a19c8bc", odds: "0xfb93e737" };
+  const tileTimes = (bps) => (bps ? (Number(bps) / 10000).toLocaleString("en-US", { maximumFractionDigits: 2 }) + "×" : "—");
+  async function refreshCall() {
+    const tile = $("fb-callbtn"), out = $("fb-call-line");
+    if (!tile || !out) return;
+    if (!CFG.call) { tile.style.display = "none"; return; }
+    tile.style.display = "";
+    const unit = tile.querySelector(".unit");
+    const say = (words, odds, live) => { out.textContent = words; if (unit) unit.innerHTML = odds || ""; tile.classList.toggle("is-live", !!live); };
+    try {
+      const cur = (await F.callBatch([{ to: CFG.call, data: CALL_SEL.currentRound }]))[0];
+      if (!cur || cur.length < 2 + 64 * 5) return;
+      const day = BigInt("0x" + cur.slice(2, 66));
+      const exists = BigInt("0x" + cur.slice(2 + 64, 2 + 128)) === 1n;
+      let symbol = "";
+      const h = cur.slice(2 + 128, 2 + 128 + 16);
+      for (let k = 0; k < 16; k += 2) { const c = parseInt(h.slice(k, k + 2), 16); if (!c) break; symbol += String.fromCharCode(c); }
+      if (!symbol) return;
+      let odds = "";
+      if (exists) {
+        const o = (await F.callBatch([{ to: CFG.call, data: CALL_SEL.odds + F.word(day) }]))[0];
+        if (o && o.length >= 2 + 128) {
+          const up = BigInt("0x" + o.slice(2, 66)), dn = BigInt("0x" + o.slice(66, 130));
+          if (up > 0n || dn > 0n) odds = ` · UP ${tileTimes(up)} <span class="dn">DOWN ${tileTimes(dn)}</span>`;
+        }
+      }
+      say("$" + symbol, odds || " · UP or DOWN", true);
+    } catch (e) { /* the last words stand */ }
+  }
   function paintHud() {
     const s = state.stats;
 
@@ -1265,6 +1306,12 @@
   function paintMintWall() {
     const wall = $("fb-mintwall");
     if (!wall) return;
+    // THE BRANCH OFFICES: the biggest sign on the street carries every
+    // branch's pot. branches.js paints it and keeps it ticking; a missing or
+    // broken file falls through to the auction words below.
+    if (BRANCHES_LIVE && window.__BRANCHES && window.__BRANCHES.paintWall) {
+      try { if (window.__BRANCHES.paintWall()) return; } catch (e) { /* the auction words stand */ }
+    }
     // "open" = the OpenSea drop page exists. The contract being deployed is
     // not the mint being open any more; the page is.
     const open = state.mintOpen;
@@ -1409,6 +1456,7 @@
     exitRoom();
     state.streetX = state.x;
     state.mode = id;
+    if (id === "hr") state.hrFloor = "hall";
     back.style.display = "none";
     front.style.display = "none";
     fg.style.display = "none";
@@ -1416,7 +1464,9 @@
     stage.insertBefore(roomLayer, actors);
     document.body.classList.add("paneled");
     buildRoom(id);
-    state.x = 200;
+    // the branch hall has the stairs at 150–282: you come in past them, and
+    // the first prompt you see says there is a floor above
+    state.x = id === "hr" && BRANCHES_LIVE ? 300 : 200;
     state.wheelVel = 0;
     markHere();
     // the room's name in the bar (phone widths hide the zone buttons in here)
@@ -1449,12 +1499,21 @@
     front.style.display = "";
     fg.style.display = "";
     document.body.classList.remove("paneled");
-    for (const n of document.querySelectorAll(".fb-roomname")) n.remove();
+    for (const n of document.querySelectorAll(".fb-roomname, .br-floorbar, .br-shaft")) n.remove();
+    if (window.__BRANCHES && window.__BRANCHES.cancelRide) window.__BRANCHES.cancelRide();
     state.x = state.streetX;
     state.wheelVel = 0;
     closePopover();
     markHere();
     nudgeThought(3000);
+  }
+  /// The ways a PLAYER leaves a room — Escape, E at the door, BACK TO THE
+  /// STREET. The Auction House is the tower's second floor and has no street
+  /// door: from up there these take the stairs down first. (enterRoom and
+  /// warpTo still call exitRoom directly: a warp is not a walk.)
+  function leaveRoom() {
+    if (state.mode === "hr" && BRANCHES_LIVE && window.__BRANCHES && window.__BRANCHES.floor === "auction") { window.__BRANCHES.ride("hall"); return; }
+    exitRoom();
   }
   function rebuildRoom() {
     if (state.mode === "street" || !roomLayer) return;
@@ -1596,6 +1655,23 @@
   function buildHrRoom() {
     const s = state.stats || PRELAUNCH;
     const live = !!(CFG.auction && CFG.auctionToken && window.__AUCTION && window.__AUCTION.room);
+    // ---- THE BRANCH OFFICES. The ground floor is the branch hall (built by
+    // branches.js, guarded like the sale room); the Auction House below is
+    // the second floor, reached by the elevator at the end of either hall.
+    const branches = BRANCHES_LIVE && window.__BRANCHES && window.__BRANCHES.hall && window.__BRANCHES.elevator;
+    const setFloor = (f) => {
+      const rn = document.querySelector(".fb-roomname");
+      if (rn) rn.textContent = f === "auction" ? "THE AUCTION HOUSE \u00b7 2ND FLOOR" : "THE BRANCH OFFICES";
+    };
+    const brCtx = () => ({ el, px, roomLayer, F, CFG, state, txFlow, prop, deskCard, toast, connect, roomShell, glassWall, walkerEl, dress, rebuild: rebuildRoom, setFloor });
+    if (branches && state.hrFloor !== "auction") {
+      let ok = false;
+      try { window.__BRANCHES.hall(brCtx()); ok = true; } catch (e) { ok = false; }
+      if (ok) { setFloor("hall"); return; }
+      // branches.js is present but threw: the auction floor is an honest room
+      roomLayer.innerHTML = "";
+    }
+    if (branches) setFloor("auction");
     // ---------------------------------------------------------------
     // THE ROOM IS LAID OUT ON A GRID. Every mounted piece is CENTRED on its
     // section's axis, and the glazing is placed around them so nothing hangs
@@ -1611,7 +1687,13 @@
     //
     // Nothing is pinned to `top`: --ground-h steps 220 -> 180 -> 120 and a
     // piece hung off the ceiling drifts away from everything on the floor.
-    roomShell(2760, []);
+    // 320 more since 2026-09-06: the elevator stands past the wall of hammers
+    roomShell(2760 + (branches ? 320 : 0), []);
+    if (branches) {
+      // the second floor has no street door: the stairs down stand where it was
+      const door = roomLayer.querySelector(".room-exit"); if (door) door.remove();
+      try { window.__BRANCHES.stairs(brCtx(), "auction", 8); } catch (e) { /* the lift, then */ } // 8..140: clear of the easel at 152
+    }
     glassWall(280, 360, [[16, 56, 284, "far"], [86, 58, 230, "near"], [162, 52, 292, "far"], [238, 50, 240, "near"]]);
     glassWall(1250, 240, [[16, 54, 268, "far"], [88, 58, 224, "near"], [162, 50, 286, "far"]]);
     // the two ceiling lights sit on the stage and desk axes, not at random
@@ -1641,6 +1723,8 @@
       const inner0 = el("div");
       mintDesk(s, inner0, true);
       deskCard(960, 500, inner0);
+      // the elevator still runs to this floor: without it the ride up would strand you
+      if (branches) { try { window.__BRANCHES.elevator(brCtx(), "auction", 2790); } catch (e) { /* the stairs, then */ } }
       return;
     }
 
@@ -1671,7 +1755,10 @@
       prop("room-speech", 1300, "The sale room is closed for a moment.");
       return;
     }
-    prop("room-speech", 1300, "Bidding's open. Hammer at five, New York time.");
+    // au-say: wrapped to two lines, so it ends before the bid desk at 1520
+    // (one line ran 130 px into the desk wherever the card stands at ground+60)
+    prop("room-speech au-say", 1300, "Bidding's open. Hammer at five, New York time.");
+    if (branches) { try { window.__BRANCHES.elevator(brCtx(), "auction", 2790); } catch (e) { /* the stairs, then */ } }
   }
 
   // ---------- Trading floor: three desks, and a roster behind them
@@ -4216,10 +4303,24 @@
       }
     } else {
       if (roomLayer) roomLayer.style.transform = `translateX(${-cam}px)`;
-      if (state.x < 220) {
+      const br = state.mode === "hr" && BRANCHES_LIVE && window.__BRANCHES ? window.__BRANCHES : null;
+      if (br && br.stairsAt != null && Math.abs(br.stairsAt - state.x) < 110) {
+        // the stairs: on the ground floor they share the entrance end with the
+        // door (the door wins under 150); upstairs they ARE the way down
+        const up = br.floor === "hall";
+        // 24 px left of the treads' middle: centred, the prompt's last 9 px sat on the board's frame at 316
+        showCue("stairs:" + (up ? "up" : "down"), up ? " TAKE THE STAIRS UP" : " TAKE THE STAIRS DOWN", br.stairsAt - 24, g + 240);
+        state.nearZone = "stairs";
+      } else if (state.x < 220 && !(br && br.floor === "auction")) {
         // the exit door is 100 wide at x 40, so its middle is 90
         showCue("exit", " BACK OUTSIDE", 90, g + 200);
         state.nearZone = "exit";
+      } else if (state.mode === "hr" && BRANCHES_LIVE && window.__BRANCHES && window.__BRANCHES.liftAt != null
+          && Math.abs(window.__BRANCHES.liftAt - state.x) < 140) {
+        // the elevator: the prompt says where it goes, so the key carries the floor
+        const up = window.__BRANCHES.floor === "hall";
+        showCue("lift:" + (up ? "up" : "down"), up ? " RIDE UP TO THE AUCTION HOUSE" : " RIDE DOWN TO THE BRANCH HALL", window.__BRANCHES.liftAt, g + 300);
+        state.nearZone = "lift";
       } else {
         hideCue();
         state.nearZone = null;
@@ -4245,7 +4346,7 @@
       // put a picked-up broker down before backing out of the room entirely
       if (state.rosterPick !== null) { state.rosterPick = null; rebuildRoom(); return; }
       if (state.rosterOpen) { state.rosterOpen = false; state.rosterSlot = null; rebuildRoom(); return; }
-      exitRoom();
+      leaveRoom();
       return;
     }
     if (document.querySelector(".fb-panel.open")) return;
@@ -4253,7 +4354,11 @@
     // left key 5 dead because this said [1-4]
     if (/^[1-9]$/.test(e.key) && ZONES[Number(e.key) - 1]) { warpTo(ZONES[Number(e.key) - 1]); return; }
     if (e.key === "e" || e.key === "E" || e.key === "Enter") {
-      if (state.mode !== "street") { if (state.nearZone === "exit") exitRoom(); return; }
+      if (state.mode !== "street") {
+        if (state.nearZone === "exit") exitRoom();
+        else if ((state.nearZone === "lift" || state.nearZone === "stairs") && window.__BRANCHES) window.__BRANCHES.ride();
+        return;
+      }
       if (state.nearZone) tryEnter(state.nearZone);
       return;
     }
@@ -4364,7 +4469,7 @@
   // one level further down inside that panel.
   $("fb-back")?.addEventListener("click", () => {
     if (document.querySelector(".fb-panel.open")) closeDocs();
-    else exitRoom();
+    else leaveRoom();
   });
 
   // ------------------------------------------------------------ flat mode
@@ -4485,6 +4590,11 @@
           const when = new Date(h.endsAt * 1000).toLocaleString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
           note.innerHTML = `LAST HAMMER · LOT ${h.lotId} · ${h.art ? "BROKER #" + h.art : "BROKER"} · <b>${h.price}</b> · ${when} NY`;
         }).catch(() => { a.querySelector(".fb-mintnote").textContent = "The chain did not answer."; });
+      }
+      // THE BRANCH OFFICES on the phone: branches-flat.js owns the card and
+      // reads through branches.js; a missing file leaves the section as it was
+      if (BRANCHES_LIVE && window.__BRANCHES_FLAT) {
+        try { window.__BRANCHES_FLAT({ el, host: room, F, CFG, state, connect }); } catch (e) { /* the rest of the section stands */ }
       }
     });
 
@@ -4625,6 +4735,11 @@
   setInterval(refreshStats, 60000);
   refreshPot();
   setInterval(refreshPot, 60000);
+  refreshCall();
+  setInterval(refreshCall, 60000);
+  // the tower's LED wall follows every branch's pot (branches.js polls; the
+  // wall repaints on each poll and once a minute for the bell countdowns)
+  if (BRANCHES_LIVE && window.__BRANCHES && window.__BRANCHES.wallTicker) { try { window.__BRANCHES.wallTicker(); } catch (e) { /* the wall keeps its last words */ } }
 
   /// THE HAMMER, on the street. The auction is the site's daily event and
   /// nothing outside the room said a lot had sold. Once a lot closes, anyone

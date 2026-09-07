@@ -159,14 +159,22 @@ button { font-family: inherit; cursor: pointer; }
   color: #6fe08c; text-shadow: 0 0 6px #6fe08c44; white-space: nowrap; text-transform: none;
 }
 .fb-hudbtn.tile span b, .fb-hudbtn.tile span i, .fb-hudbtn.tile small b { font-weight: normal; font-style: normal; }
+.fb-hudbtn.tile.call span i { color: #6fe08c; }
+.fb-hudbtn.tile.call span i .dn { color: #ff9a90; }
+/* THE CALL tile only where the bar has room for it (measured 2026-09-06: at
+   1141–1499 it wrapped the two icons to a second row; the ticker alone fits
+   from 1500, the odds beside it from 1600; below 1141 the bar is two rows
+   already and the tile joins the second) */
+@media (min-width: 1141px) and (max-width: 1499px) { .fb-hudbtn.tile.call { display: none !important; } }
+@media (max-width: 1599px) { .fb-hudbtn.tile.call span i { display: none; } }
 .fb-hudbtn.tile:hover small { color: var(--gold); }
 /* both money tiles wear the lit-zone ring (user's call 2026-09-06: the solid
    gold BUY looked like a different kind of thing from JACKPOT beside it) */
 .fb-hudbtn.tile.buy { background: linear-gradient(#10151d, #0a0e14); color: var(--gold-deep); }
-.fb-hudbtn.tile.buy, .fb-hudbtn.tile.jackpot { box-shadow: 0 0 0 3px var(--gold), 0 0 20px #ffc93340, inset 0 0 20px rgba(0, 0, 0, 0.35); }
-.fb-hudbtn.tile.buy small, .fb-hudbtn.tile.jackpot small { color: var(--gold); text-shadow: 0 0 8px #ffc93370; }
-.fb-hudbtn.tile.buy span, .fb-hudbtn.tile.jackpot span { color: #9fe0af; }
-.fb-hudbtn.tile.buy:hover, .fb-hudbtn.tile.jackpot:hover { background: linear-gradient(#10151d, #0a0e14); box-shadow: 0 0 0 3px #ffd964, 0 0 24px #ffc93366, inset 0 0 20px rgba(0, 0, 0, 0.3); }
+.fb-hudbtn.tile.buy, .fb-hudbtn.tile.jackpot, .fb-hudbtn.tile.call { box-shadow: 0 0 0 3px var(--gold), 0 0 20px #ffc93340, inset 0 0 20px rgba(0, 0, 0, 0.35); }
+.fb-hudbtn.tile.buy small, .fb-hudbtn.tile.jackpot small, .fb-hudbtn.tile.call small { color: var(--gold); text-shadow: 0 0 8px #ffc93370; }
+.fb-hudbtn.tile.buy span, .fb-hudbtn.tile.jackpot span, .fb-hudbtn.tile.call span { color: #9fe0af; }
+.fb-hudbtn.tile.buy:hover, .fb-hudbtn.tile.jackpot:hover, .fb-hudbtn.tile.call:hover { background: linear-gradient(#10151d, #0a0e14); box-shadow: 0 0 0 3px #ffd964, 0 0 24px #ffc93366, inset 0 0 20px rgba(0, 0, 0, 0.3); }
 .fb-hudbtn.tile.buy:hover small, .fb-hudbtn.tile.buy:hover span { color: #fff1b8; }
 /* the flat-page toggle is a glyph like the follow link; data-mode picks which */
 .fb-hudbtn.icon { padding: 0 13px; }
@@ -845,6 +853,9 @@ body.flat-mode .fb-stage, body.flat-mode .fb-controls { display: none; }
      all until the pot has been read */
   .fb-hudbtn.tile.jackpot span i { display: none; }
   .fb-hudbtn.tile.jackpot:not(.is-live) span { display: none; }
+  /* THE CALL on a phone is the word and the ticker: the odds stay on the desk */
+  .fb-hudbtn.tile.call span i { display: none; }
+  .fb-hudbtn.tile.call:not(.is-live) span { display: none; }
   /* BACK TO THE STREET is a sentence, and a sentence claims a whole row to
      itself once the follow link is beside it. The zone buttons solved this
      first: keep the meaning, spend fewer characters. */

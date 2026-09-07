@@ -1,5 +1,7 @@
 /* ===========================================================================
    THE OFFICE POOL — one pool a day in $9TO5, drawn at the closing bell.
+   And every other BRANCH: ?b=<slug> picks a pool from CFG.branches (same
+   audited bytecode, the community's token), HQ when absent or unknown.
 
    Registers window.__POOL = { page } and is mounted by pool.html (and, later,
    by the street: level.js will call it guarded, like auction.js). Reads go
@@ -8,7 +10,7 @@
    "SENT BY YOU" list (Referred / ReferralClaimed filtered by the wallet,
    cached per wallet in localStorage and scanned forward from the last block).
 
-   Inert until config.js names the contract (CFG.pool): the page then says the
+   Inert until config.js names the contract (B.pool): the page then says the
    pool has not opened and does nothing else. The contract address is NEVER
    taken from the URL (anti-phishing rule, same as the token and the mint).
    =========================================================================== */
@@ -18,6 +20,27 @@
   if (!F) return;
   const CFG = F.CFG;
   const { word, toBig } = F;
+
+  // ---------------------------------------------------------------- the branch
+  /// HQ is the config's own pool. Any other branch comes from CFG.branches by
+  /// its slug in ?b=; unknown slugs fall back to HQ so a bad link still lands
+  /// on a working page. Addresses come from config only, never from the URL.
+  const HQ = { slug: "hq", name: "THE OFFICE POOL", symbol: "$9TO5", token: CFG.token, pool: CFG.pool, block: CFG.poolBlock, page: "pool.html", boost: true, mark: "", buyUrl: CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : "" };
+  function pickBranch() {
+    let slug = "";
+    try { slug = String(new URL(location.href).searchParams.get("b") || "").toLowerCase(); } catch (e) {}
+    const list = Array.isArray(CFG.branches) ? CFG.branches : [];
+    const hq = list.find((b) => b && b.slug === "hq");
+    // the top-level `pool` stays the switch (empty = not opened); branches.hq lends its name and mark only
+    const base = hq ? Object.assign({}, HQ, { name: hq.name || HQ.name, short: hq.short, symbol: hq.symbol || HQ.symbol, mark: hq.mark || "" }) : HQ;
+    if (!slug || slug === "hq") return base;
+    const b = list.find((x) => x && x.slug === slug && x.pool && x.token);
+    return b ? Object.assign({ name: slug.toUpperCase(), symbol: slug.toUpperCase(), boost: false, buyUrl: "" }, b, { hq: false }) : base;
+  }
+  const B = pickBranch();
+  const IS_HQ = B.slug === "hq";
+  const SYM = B.symbol || "$9TO5";
+  const BOOST = B.boost !== false;
 
   const SEL = {
     deposit: "0xb927dab6", registerBrokers: "0xfb9a75f4", claimDividends: "0xccbba739", claimReferral: "0xe02f1ebd",
@@ -31,8 +54,9 @@
     quoteBuy: "0x4beb394c", // Reinvest401k.quoteBuy(uint256): the pot in ETH, optional
   };
   const DEC = 18n;
-  const REF_KEY = "firmbrokers.pool.ref.v1";
-  const REFS_KEY = "firmbrokers.pool.refs.v1."; // + wallet: the SENT BY YOU scan cache
+  // HQ keeps its keys byte for byte; a branch has its own remembered sender and scan cache
+  const REF_KEY = "firmbrokers.pool.ref.v1" + (IS_HQ ? "" : "." + B.slug);
+  const REFS_KEY = "firmbrokers.pool.refs.v1." + (IS_HQ ? "" : B.slug + "."); // + wallet: the SENT BY YOU scan cache
   // keccak of Referred(address,address,bytes32) and ReferralClaimed(address,uint128)
   const TOPIC_REFERRED = "0xba442039c47ea54000d2f7a9c4aa7cd72a58fc993dc668fb5239b3f598ac9f38";
   const TOPIC_REF_CLAIMED = "0x47578b51557a1054d7224edb0fdc3fd8974f54ceb0ee2dd4049989e6d973db49";
@@ -128,13 +152,14 @@
 
   // ---------------------------------------------------------------- chain
   async function load() {
-    const P = CFG.pool;
+    const P = B.pool;
     const head = await F.callBatch([
       { to: P, data: SEL.currentRound }, { to: P, data: SEL.roundCount }, { to: P, data: SEL.beaconDelay },
       { to: P, data: SEL.dueForDraw }, { to: P, data: SEL.recentRounds + word(8) }, { to: P, data: SEL.knobs },
       { to: P, data: SEL.codeOwner + bytes32(refCode() || "---") }, // does the link's code exist?
     ]);
     S.refOwner = head[6] && head[6].length >= 66 ? addr(head[6], 0) : ZERO;
+    if (refCode() && !(S.refCheck && S.refCheck.code === refCode())) S.refCheck = { code: refCode(), owner: S.refOwner, error: false };
     // the terms a round opening now would take (the board's rules before the first chip-in of a day)
     if (head[5] && head[5].length >= 2 + 64 * 6) S.knobs = { minDeposit: big(head[5], 0), divBps: num(head[5], 1), refBps: num(head[5], 2), houseBps: num(head[5], 3), boostBps: num(head[5], 4), boostCapBps: num(head[5], 5) };
     const cr = head[0];
@@ -158,11 +183,11 @@
       reqs.push({ to: P, data: SEL.codeOf + word(S.account) });
       reqs.push({ to: P, data: SEL.referrer + word(S.account) });
       reqs.push({ to: P, data: SEL.roundsOf + word(S.account) }); // any chip-in ever? then the sender is settled
-      reqs.push({ to: CFG.token, data: SEL.balanceOf + word(S.account) });
-      reqs.push({ to: CFG.token, data: SEL.allowance + word(S.account) + word(P) });
+      reqs.push({ to: B.token, data: SEL.balanceOf + word(S.account) });
+      reqs.push({ to: B.token, data: SEL.allowance + word(S.account) + word(P) });
       if (open) reqs.push({ to: P, data: SEL.playerView + word(S.curId) + word(S.account) });
     }
-    if (CFG.reinvest) reqs.push({ to: CFG.reinvest, data: SEL.quoteBuy + word(10n ** 16n) });
+    if (CFG.reinvest && IS_HQ) reqs.push({ to: CFG.reinvest, data: SEL.quoteBuy + word(10n ** 16n) });
     const res = reqs.length ? await F.callBatch(reqs) : [];
     let k = 0;
     if (open) {
@@ -187,7 +212,7 @@
       // ("you're referred by yourself", 2026-09-06)
       if (same(S.refOwner, S.account)) { try { if (localStorage.getItem(REF_KEY) === refCode()) localStorage.removeItem(REF_KEY); } catch (e) {} }
     }
-    if (CFG.reinvest) { const q = res[k++]; S.ethPer = q && q.length >= 66 && big(q, 0) > 0n ? Number(10n ** 16n) / Number(big(q, 0)) : null; }
+    if (CFG.reinvest && IS_HQ) { const q = res[k++]; S.ethPer = q && q.length >= 66 && big(q, 0) > 0n ? Number(10n ** 16n) / Number(big(q, 0)) : null; }
     // every player (players are in join order; the board is top-10 by deposit,
     // so a page cannot be skipped) and the last 12 deposits, in one batch
     if (open && S.cur && S.cur.playerCount > 0) {
@@ -209,7 +234,7 @@
   /// the wallet's hired brokers not yet used this round
   async function loadBrokers() {
     S.brokers = [];
-    if (!S.account) return;
+    if (!S.account || !BOOST) return;
     // before the first chip-in of a day there is no round yet: nothing is used, every hired broker counts
     const roundId = S.cur ? S.curId : 0;
     let ids = [];
@@ -218,7 +243,7 @@
     S.brokersOwned = ids.length;
     if (!ids.length) return;
     const reqs = [];
-    for (const id of ids) { reqs.push({ to: CFG.nft, data: SEL.isActive + word(id) }); if (roundId) reqs.push({ to: CFG.pool, data: SEL.brokerUsed + word(roundId) + word(id) }); }
+    for (const id of ids) { reqs.push({ to: CFG.nft, data: SEL.isActive + word(id) }); if (roundId) reqs.push({ to: B.pool, data: SEL.brokerUsed + word(roundId) + word(id) }); }
     const res = await F.callBatch(reqs);
     const eligible = [];
     const per = roundId ? 2 : 1;
@@ -227,6 +252,8 @@
     // only as many as the multiplier can use: past the cap they cost gas for nothing
     S.brokers = eligible.slice(0, maxUseful());
   }
+  /// the quick amounts: 2.5×, 5×, 10×, 25× the minimum (10k → 25k 50k 100k 250k), whole tokens
+  const presets = (min) => { const m = Number(min) / 1e18 || 10000; return [2.5, 5, 10, 25].map((k) => Math.round(m * k)).filter((n, i, a) => n > 0 && a.indexOf(n) === i); };
   const terms = () => S.cur || S.knobs || { minDeposit: 10000n * 10n ** 18n, divBps: 2500, refBps: 500, houseBps: 1000, boostBps: 1000, boostCapBps: 20000 };
   const maxUseful = () => { const t = terms(); return Math.max(0, Math.ceil((t.boostCapBps - 10000) / t.boostBps)); };
 
@@ -308,10 +335,10 @@
   /// "it changes every time I open a link" is what that read as, 2026-09-06)
   const senderOpen = () => S.referrer === ZERO && !S.inBefore && !(S.me && S.me.deposited > 0n);
   async function chipIn(amountWei) {
-    const P = CFG.pool;
+    const P = B.pool;
     const brokers = S.useBrokers ? S.brokers : [];
     const field = host.querySelector("#op-ref");
-    const typed = String((field || {}).value || "").trim().toLowerCase();
+    const typed = parseRef((field || {}).value);
     let code = "";
     if (senderOpen()) {
       // the field is the sender: prefilled from the link, or typed from a
@@ -324,6 +351,7 @@
           if (S.code && typed === S.code) return toast("that is your own code — it cannot send you", false);
           const owner = (await F.callBatch([{ to: P, data: SEL.codeOwner + bytes32(typed) }]))[0];
           if (!owner || addr(owner, 0) === ZERO) return toast(`code '${typed}' is not registered · check the spelling`, false);
+          if (same(addr(owner, 0), S.account)) return toast("that is your own code — it cannot send you", false);
           code = typed;
         }
       } else code = linkCode();
@@ -336,9 +364,9 @@
       // and go straight on to the chip-in once the allowance has landed — the
       // allowance re-read after the block can lag a beat, and a silent stop here
       // read as "nothing happened" (the treasury's first chip-in, 2026-09-05).
-      toast("first time: two confirmations — allow the pool to take $9TO5, then the chip-in");
+      toast(`first time: two confirmations — allow the pool to take ${SYM}, then the chip-in`);
       let landed = false;
-      await tx("allowing the pool to take $9TO5", () => F.send(CFG.token, SEL.approve + word(P) + word((1n << 256n) - 1n), 0n, S.account), async () => { landed = true; });
+      await tx(`allowing the pool to take ${SYM}`, () => F.send(B.token, SEL.approve + word(P) + word((1n << 256n) - 1n), 0n, S.account), async () => { landed = true; });
       if (!landed) return; // rejected or failed: the toast said so
     }
     // an honest limit: deposit() has no internal try/catch, so the estimate is
@@ -355,27 +383,27 @@
     await tx("chipping in", () => F.send(P, data, 0n, S.account, limit), async () => { toast("you're in — see you at the bell", true); });
   }
   async function claimDividends() {
-    const ids = decodeUintArray((await F.callBatch([{ to: CFG.pool, data: SEL.roundsOf + word(S.account) }]))[0]);
+    const ids = decodeUintArray((await F.callBatch([{ to: B.pool, data: SEL.roundsOf + word(S.account) }]))[0]);
     if (!ids.length) return;
     // only the rounds with something to claim, newest first, at most 20 per transaction
-    const views = await F.callBatch(ids.map((id) => ({ to: CFG.pool, data: SEL.playerView + word(id) + word(S.account) })));
+    const views = await F.callBatch(ids.map((id) => ({ to: B.pool, data: SEL.playerView + word(id) + word(S.account) })));
     const pick = ids.filter((id, i) => { const v = decodePlayer(views[i]); return v && v.divClaimable > 0n; }).reverse().slice(0, 20);
     if (!pick.length) return toast("nothing to claim yet", false);
     let data = SEL.claimDividends + word(32) + word(pick.length);
     for (const id of pick) data += word(id);
-    await tx("claiming dividends", () => F.send(CFG.pool, data, 0n, S.account, BigInt(120000 + 60000 * pick.length)));
+    await tx("claiming dividends", () => F.send(B.pool, data, 0n, S.account, BigInt(120000 + 60000 * pick.length)));
   }
-  const claimReferral = () => tx("claiming referral rewards", () => F.send(CFG.pool, SEL.claimReferral, 0n, S.account, 120000n));
+  const claimReferral = () => tx("claiming referral rewards", () => F.send(B.pool, SEL.claimReferral, 0n, S.account, 120000n));
   async function setCode(code) {
     code = String(code || "").trim().toLowerCase();
     if (!validCode(code)) return toast("3 to 20 letters or digits, lowercase", false);
-    const taken = (await F.callBatch([{ to: CFG.pool, data: SEL.codeOwner + "0x".slice(0, 0) + bytes32(code) }]))[0];
+    const taken = (await F.callBatch([{ to: B.pool, data: SEL.codeOwner + "0x".slice(0, 0) + bytes32(code) }]))[0];
     if (taken && addr(taken, 0) !== ZERO) return toast("that name is taken", false);
-    await tx("setting your link", () => F.send(CFG.pool, SEL.setCode + bytes32(code), 0n, S.account, 120000n));
+    await tx("setting your link", () => F.send(B.pool, SEL.setCode + bytes32(code), 0n, S.account, 120000n));
   }
   /// the bell: the beacon from drand, straight into draw(). Anyone may.
   async function ringBell(id) {
-    const r = decodeRound((await F.callBatch([{ to: CFG.pool, data: SEL.roundView + word(id) }]))[0]);
+    const r = decodeRound((await F.callBatch([{ to: B.pool, data: SEL.roundView + word(id) }]))[0]);
     if (!r) return;
     let sig = null;
     if (r.playerCount > 0) {
@@ -394,7 +422,68 @@
     }
     const sigHex = sig || "";
     const data = SEL.draw + word(id) + word(64) + word(sigHex.length / 2) + (sigHex ? sigHex.padEnd(128, "0") : "");
-    await tx("ringing the bell", () => F.send(CFG.pool, data, 0n, S.account, 900000n));
+    await tx("ringing the bell", () => F.send(B.pool, data, 0n, S.account, 900000n));
+  }
+
+  // ---------------------------------------------------------------- live checks
+  /// a code, a whole link with ?ref= in it, or "@name" → the code, lowercased
+  function parseRef(raw) {
+    let t = String(raw || "").trim();
+    const m = t.match(/[?&#]ref=([A-Za-z0-9]{1,20})/);
+    if (m) t = m[1];
+    return t.replace(/^@/, "").replace(/\s+/g, "").toLowerCase();
+  }
+  async function ownerOf(code) {
+    const r = (await F.callBatch([{ to: B.pool, data: SEL.codeOwner + bytes32(code) }]))[0];
+    return r && r.length >= 66 ? addr(r, 0) : ZERO;
+  }
+  let checkT = null, checkSeq = 0;
+  /// the sender field, as typed: the note under it says what the chip-in will do
+  function refNote(code, check) {
+    if (!code && refCode() && same(S.refOwner, S.account)) return { cls: "fine", html: "that is your own link · it cannot send you, share it" };
+    if (!code) return { cls: "fine", html: linkCode() ? `no sender · you cleared the link's code '${esc(linkCode())}' — type it back to keep them` : `got a code from a player? put it here, or paste their link. They earn ${terms().refBps / 100}% of everything you chip in, never out of your share. Locks at your first chip-in.` };
+    if (!validCode(code)) return { cls: "fine bad", html: "a code is 3 to 20 letters or digits" };
+    if (S.code && code === S.code) return { cls: "fine bad", html: "that is your own code · it cannot send you, share it instead" };
+    if (!check || check.code !== code) return { cls: "fine", html: "checking…" };
+    if (check.error) return { cls: "fine", html: "could not read the chain · the code is checked again at chip-in" };
+    if (same(check.owner, S.account)) return { cls: "fine bad", html: "that is your own code · it cannot send you, share it instead" };
+    if (check.owner === ZERO) return { cls: "fine bad", html: `'${esc(code)}' is not a registered code · check the spelling` };
+    return { cls: "fine ok", html: `sent by <b>${esc(code)}</b> · locks at your first chip-in · they earn ${terms().refBps / 100}% of everything you chip in, never out of your share` };
+  }
+  /// the name box, as typed: free or taken, and the link it would make
+  function nameNote(code, check) {
+    if (!code) return { cls: "fine", html: `3 to 20 lowercase letters or digits · your link will be ${esc(pageLink().replace(/^https?:\/\//, ""))}${IS_HQ ? "?" : "&"}ref=<b>yourname</b>` };
+    if (!validCode(code)) return { cls: "fine bad", html: /[^a-z0-9]/.test(code) ? "lowercase letters and digits only" : code.length < 3 ? "at least 3 characters" : "at most 20 characters" };
+    if (!check || check.code !== code) return { cls: "fine", html: "checking…" };
+    if (check.error) return { cls: "fine", html: "could not read the chain · it is checked again when you press GET MY LINK" };
+    if (check.owner !== ZERO) return { cls: "fine bad", html: `'${esc(code)}' is taken · try another` };
+    return { cls: "fine ok", html: `<b>${esc(code)}</b> is free · your link will be ${esc(refLink(code).replace(/^https?:\/\//, ""))}` };
+  }
+  function liveCheck(input, isName) {
+    const note = host.querySelector(isName ? "#op-namenote" : "#op-refnote");
+    if (!note) return;
+    const code = isName ? String(input.value || "").trim().toLowerCase() : parseRef(input.value);
+    if (!isName && code !== input.value && /[?&#]ref=|@|\s/.test(input.value)) input.value = code; // a pasted link collapses to its code
+    const slot = isName ? "nameCheck" : "refCheck";
+    const paint = () => { const n = (isName ? nameNote : refNote)(code, S[slot]); note.className = n.cls; note.innerHTML = n.html; };
+    clearTimeout(checkT);
+    if (S[slot] && S[slot].code === code) return paint();
+    S[slot] = null; paint();
+    if (!validCode(code) || (!isName && S.code && code === S.code)) return;
+    const seq = ++checkSeq;
+    checkT = setTimeout(async () => {
+      let owner = ZERO, error = false;
+      try { owner = await ownerOf(code); } catch (e) { error = true; }
+      if (seq !== checkSeq) return;
+      S[slot] = { code, owner, error };
+      if (host.querySelector(isName ? "#op-namenote" : "#op-refnote")) paint();
+    }, 400);
+  }
+  function onInput(e) {
+    const t = e.target;
+    if (!t || t.tagName !== "INPUT") return;
+    if (t.id === "op-ref") liveCheck(t, false);
+    else if (t.id === "op-code") liveCheck(t, true);
   }
 
   // ---------------------------------------------------------------- render
@@ -425,13 +514,16 @@
   function drandUrl(round) { return `https://api.drand.sh/v2/beacons/quicknet/rounds/${round}`; }
   /// the post is the same anti-phishing shape as the application post: the site's
   /// own page, nothing else linked
-  const pageLink = () => `${location.origin}/pool`; // the clean URL, whichever way the visitor arrived
+  const pageLink = () => `${location.origin}/pool${IS_HQ ? "" : "?b=" + B.slug}`; // the clean URL, whichever way the visitor arrived
+  const refLink = (code) => `${pageLink()}${IS_HQ ? "?" : "&"}ref=${code}`;
   function xIntent(code) {
-    const link = `${pageLink()}?ref=${code}`;
-    const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in $9TO5 before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 code {code} \u00b7 $9TO5").replace("{link}", link).replace("{code}", code);
+    const link = refLink(code);
+    const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in {sym} before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 code {code} \u00b7 {sym}").replace("{link}", link).replace("{code}", code).replace(/\{sym\}/g, SYM);
     return "https://x.com/intent/post?text=" + encodeURIComponent(textOf);
   }
   function explorer(a) { return `${CFG.explorer}/address/${a}`; }
+  /// what the card needs to know about this branch
+  const cardBranch = () => ({ slug: B.slug, branch: B.name, house: "FIRM BROKERS", symbol: SYM, mark: B.mark || "", branchObj: B });
 
   // ---------------------------------------------------------------- SENT BY YOU
   /// Who arrived through this wallet's link: the Referred events naming it as
@@ -441,16 +533,16 @@
   /// once, then forward from the cached head; the wallet's getLogs when it is
   /// on this chain, else the primary rpc, bisecting on error like the floor.
   async function loadReferrals() {
-    if (!S.account || !CFG.poolBlock) return;
+    if (!S.account || !B.block) return;
     const me = S.account.toLowerCase();
     const key = REFS_KEY + me;
     let cache = null;
     try { cache = JSON.parse(localStorage.getItem(key) || "null"); } catch (e) {}
-    if (!cache || cache.v !== 1) cache = { v: 1, to: CFG.poolBlock - 1, players: [], claimed: "0" };
+    if (!cache || cache.v !== 1) cache = { v: 1, to: B.block - 1, players: [], claimed: "0" };
     const head = await F.blockNumber();
     const from = cache.to + 1;
     if (head >= from) {
-      const base = { address: CFG.pool };
+      const base = { address: B.pool };
       const [sent, claimed] = await Promise.all([
         F.rpcLogsRange(Object.assign({ topics: [TOPIC_REFERRED, null, "0x" + word(me)] }, base), from, head),
         F.rpcLogsRange(Object.assign({ topics: [TOPIC_REF_CLAIMED, "0x" + word(me)] }, base), from, head),
@@ -475,9 +567,27 @@
     const earned = r.claimed + S.refOwed;
     if (!r.players.length) return `<div class="fine">nobody yet · a player shows up here after their first chip-in through your link</div>`;
     const list = r.players.slice().reverse().slice(0, 12).map((p) => `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`).join(", ");
-    return `<div class="fine">${r.players.length} player${r.players.length === 1 ? "" : "s"} · earned <b>${fmt(earned)}</b> $9TO5 so far${S.refOwed > 0n ? ` (${fmt(S.refOwed)} to claim)` : ""}</div>
+    return `<div class="fine">${r.players.length} player${r.players.length === 1 ? "" : "s"} · earned <b>${fmt(earned)}</b> ${SYM} so far${S.refOwed > 0n ? ` (${fmt(S.refOwed)} to claim)` : ""}</div>
       <div class="fine">${list}${r.players.length > 12 ? ` and ${r.players.length - 12} more` : ""}</div>
       <div class="fine">a player shows up here after their first chip-in through your link</div>`;
+  }
+
+  /// GOT A CODE? at the desk: live while the sender is open, disabled with the
+  /// reason once it is not (the contract fixes the sender at the first chip-in)
+  function refField(kept) {
+    const T = terms();
+    if (senderOpen()) {
+      const value = kept != null ? kept : (linkCode() || (refCode() && !same(S.refOwner, S.account) ? refCode() : ""));
+      const n = refNote(parseRef(value), S.refCheck);
+      return `<div class="lab" style="margin-top:8px">GOT A CODE?</div>
+      <div class="amt"><input type="text" id="op-ref" placeholder="a code, or a link · optional" value="${esc(value)}" maxlength="200" autocapitalize="off" spellcheck="false" autocomplete="off"></div>
+      <div class="${n.cls}" id="op-refnote">${n.html}</div>`;
+    }
+    const settled = S.referrer !== ZERO;
+    const who = settled ? (S.referrerCode ? esc(S.referrerCode) : short(S.referrer)) : "";
+    return `<div class="lab" style="margin-top:8px">GOT A CODE?</div>
+      <div class="amt"><input type="text" id="op-ref" value="${who}" placeholder="—" disabled></div>
+      <div class="fine" id="op-refnote">${settled ? `your sender was set at your first chip-in: <b>${who}</b> · ${T.refBps / 100}% of every chip-in you make goes to them, never out of your share` : "you chipped in before without a code · a sender is set only at the first chip-in, so a code changes nothing now"}</div>`;
   }
 
   function render() {
@@ -505,7 +615,7 @@
     const multX = (n) => { const x = Math.min(10000 + T.boostBps * n, cap) / 10000; return (Number.isInteger(x) ? x : x.toFixed(1)) + "×"; };
     const bellNY = S.closesAt ? nyTime(S.closesAt) : "4:00 PM";
     const youWon = (a) => same(a, S.account);
-    const buyHref = CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : null;
+    const buyHref = B.buyUrl || null;
     // the sender line. Settled on-chain → their name or address. Not settled
     // and the link's code is someone else's → shown as pending, locks at the
     // first chip-in. The wallet's own code → never a sender. Already in
@@ -528,16 +638,17 @@
       banner = `<div class="last">🔔 ${now - last.closesAt < 12 * 3600 ? "today" : "yesterday"}: ${last.jackpotWinner !== ZERO ? `jackpot ${fmt(last.jackpotPaid)} → ${who(last.jackpotWinner)} · ` : ""}money back ${fmt(last.refundPaid)} → ${who(last.refundWinner)}`;
       if (S.account) {
         const mine = [];
-        if (youWon(last.jackpotWinner)) mine.push(`<b class="won">YOU took the jackpot: ${fmt(last.jackpotPaid)} $9TO5</b>`);
-        if (youWon(last.refundWinner)) mine.push(`<b class="won">YOU got your money back: ${fmt(last.refundPaid)} $9TO5</b>`);
+        if (youWon(last.jackpotWinner)) mine.push(`<b class="won">YOU took the jackpot: ${fmt(last.jackpotPaid)} ${SYM}</b>`);
+        if (youWon(last.refundWinner)) mine.push(`<b class="won">YOU got your money back: ${fmt(last.refundPaid)} ${SYM}</b>`);
         if (S.claimable > 0n) mine.push(`you have ${fmt(S.claimable)} in dividends to claim → <button class="chip" data-act="claimdiv" type="button">CLAIM</button>`);
         if (mine.length) banner += `<div class="mine">${mine.join(" · ")}</div>`;
       }
+      if (window.__POOL_CARD) banner += ` <button class="chip mini" data-act="wincard" data-id="${last.id}" type="button">SHARE THE RESULT</button>`;
       banner += `</div>`;
     }
 
     const tickerItems = [];
-    if (r) tickerItems.push(`<span class="up">TODAY'S JACKPOT ${fmt(r.pot)} $9TO5</span> · closes ${bellNY} NY`);
+    if (r) tickerItems.push(`<span class="up">TODAY'S JACKPOT ${fmt(r.pot)} ${SYM}</span> · closes ${bellNY} NY`);
     for (const h of S.history.filter((x) => x.state === 2 && x.playerCount > 0).slice(0, 6)) {
       tickerItems.push(h.jackpotWinner !== ZERO ? `${nyTime(h.closesAt, true)} · jackpot <span class="up">${fmt(h.jackpotPaid)}</span> → ${short(h.jackpotWinner)}` : `${nyTime(h.closesAt, true)} · money back ${fmt(h.refundPaid)} → ${short(h.refundWinner)}`);
     }
@@ -549,12 +660,12 @@
     const ticker = tickerItems.length > 1 ? `<div class="op-ticker"><div class="tape">${half}${half}</div></div>` : "";
     const board = `<div class="cab board"><div class="scr">${banner}<div class="hero">
       <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
-      <div class="pot${left > 0 && left <= 600 ? " hot2" : left > 0 && left <= 3600 ? " hot1" : ""}" data-pot="${r ? r.pot.toString() : "0"}"><span class="num">${r ? fmt(S.potShown && S.potShown < r.pot ? S.potShown : r.pot) : "—"}</span>${r ? ` <span class="unit">$9TO5</span>` : ""}</div>
-      <div class="one">chip in $9TO5 before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
+      <div class="pot${left > 0 && left <= 600 ? " hot2" : left > 0 && left <= 3600 ? " hot1" : ""}" data-pot="${r ? r.pot.toString() : "0"}"><span class="num">${r ? fmt(S.potShown && S.potShown < r.pot ? S.potShown : r.pot) : "—"}</span>${r ? ` <span class="unit">${SYM}</span>` : ""}</div>
+      <div class="one">chip in ${SYM} before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
       <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div></div>
       <div class="row">
         <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? `<span class="long">${nyTime(S.closesAt, true)} NY${localTime(S.closesAt)} · draw 5 min after the bell</span><span class="short">${nyTime(S.closesAt)} NY${localTime(S.closesAt, true)} · draw +5 min</span>` : ""}</div></div>
-        ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} $9TO5</div><div class="fine">${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}</div></div>
+        ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} ${SYM}</div><div class="fine">${BOOST ? `${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}` : ""}</div></div>
         <div><div class="lab">YOUR CHANCE AT THE JACKPOT</div><div class="hi">${odds ? "1 in " + odds : "—"}</div><div class="fine">${me.divEarned > 0n ? "earned " + fmt(me.divEarned) + " in dividends today" : ""}</div></div>` : ""}
       </div></div></div>`;
 
@@ -583,17 +694,15 @@
         : S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already counted today</div>`
         : `<div class="fine">no hired brokers to count · hiring one boosts your chance ${T.boostBps / 100}%</div>`;
       deskBody = `
-      ${me && me.deposited > 0n ? `<div class="hi">you're in with ${fmt(me.deposited)} · ${multX(me.brokers)} · ${odds ? "1 in " + odds : "—"}</div>` : ""}
-      ${poor ? `<div class="need">you need at least ${fmt(T.minDeposit)} $9TO5 to chip in${buyHref ? ` · <a href="${buyHref}" target="_blank" rel="noopener">get it on letscash →</a>` : ""}</div>` : ""}
+      ${me && me.deposited > 0n ? `<div class="hi">you're in with ${fmt(me.deposited)}${BOOST ? " · " + multX(me.brokers) : ""} · ${odds ? "1 in " + odds : "—"}</div>` : ""}
+      ${poor ? `<div class="need">you need at least ${fmt(T.minDeposit)} ${SYM} to chip in${buyHref ? ` · <a href="${buyHref}" target="_blank" rel="noopener">${IS_HQ ? "get it on letscash" : "get " + SYM} →</a>` : ""}</div>` : ""}
       <div class="amt"><input type="text" inputmode="decimal" id="op-amt" placeholder="${fmt(T.minDeposit) + " min"}"></div>
-      <div class="presets"><button class="chip" data-act="min" type="button">MIN</button>${[25000, 50000, 100000, 250000].map((n) => `<button class="chip" data-act="preset" data-n="${n}" type="button">${n / 1e3}k</button>`).join("")}<button class="chip" data-act="max" type="button">MAX</button></div>
-      ${brokerLine}
-      ${senderOpen() ? `<div class="lab" style="margin-top:8px">REFERRAL CODE</div>
-      <div class="amt"><input type="text" id="op-ref" placeholder="who sent you? · optional" value="${esc(linkCode())}" maxlength="20" autocapitalize="off" spellcheck="false"></div>
-      <div class="fine">${codeKnown ? "filled in from the link you arrived through. " : "got a code from a player? put it here. "}They earn 5% of everything you chip in, never out of your share. Locks at your first chip-in.</div>` : ""}
+      <div class="presets"><button class="chip" data-act="min" type="button">MIN</button>${presets(T.minDeposit).map((n) => `<button class="chip" data-act="preset" data-n="${n}" type="button">${n >= 1000 ? n / 1e3 + "k" : n}</button>`).join("")}<button class="chip" data-act="max" type="button">MAX</button></div>
+      ${BOOST ? brokerLine : ""}
+      ${refField(keep.ref)}
       <button class="go" data-act="chip" ${left > 0 && !poor ? "" : "disabled"}>${left > 0 ? (me && me.deposited > 0n ? "CHIP IN MORE" : "CHIP IN") : "CLOSED — NEXT POOL AT THE BELL"}</button>
-      ${firstTime && !poor ? `<div class="fine">two wallet prompts the first time: 1) allow $9TO5 · 2) chip in</div>` : ""}
-      <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}${sender ? " · sent by <b>" + sender + "</b>" + senderNote : ""}</div>${badCode}
+      ${firstTime && !poor ? `<div class="fine">two wallet prompts the first time: 1) allow ${SYM} · 2) chip in</div>` : ""}
+      <div class="fine">balance ${fmt(S.balance)} ${SYM} · ${short(S.account)}${sender && !senderOpen() ? " · sent by <b>" + sender + "</b>" + senderNote : ""}</div>${senderOpen() ? "" : badCode}
       <div class="echo" id="op-echo"></div>
       <div class="lab" style="margin-top:6px">YOURS TO CLAIM</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -605,20 +714,21 @@
     }
     const desk = `<div class="cab"><div class="scr"><div class="lab">CHIP IN</div><div class="desk">${deskBody}</div></div></div>`;
 
-    const ref = S.account ? `<div class="cab ref"><div class="scr"><div class="lab">${S.code ? "YOUR CODE" : "YOUR CODE & LINK"}</div>
-      ${S.code ? `<div class="link"><code class="big">${esc(S.code)}</code><button class="chip" data-act="copycode">COPY CODE</button></div>
-      <div class="fine">say the code, or send the link · a new player types it in at their first chip-in</div>
-      <div class="lab" style="margin-top:8px">YOUR LINK</div>
-      <div class="link"><code class="lnk">${esc(pageLink())}?ref=${esc(S.code)}</code><button class="chip" data-act="copy">COPY LINK</button></div>
+    const nn = nameNote(String(keep.code || "").trim().toLowerCase(), S.nameCheck);
+    const ref = S.account ? `<div class="cab ref" id="link"><div class="scr"><div class="lab">${S.code ? "YOUR LINK" : "GET MY LINK"}</div>
+      ${S.code ? `<div class="link"><code class="lnk">${esc(refLink(S.code))}</code><button class="chip" data-act="copy">COPY LINK</button></div>
+      <div class="link"><span class="dim">code</span><code class="big">${esc(S.code)}</code><button class="chip" data-act="copycode">COPY CODE</button></div>
       ${window.__POOL_CARD ? `<button class="go" data-act="card" style="margin-top:8px">MAKE MY CARD · POST ON X</button>` : `<a class="chip" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:8px" href="${xIntent(S.code)}" target="_blank" rel="noopener">POST ON X</a>`}
-      <div class="fine">5% of every chip-in from anyone who arrives through it, for life · never out of their share</div>
+      <div class="fine">${T.refBps / 100}% of every chip-in from anyone who opens the link or types the code, for life · never out of their share</div>
       <div class="lab" style="margin-top:10px">SENT BY YOU</div>${referralsBody()}`
-      : `<div class="fine">pick a name once, then share your link or the name. Whoever arrives through it has you as their sender from their first chip-in on: 5% of every chip-in they ever make comes to you, claimable any time.</div><div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false"><button class="chip" data-act="setcode">SET</button></div>`}
+      : `<div class="fine">pick a name once — one transaction — and your link and code are yours for life: ${T.refBps / 100}% of every chip-in from whoever arrives through them, claimable any time.</div>
+      <div class="set"><input type="text" id="op-code" maxlength="20" placeholder="yourname" autocapitalize="off" spellcheck="false" autocomplete="off"><button class="chip" data-act="setcode">GET MY LINK</button></div>
+      <div class="${nn.cls}" id="op-namenote">${nn.html}</div>`}
     </div></div>` : "";
 
     const ranked = S.players.slice().sort((a, b) => (b.v.deposited > a.v.deposited ? 1 : -1)).slice(0, 10);
     const lead = `<div class="cab floor"><div class="scr"><div class="lab">TODAY'S BOARD</div>
-      <div class="grid3 head"><span>player<span class="long"> · brokers counted</span></span><span>chipped in<span class="long"> · earned in dividends</span></span></div>
+      <div class="grid3 head"><span>player<span class="long">${BOOST ? " · brokers counted" : ""}</span></span><span>chipped in<span class="long"> · earned in dividends</span></span></div>
       <div class="list">${ranked.length ? ranked.map((p, i) =>
         `<div class="grid3${same(p.addr, S.account) ? " me" : ""}"><span class="who">${i + 1}. ${same(p.addr, S.account) ? "<b class='won'>YOU</b>" : `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`}${p.v.brokers ? ` <span class="dim brk" title="${p.v.brokers} brokers counted · ${multX(p.v.brokers)}">+${p.v.brokers} · ${multX(p.v.brokers)}</span>` : ""}</span><span class="n">${fmt(p.v.deposited)}<span class="dim sub"><span class="dot"> · </span>earned ${fmt(p.v.divEarned)}</span></span></div>`).join("")
         : `<div class="dim">${S.loaded ? "nobody yet" : "loading…"}</div>`}</div>
@@ -631,18 +741,22 @@
         const st = h.state === 2 ? (h.playerCount === 0 ? "nobody came · carried" : "") : h.state === 3 ? "abandoned · refunds open" : "waiting for its draw";
         const name = (a) => (youWon(a) ? `<b class="won">YOU</b>` : `<a href="${explorer(a)}" rel="noopener">${short(a)}</a>`);
         const drawn = h.state === 2 && h.playerCount > 0;
-        return `<div class="r${youWon(h.refundWinner) || youWon(h.jackpotWinner) ? " me" : ""}"><div class="line"><b>${nyTime(h.closesAt, true)}<span class="dim"> · ${h.playerCount} players</span></b>${drawn ? (h.jackpotWinner !== ZERO ? `<span>jackpot <b>${fmt(h.jackpotPaid)}</b> → ${name(h.jackpotWinner)}</span>` : `<span class="dim">the refund was the whole jackpot</span>`) : `<span>${fmt(h.pot)} $9TO5</span>`}${st ? `<span class="dim">${st}</span>` : ""}</div>
+        return `<div class="r${youWon(h.refundWinner) || youWon(h.jackpotWinner) ? " me" : ""}"><div class="line"><b>${nyTime(h.closesAt, true)}<span class="dim"> · ${h.playerCount} players</span></b>${drawn ? (h.jackpotWinner !== ZERO ? `<span>jackpot <b>${fmt(h.jackpotPaid)}</b> → ${name(h.jackpotWinner)}</span>` : `<span class="dim">the refund was the whole jackpot</span>`) : `<span>${fmt(h.pot)} ${SYM}</span>`}${st ? `<span class="dim">${st}</span>` : ""}</div>
           ${drawn ? `<div class="line"><span>money back ${fmt(h.refundPaid)} → ${name(h.refundWinner)}</span><a class="dim" href="${drandUrl(h.beaconRound)}" rel="noopener">beacon ${h.beaconRound} ↗</a></div>` : ""}</div>`;
       }).join("") : `<div class="dim">${S.loaded ? "none yet" : "loading…"}</div>`}</div></div></div>`;
 
     const rules = `<div class="cab rules"><div class="lab">HOUSE RULES</div>
-      <p><b>1.</b> Chip in $9TO5 before the ${bellNY} New York bell. <b>${T.divBps / 100}%</b> of every chip-in is paid out on the spot to everyone already in that day; <b>${T.refBps / 100}%</b> goes to whoever sent you.</p>
-      <p><b>2.</b> Five minutes after the bell, drand's public beacon picks two players: one takes the jackpot, one gets their money back. Your chance is your chip-ins, up to <b>${cap / 10000}×</b> with hired brokers counted. A chip-in is final.</p>
+      <p><b>1.</b> Chip in ${SYM} before the ${bellNY} New York bell. <b>${T.divBps / 100}%</b> of every chip-in is paid out on the spot to everyone already in that day; <b>${T.refBps / 100}%</b> goes to whoever sent you.</p>
+      <p><b>2.</b> Five minutes after the bell, drand's public beacon picks two players: one takes the jackpot, one gets their money back. Your chance is your chip-ins${BOOST ? `, up to <b>${cap / 10000}×</b> with hired brokers counted` : ""}. A chip-in is final.</p>
       <p><b>3.</b> The contract checks the beacon itself; nobody at the firm can pick or delay it. Fine print: the <a href="/docs#pool">handbook</a>.</p></div>`;
 
     // the bell panel (a missed draw, rare) goes after the desk: on a phone it was pushing CHIP IN below the first screen
     host.innerHTML = ticker + board + `<div class="cols"><div>${desk}${ref}</div><div>${lead}${feed}</div></div>` + bell + hist + rules;
     countUp(host.querySelector(".board .pot"));
+    if (S.wantLink) {
+      const box = host.querySelector("#link") || host.querySelector("[data-act=connect]");
+      if (box) { S.wantLink = !host.querySelector("#link"); box.scrollIntoView({ behavior: "smooth", block: "center" }); }
+    }
     S.seenDeposits = S.count;
     const a = host.querySelector("#op-amt"), c = host.querySelector("#op-code"), b = host.querySelector("#op-brk"), rf = host.querySelector("#op-ref");
     if (a && keep.amt) a.value = keep.amt;
@@ -681,8 +795,8 @@
     if (act === "chip") {
       if (S.closesAt && Math.floor(Date.now() / 1000) - S.skew >= S.closesAt) { refresh(); return toast("closed — the next pool opens at the bell", false); }
       const v = parseAmount(amt() && amt().value);
-      if (v == null) return toast("type an amount of $9TO5, like 25,000 or 25k", false);
-      if (v < terms().minDeposit) return toast(`the minimum today is ${fmt(terms().minDeposit)} $9TO5`, false);
+      if (v == null) return toast(`type an amount of ${SYM}, like 25,000 or 25k`, false);
+      if (v < terms().minDeposit) return toast(`the minimum today is ${fmt(terms().minDeposit)} ${SYM}`, false);
       if (v > S.balance) return toast("that is more than you have", false);
       const brk = document.getElementById("op-brk"); S.useBrokers = !brk || brk.checked;
       return chipIn(v);
@@ -693,13 +807,24 @@
     if (act === "setcode") { const i = document.getElementById("op-code"); return setCode(i && i.value); }
     if (act === "card") {
       const r = S.cur;
-      const link = `${pageLink()}?ref=${S.code}`;
+      const link = refLink(S.code);
       const jackpot = r ? fmt(r.pot) : "today's";
       const inToday = !!(S.me && S.me.deposited > 0n);
-      const lead = inToday ? "i'm in today's office pool at @thefirmbrokers" : "the office pool at @thefirmbrokers";
-      const postText = (CFG.poolPost || "{lead}: {jackpot} $9TO5 jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 code {code} \u00b7 $9TO5").replace("{lead}", lead).replace("{jackpot}", jackpot).replace("{link}", link).replace("{code}", S.code);
+      const where = IS_HQ ? "the office pool" : B.name.toLowerCase();
+      const lead = inToday ? `i'm in today's ${where} at @thefirmbrokers` : `${where} at @thefirmbrokers`;
+      const postText = (CFG.poolPost || "{lead}: {jackpot} {sym} jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 code {code} \u00b7 {sym}").replace("{lead}", lead).replace("{jackpot}", jackpot).replace("{link}", link).replace("{code}", S.code).replace(/\{sym\}/g, SYM);
       const date = S.closesAt ? new Date(S.closesAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : "";
-      window.__POOL_CARD.open({ code: S.code, link, jackpot, bell: S.closesAt ? nyTime(S.closesAt) : "4:00 PM", date, inToday, postText });
+      const lastDrawn = S.history.find((h) => h.state === 2 && h.playerCount > 0);
+      window.__POOL_CARD.open(Object.assign(cardBranch(), { code: S.code, link, pot: jackpot, players: r ? r.playerCount : 0, lastPaid: lastDrawn ? fmt(lastDrawn.refundPaid + lastDrawn.jackpotPaid) : "", bell: S.closesAt ? nyTime(S.closesAt) : "4:00 PM", date, inToday, postText }));
+      return;
+    }
+    if (act === "wincard") {
+      const h = S.history.find((x) => x.id === Number(b.dataset.id));
+      if (!h || !window.__POOL_CARD) return;
+      const where = IS_HQ ? "the office pool" : B.name.toLowerCase();
+      const winner = h.jackpotWinner !== ZERO ? h.jackpotWinner : h.refundWinner;
+      const postText = `the bell rang at ${where} (@thefirmbrokers): ${fmt(h.jackpotPaid + h.refundPaid)} ${SYM} paid out, drawn by drand and checked on-chain. tomorrow's pot is open.\n\n${pageLink()}`;
+      window.__POOL_CARD.open(Object.assign(cardBranch(), { kind: "winner", link: pageLink(), pot: fmt(h.pot > 0n ? h.pot : h.jackpotPaid + h.refundPaid), players: h.playerCount, winner, winnerCode: same(winner, S.account) ? S.code : "", refundWinner: h.refundWinner, refundPaid: fmt(h.refundPaid), beaconRound: h.beaconRound, bell: nyTime(h.closesAt), date: new Date(h.closesAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }), postText, code: "result" }));
       return;
     }
     if (act === "copy") { const c = host.querySelector(".ref code.lnk"); if (c && navigator.clipboard) navigator.clipboard.writeText(c.textContent).then(() => toast("link copied", true)); return; }
@@ -709,18 +834,27 @@
 
   function page(mount) {
     host = mount;
-    if (!CFG.pool) {
+    if (!B.pool) {
       host.innerHTML = `<div class="cab"><div class="scr"><div class="lab">THE OFFICE POOL</div><div>has not opened yet. When it does, this page is where it happens.</div></div></div>`;
       return;
     }
     // remember who sent you, for your first chip-in
     try { const c = new URL(location.href).searchParams.get("ref"); if (c && validCode(c.toLowerCase())) localStorage.setItem(REF_KEY, c.toLowerCase()); } catch (e) {}
     host.addEventListener("click", onClick);
+    host.addEventListener("input", onInput);
+    // the counter's GET MY LINK key arrives at #link: land on the link box once it exists (it needs a wallet), after the first paint
+    if (location.hash === "#link") { S.wantLink = true; }
+    if (!IS_HQ) {
+      document.title = `${B.name} — Firm Brokers`;
+      const marq = document.querySelector(".op-hero .marq"), sub = document.querySelector(".op-hero .sub");
+      if (marq) marq.textContent = B.name;
+      if (sub) sub.textContent = `a Firm Brokers branch · every day · one pot in ${SYM} · the closing bell`;
+    }
     render();
     refresh();
     clearInterval(ticker);
     ticker = setInterval(() => { const cd = host.querySelector(".board .cd"); if (cd && S.closesAt) { const left = S.closesAt - (Math.floor(Date.now() / 1000) - S.skew); cd.textContent = countdown(left); cd.classList.toggle("hot", left > 0 && left <= HOT_WINDOW); } }, 1000);
   }
 
-  window.__POOL = { page, decodeRound, decodePlayer, decodePlayers, decodeDeposits, parseAmount, fmt, bytes32, fromBytes32 };
+  window.__POOL = { page, branch: B, parseRef, _S: S, decodeRound, decodePlayer, decodePlayers, decodeDeposits, parseAmount, fmt, bytes32, fromBytes32 };
 })();
