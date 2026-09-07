@@ -156,3 +156,27 @@ input { font: inherit; }
 .chip.mini { height: 30px; padding: 0 8px; font-size: 7px; vertical-align: middle; margin-left: 6px; }
 .ref .link .dim { white-space: nowrap; }
 .desk input[type=text]:disabled { color: var(--grey); opacity: .75; }
+
+/* ---- the branch tabs: one per pool on this domain, the open one lit ---- */
+/* the street link and the tabs share one 44 px row on a desktop, so the strip
+   costs the page no height (at 1280×640 it pushed CLOCK IN under the fold);
+   on a phone the strip wraps under the link and scrolls inside itself */
+.op-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.op-tabs { display: flex; gap: 8px; margin: 0; flex: 1 1 auto; justify-content: flex-end; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
+@media (max-width: 720px) { .op-tabs { flex-basis: 100%; justify-content: flex-start; margin-top: 8px; } }
+.op-tabs::-webkit-scrollbar { display: none; }
+.op-tabs[hidden] { display: none; }
+.op-tab {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 14px 0 10px;
+  background: #0b0e13; border: 3px solid var(--ink2); box-shadow: 0 3px 0 var(--rim); text-decoration: none; color: var(--cream);
+}
+.op-tab b { font-family: var(--fd); font-size: 8px; letter-spacing: 1px; }
+.op-tab .pot { font-style: normal; font-family: var(--fb); font-size: 18px; line-height: 1; color: var(--crtink); }
+.op-tab.is-open .pot { color: var(--green); }
+.op-tab:hover { color: var(--gold); }
+.op-tab.on { border-color: var(--gold); box-shadow: 0 3px 0 var(--gold-deep), 0 0 14px #ffc93340; color: var(--gold); }
+.op-tab .br-mark { display: inline-block; flex: none; background-size: contain; background-repeat: no-repeat; image-rendering: pixelated; position: relative; }
+.op-tab .br-mark b { display: none; }
+.op-tab .br-mark.coin { border-radius: 50%; background: radial-gradient(circle at 40% 35%, #ffd75e, #d4af37 60%, #8a6d35); box-shadow: inset 0 0 0 2px #8a6d35; }
+.op-tab .br-mark.coin b { display: flex; width: 100%; height: 100%; align-items: center; justify-content: center; font-family: var(--fd); font-size: 8px; letter-spacing: 0; color: #3a2a08; }
+@media (max-width: 520px) { .op-tab { padding: 0 10px 0 8px; gap: 8px; } .op-tab b { font-size: 7px; } .op-tab .pot { font-size: 16px; } }

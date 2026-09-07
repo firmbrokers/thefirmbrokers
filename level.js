@@ -4764,5 +4764,21 @@
   if (wantsFlat()) {
     setFlat(true, false);
   }
+  // Deep links into the tower: #hall walks you straight into the branch hall,
+  // #hall/<slug> to that branch's counter, #auction to the sale room upstairs.
+  // The pool page's "THE STREET" link uses them, so someone who chipped in
+  // lands back at the counter they left rather than at the lobby.
+  {
+    const deep = /^#(hall|auction)(?:\/([a-z0-9-]+))?$/i.exec(location.hash || "");
+    const tower = ZONES.find((z) => z.id === "hr");
+    if (deep && BRANCHES_LIVE && tower && zoneLive(tower) && !wantsFlat()) {
+      try {
+        enterRoom("hr");
+        if (deep[1].toLowerCase() === "auction") { state.hrFloor = "auction"; rebuildRoom(); }
+        else if (deep[2] && window.__BRANCHES && window.__BRANCHES.goTo) window.__BRANCHES.goTo(deep[2].toLowerCase());
+        state.anim && (state.anim.prevX = state.x);
+      } catch (e) { /* a bad hash is just the street */ }
+    }
+  }
   requestAnimationFrame(tick);
 })();

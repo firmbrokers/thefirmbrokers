@@ -45,7 +45,7 @@ window.FIRM_CFG = {
   // Auction House and no branch UI is built anywhere.
   branches: [
     { slug: "hq",    name: "THE OFFICE POOL", short: "OFFICE POOL", symbol: "$9TO5", token: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc", pool: "0xba74bFbfa33296052c47149bb805C396ee608c2B", block: 55259924, page: "pool.html",             boost: true,  mark: "art/marks/hq.png" },
-    { slug: "frong", name: "THE FRONG POND",  short: "FRONG POND",  symbol: "FRONG", token: "0x6245e67affA44a23077f0Ea7f981a8DC743a0c47", pool: "0x16f2D383e1C09d48568c882CD1B323B99f592842", block: 55666061, page: "https://frong.io/pond", boost: false, mark: "art/marks/frong.png" },
+    { slug: "frong", name: "THE FRONG POND",  short: "FRONG POND",  symbol: "FRONG", token: "0x6245e67affA44a23077f0Ea7f981a8DC743a0c47", pool: "0x16f2D383e1C09d48568c882CD1B323B99f592842", block: 55666061, page: "pool.html?b=frong", boost: false, mark: "art/marks/frong.png" }, // the tab on our pool page; frong.io/pond stays that community's own door
   ],
   // THE MORNING CALL (site/call.*): the call desk contract and its first block
   // (where the streak board's Called scan starts). Empty/0 = the desk has not

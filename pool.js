@@ -844,6 +844,8 @@
     host.addEventListener("input", onInput);
     // the counter's GET MY LINK key arrives at #link: land on the link box once it exists (it needs a wallet), after the first paint
     if (location.hash === "#link") { S.wantLink = true; }
+    // back to the hall, at THIS branch's counter (level.js honours #hall/<slug>), HQ included
+    { const home = document.querySelector(".op-home"); if (home) home.setAttribute("href", "/#hall/" + encodeURIComponent(B.slug)); }
     if (!IS_HQ) {
       document.title = `${B.name} — Firm Brokers`;
       const marq = document.querySelector(".op-hero .marq"), sub = document.querySelector(".op-hero .sub");

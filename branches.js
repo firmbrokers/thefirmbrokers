@@ -415,12 +415,15 @@
     // service panel on the right IN THE SAME FRAME — the two keys are set into
     // the wood, the name is a brass plate on the top rail. (A cream card used
     // to float beside the window; the user read it as a widget, not furniture.)
-    // Every page opens in a new tab, the firm's own included: the hall stays.
+    // Every page opens in the SAME tab: inside a wallet's in-app browser a new
+    // tab can land in the system browser, where there is no wallet (a tester
+    // hit exactly that, 2026-09-07). The page's "THE STREET" link brings people
+    // back to this counter through #hall/<slug>, so nothing is lost.
     const win = el("div", "br-win");
     win.innerHTML = `<i class="frame"></i><i class="glass"></i><i class="grille"></i><i class="mullion"></i>
       <div class="panel">
-        <a class="key chip-in" href="${esc(b.page)}" target="_blank" rel="noopener">CHIP IN →</a>
-        <a class="key link" href="${esc(b.page)}#link" target="_blank" rel="noopener">INVITE<br>EARN 5%</a>
+        <a class="key chip-in" href="${esc(b.page)}">CHIP IN →</a>
+        <a class="key link" href="${esc(b.page)}${b.page.indexOf("#") === -1 ? "#link" : ""}">INVITE<br>EARN 5%</a>
         <span class="fine">${b.boost ? "brokers boost odds, up to 2x" : "flat odds, no boost"}</span>
       </div>
       <b class="plate">WINDOW ${i + 1} · ${esc(b.symbol)}</b><i class="sill"></i><i class="tray"></i>`;
@@ -500,6 +503,18 @@
 
   // ------------------------------------------------------------ the elevator
   let liftCtx = null, riding = false, rideGen = 0;
+  /// where each counter stands in the hall, for deep links (#hall/<slug>) and
+  /// the board's row clicks; set by hall(), read by goTo()
+  let hallCtx = null; const counterAt = {};
+  function goTo(slug) {
+    if (!hallCtx || !hallCtx.state || api.floor !== "hall") return false;
+    const x = counterAt[String(slug || "").toLowerCase()];
+    if (x == null) return false;
+    hallCtx.state.x = x;
+    const c = hallCtx.roomLayer.querySelector(`.br-counter[data-slug="${slug}"]`);
+    if (c) { c.classList.remove("flash"); void c.offsetWidth; c.classList.add("flash"); }
+    return true;
+  }
   /// a room torn down mid-ride (Escape, a warp, the street door) must not
   /// have the ride's timers rebuild it a second later: exitRoom calls this
   function cancelRide() {
@@ -665,7 +680,8 @@
     px(bell, { left: "1512px" }); roomLayer.appendChild(bell);
 
     // D: the counters
-    const counters = bs.map((b, i) => buildCounter(ctx, b, i, X_C + i * (COUNTER_W + COUNTER_GAP)));
+    hallCtx = ctx;
+    const counters = bs.map((b, i) => { counterAt[b.slug] = X_C + i * (COUNTER_W + COUNTER_GAP) + 200; return buildCounter(ctx, b, i, X_C + i * (COUNTER_W + COUNTER_GAP)); });
     const shut = el("div", "br-counter shuttered");
     shut.innerHTML = `<div class="br-sign"><div class="nm"><i class="br-mark coin q"><b>?</b></i><b>YOUR TOKEN HERE</b></div><div class="pot"><b class="n">—</b></div><div class="bell"><span class="lab">THIS COUNTER OPENS</span><b class="cd">SOON</b></div><div class="sub"><span class="in">ASK AT THE DESK →</span></div></div>
       <div class="br-win"><i class="frame"></i><i class="shutter"></i><i class="mullion"></i><div class="panel"><span class="fine">your token, same bell</span></div><b class="plate">NEXT BRANCH</b><i class="sill"></i><b class="closed">CLOSED</b></div>`;
@@ -771,7 +787,7 @@
   // ------------------------------------------------------------ exports
   window.__BRANCHES = {
     live, list, read, subscribe, snapshot: () => snapshot, marksReady, drawMark, markEl,
-    paintWall, wallTicker, hall, elevator, stairs, ride, cancelRide, fmtShort, fmtLong, secondsLeft, who,
+    paintWall, wallTicker, hall, elevator, stairs, ride, cancelRide, goTo, fmtShort, fmtLong, secondsLeft, who,
     get liftAt() { return api.liftAt; }, get stairsAt() { return api.stairsAt; }, get floor() { return api.floor; },
     // for the suite: the flap alphabet and the board's row count
     _FLAP_CHARS: FLAP_CHARS, _BOARD_ROWS: BOARD_ROWS, _poll: poll,
