@@ -20,12 +20,7 @@
   const asked = url ? String(url.searchParams.get("b") || "").toLowerCase() : "";
   const slug = list.some((b) => b.slug === asked) ? asked : "hq";
   const ref = url ? String(url.searchParams.get("ref") || "") : "";
-  const hrefOf = (b) => {
-    const q = [];
-    if (b.slug !== "hq") q.push("b=" + encodeURIComponent(b.slug));
-    if (ref) q.push("ref=" + encodeURIComponent(ref));
-    return "/pool" + (q.length ? "?" + q.join("&") : ""); // the clean URL, as the handbook and the counters link it
-  };
+  const hrefOf = (b) => `/pool${b.slug === "hq" ? "" : "/" + encodeURIComponent(b.slug)}${ref ? "?ref=" + encodeURIComponent(ref) : ""}`; // each branch's own page
   const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 

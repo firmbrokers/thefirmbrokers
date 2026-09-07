@@ -27,8 +27,13 @@
   /// on a working page. Addresses come from config only, never from the URL.
   const HQ = { slug: "hq", name: "THE OFFICE POOL", symbol: "$9TO5", token: CFG.token, pool: CFG.pool, block: CFG.poolBlock, page: "/pool", boost: true, mark: "", buyUrl: CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : "" };
   function pickBranch() {
-    let slug = "";
-    try { slug = String(new URL(location.href).searchParams.get("b") || "").toLowerCase(); } catch (e) {}
+    // the generated page says which branch it is; a plain pool.html reads the path (/pool/<slug>) or the old ?b=
+    let slug = String(window.__POOL_BRANCH || "").toLowerCase();
+    try {
+      const u = new URL(location.href);
+      if (!slug) { const m = /^\/pool\/([a-z0-9-]+)/.exec(u.pathname); if (m) slug = m[1].toLowerCase(); }
+      if (!slug) slug = String(u.searchParams.get("b") || "").toLowerCase();
+    } catch (e) {}
     const list = Array.isArray(CFG.branches) ? CFG.branches : [];
     const hq = list.find((b) => b && b.slug === "hq");
     // the top-level `pool` stays the switch (empty = not opened); branches.hq lends its name and mark only
@@ -452,7 +457,7 @@
   }
   /// the name box, as typed: free or taken, and the link it would make
   function nameNote(code, check) {
-    if (!code) return { cls: "fine", html: `3 to 20 lowercase letters or digits · your link will be ${esc(pageLink().replace(/^https?:\/\//, ""))}${IS_HQ ? "?" : "&"}ref=<b>yourname</b>` };
+    if (!code) return { cls: "fine", html: `3 to 20 lowercase letters or digits · your link will be ${esc(pageLink().replace(/^https?:\/\//, ""))}?ref=<b>yourname</b>` };
     if (!validCode(code)) return { cls: "fine bad", html: /[^a-z0-9]/.test(code) ? "lowercase letters and digits only" : code.length < 3 ? "at least 3 characters" : "at most 20 characters" };
     if (!check || check.code !== code) return { cls: "fine", html: "checking…" };
     if (check.error) return { cls: "fine", html: "could not read the chain · it is checked again when you press GET MY LINK" };
@@ -514,8 +519,8 @@
   function drandUrl(round) { return `https://api.drand.sh/v2/beacons/quicknet/rounds/${round}`; }
   /// the post is the same anti-phishing shape as the application post: the site's
   /// own page, nothing else linked
-  const pageLink = () => `${location.origin}/pool${IS_HQ ? "" : "?b=" + B.slug}`; // the clean URL, whichever way the visitor arrived
-  const refLink = (code) => `${pageLink()}${IS_HQ ? "?" : "&"}ref=${code}`;
+  const pageLink = () => `${location.origin}/pool${IS_HQ ? "" : "/" + B.slug}`; // the clean URL, whichever way the visitor arrived
+  const refLink = (code) => `${pageLink()}?ref=${code}`;
   function xIntent(code) {
     const link = refLink(code);
     const textOf = (CFG.poolPost || "i'm in the office pool at @thefirmbrokers. chip in {sym} before the closing bell: one gets their money back, one takes the pot.\n\n{link} \u00b7 code {code} \u00b7 {sym}").replace("{link}", link).replace("{code}", code).replace(/\{sym\}/g, SYM);
@@ -844,6 +849,12 @@
     host.addEventListener("input", onInput);
     // the counter's GET MY LINK key arrives at #link: land on the link box once it exists (it needs a wallet), after the first paint
     if (location.hash === "#link") { S.wantLink = true; }
+    // an old address (?b=<slug>, or pool.html) becomes the clean one, keeping ref and hash
+    try {
+      const u = new URL(location.href);
+      const want = `/pool${IS_HQ ? "" : "/" + B.slug}`;
+      if (u.searchParams.has("b") || u.pathname !== want) { u.searchParams.delete("b"); u.pathname = want; history.replaceState(null, "", u.pathname + u.search + u.hash); }
+    } catch (e) { /* cosmetic */ }
     // back to the hall, at THIS branch's counter (level.js honours #hall/<slug>), HQ included
     { const home = document.querySelector(".op-home"); if (home) home.setAttribute("href", "/#hall/" + encodeURIComponent(B.slug)); }
     if (!IS_HQ) {
