@@ -24,7 +24,7 @@
     const q = [];
     if (b.slug !== "hq") q.push("b=" + encodeURIComponent(b.slug));
     if (ref) q.push("ref=" + encodeURIComponent(ref));
-    return "pool.html" + (q.length ? "?" + q.join("&") : "");
+    return "/pool" + (q.length ? "?" + q.join("&") : ""); // the clean URL, as the handbook and the counters link it
   };
   const el = (t, c, h) => { const n = document.createElement(t); if (c) n.className = c; if (h != null) n.innerHTML = h; return n; };
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));

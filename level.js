@@ -4778,6 +4778,9 @@
         else if (deep[2] && window.__BRANCHES && window.__BRANCHES.goTo) window.__BRANCHES.goTo(deep[2].toLowerCase());
         state.anim && (state.anim.prevX = state.x);
       } catch (e) { /* a bad hash is just the street */ }
+      // the hash has done its job: the address bar goes back to the plain
+      // street, so it never says #hall/frong from the lobby (user, 2026-09-07)
+      try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* cosmetic */ }
     }
   }
   requestAnimationFrame(tick);
