@@ -40,6 +40,11 @@
   const KEY_META = "firmbrokers.records.assets.v1"; // the asset menu (symbols, decimals): full and closed, so a day's cache is safe
   const PAGE_BLOCKS = 1_500_000; // one getLogs per ~2 days of chain for id-filtered scans (measured 2026-09-07: 0.3–0.6 s a page; 3M+ blocks "log query timed out")
   const MIN_PAGE = 50_000;
+  // the mint and the first hires (≈2.6 days of chain after deploy) are so dense that a
+  // 1.5M-block id-filtered page there times out on the node (2.2–3.2 s each, every
+  // first visit, 2026-09-07): those blocks are paged at half size from the start
+  const DENSE_UNTIL = CFG.deployBlock + 2_250_000;
+  const pageCap = (a) => (a < DENSE_UNTIL ? PAGE_BLOCKS / 2 : PAGE_BLOCKS);
   const GAP_MS = 300; // between getLogs: the official RPC 429s a burst, and its 429 carries a malformed CORS header so the browser only sees "Failed to fetch"
   const REQ_TIMEOUT = 30_000; // a stalled phone connection must not leave the page on "reading the chain…" for ever
   const ZERO = "0x0000000000000000000000000000000000000000";
@@ -130,14 +135,15 @@
       catch (e) { if (to - from + 1 <= MIN_PAGE) throw e; /* page it */ }
     }
     const out = [];
-    let page = Math.min(PAGE_BLOCKS, to - from + 1);
+    let page = PAGE_BLOCKS;
     for (let a = from; a <= to;) {
+      page = Math.min(page, pageCap(a), to - a + 1);
       const b = Math.min(to, a + page - 1);
       try {
         const got = await logsOnce(base, a, b);
         for (const l of got || []) out.push(l);
         a = b + 1;
-        page = Math.min(PAGE_BLOCKS, page * 2);
+        page = Math.min(pageCap(a), page * 2);
         if (opts.progress) opts.progress(Math.min(1, (a - from) / (to - from + 1)));
       } catch (e) {
         if (page <= MIN_PAGE) throw e;
