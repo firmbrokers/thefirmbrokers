@@ -1,6 +1,7 @@
 /* ===========================================================================
    THE POOL PAGE'S TABS — one per branch, every branch's pool on this domain.
-   Built from CFG.branches (HQ first), the open one lit, each tab's live pot
+   Built from CFG.branches (HQ first), the open one lit (the page's own
+   branch, /pool/<slug>, or the old ?b=), each tab's live pot
    through branches.js's shared reader. A click loads that branch's page in
    THIS tab; a ?ref= code travels along (codes are checked per pool; an
    unknown one never blocks anything). Mounts into #op-tabs; with one branch
@@ -17,7 +18,10 @@
 
   let url = null;
   try { url = new URL(location.href); } catch (e) { url = null; }
-  const asked = url ? String(url.searchParams.get("b") || "").toLowerCase() : "";
+  // which branch is open: the page says so (/pool/<slug>.html sets __POOL_BRANCH), else the path, else the old ?b= — same order as pool.js
+  let asked = String(window.__POOL_BRANCH || "").toLowerCase();
+  if (!asked && url) { const m = /^\/pool\/([a-z0-9-]+)/.exec(url.pathname); if (m) asked = m[1].toLowerCase(); }
+  if (!asked && url) asked = String(url.searchParams.get("b") || "").toLowerCase();
   const slug = list.some((b) => b.slug === asked) ? asked : "hq";
   const ref = url ? String(url.searchParams.get("ref") || "") : "";
   const hrefOf = (b) => `/pool${b.slug === "hq" ? "" : "/" + encodeURIComponent(b.slug)}${ref ? "?ref=" + encodeURIComponent(ref) : ""}`; // each branch's own page
