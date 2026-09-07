@@ -2217,7 +2217,7 @@
       }
       // nothing to seat: the Market is where you buy one, and its value sort
       // is the page's best feature, so that is where the plate points
-      location.href = "market.html?sort=value";
+      location.href = "/market?sort=value";
     });
     px(d, { left: x + "px" });
     roomLayer.appendChild(d);

@@ -55,7 +55,7 @@
   const hms = (s) => `${two(Math.floor(s / 3600))}:${two(Math.floor((s % 3600) / 60))}:${two(s % 60)}`;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   /// "pool.html" → "/pool" on this site; an absolute URL stays as it is
-  const pageHref = (p) => (/^https?:\/\//.test(p) ? p : "/" + String(p || "pool.html").replace(/^\//, "").replace(/\.html(?=$|[?#])/, ""));
+  const pageHref = (p) => (/^https?:\/\//.test(p) ? p : "/" + String(p || "/pool").replace(/^\//, "").replace(/\.html(?=$|[?#])/, ""));
 
   let live = null; // { unsub, tick }
   window.__BRANCHES_FLAT = function (ctx) {

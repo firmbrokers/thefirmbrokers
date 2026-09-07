@@ -25,7 +25,7 @@
   /// HQ is the config's own pool. Any other branch comes from CFG.branches by
   /// its slug in ?b=; unknown slugs fall back to HQ so a bad link still lands
   /// on a working page. Addresses come from config only, never from the URL.
-  const HQ = { slug: "hq", name: "THE OFFICE POOL", symbol: "$9TO5", token: CFG.token, pool: CFG.pool, block: CFG.poolBlock, page: "pool.html", boost: true, mark: "", buyUrl: CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : "" };
+  const HQ = { slug: "hq", name: "THE OFFICE POOL", symbol: "$9TO5", token: CFG.token, pool: CFG.pool, block: CFG.poolBlock, page: "/pool", boost: true, mark: "", buyUrl: CFG.token && CFG.buyUrl ? CFG.buyUrl + "token/" + CFG.token : "" };
   function pickBranch() {
     let slug = "";
     try { slug = String(new URL(location.href).searchParams.get("b") || "").toLowerCase(); } catch (e) {}
