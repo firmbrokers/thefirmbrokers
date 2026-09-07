@@ -37,7 +37,11 @@
   const SEL = { twapQuote: "0x6e3e495e", pendingEth: "0xccc73973" };
   const KEY_ROUNDS = "firmbrokers.records.rounds.v1";
   const KEY_WALLET = "firmbrokers.records.wallet.v2."; // + address
-  const PAGE_BLOCKS = 1_500_000; // one getLogs per ~2 days of chain; the helper bisects on error
+  const KEY_META = "firmbrokers.records.assets.v1"; // the asset menu (symbols, decimals): full and closed, so a day's cache is safe
+  const PAGE_BLOCKS = 1_500_000; // one getLogs per ~2 days of chain for id-filtered scans (measured 2026-09-07: 0.3–0.6 s a page; 3M+ blocks "log query timed out")
+  const MIN_PAGE = 50_000;
+  const GAP_MS = 300; // between getLogs: the official RPC 429s a burst, and its 429 carries a malformed CORS header so the browser only sees "Failed to fetch"
+  const REQ_TIMEOUT = 30_000; // a stalled phone connection must not leave the page on "reading the chain…" for ever
   const ZERO = "0x0000000000000000000000000000000000000000";
 
   // ---------------------------------------------------------------- helpers
@@ -61,17 +65,88 @@
   };
 
   // ---------------------------------------------------------------- chain
-  /// every log in [from, to] for a filter, in pages the node answers quickly;
-  /// the wallet's provider is never used (its chain may not be ours)
-  async function scan(base, from, to) {
+  /// Every getLogs of this page goes through one gate: one request in flight,
+  /// GAP_MS apart. Measured live 2026-09-07 (first visit, a phone): three
+  /// scans in parallel plus back-to-back pages made the official RPC answer
+  /// 429 to most requests; the browser reports those as network failures
+  /// (the 429 carries "Access-Control-Allow-Origin: *,*"), so the helper
+  /// backed off blind, retried, and bisected — 90 to 197 requests and 35 to
+  /// 78 s for four brokers. Paced single requests answer in 0.2–0.6 s.
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  let gateChain = Promise.resolve(), gateLast = 0;
+  const gate = (fn) => {
+    const run = gateChain.then(async () => {
+      const wait = gateLast + GAP_MS - Date.now();
+      if (wait > 0) await sleep(wait);
+      try { return await fn(); } finally { gateLast = Date.now(); }
+    });
+    gateChain = run.catch(() => {});
+    return run;
+  };
+  /// one getLogs for [a, b] on the primary RPC (public fallbacks archive-gate
+  /// getLogs), with this page's own policy, which firm.js's shared helper
+  /// cannot have: "log query timed out" means the node found the range too
+  /// EXPENSIVE, so it is thrown at once for the caller to halve (the shared
+  /// helper retried the same range five times: 4 × 2.2 s watched live on the
+  /// mint-era page); a network failure is almost always the RPC's 429 with its
+  /// broken CORS header, so it waits longer and asks the SAME range again; a
+  /// stalled connection is cut at REQ_TIMEOUT instead of hanging the page.
+  const hex = (n) => "0x" + n.toString(16);
+  const logsOnce = (base, a, b) => gate(async () => {
+    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs", params: [Object.assign({}, base, { fromBlock: hex(a), toBlock: hex(b) })] });
+    let last = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt) await sleep(1000 * attempt);
+      const ctl = typeof AbortController === "function" ? new AbortController() : null;
+      const timer = ctl ? setTimeout(() => ctl.abort(), REQ_TIMEOUT) : null;
+      try {
+        const r = await fetch(CFG.rpcs[0], { method: "POST", headers: { "Content-Type": "application/json" }, body, signal: ctl ? ctl.signal : undefined });
+        if (!r.ok) throw new Error("http " + r.status);
+        const j = await r.json();
+        if (j.error) {
+          const e = new Error(j.error.message || "rpc error");
+          if (/timed out|too large|too many results|exceed|limit/i.test(e.message)) { e.tooBig = true; throw e; }
+          throw e;
+        }
+        return j.result || [];
+      } catch (e) {
+        last = e;
+        if (e && e.tooBig) throw e;
+      } finally { if (timer) clearTimeout(timer); }
+    }
+    throw last || new Error("no answer from the rpc");
+  });
+  /// every log in [from, to] for a filter. `whole`: try the range in ONE
+  /// request first (RoundSettled since launch = 239 logs in 0.5 s; Transfers to
+  /// one wallet in 0.25 s), then page. A page the node calls too expensive is
+  /// halved at once (down to MIN_PAGE); after a page succeeds the size grows
+  /// back, so one heavy stretch (the mint) does not slow the whole scan.
+  /// The wallet's provider is never used (its chain may not be ours).
+  async function scan(base, from, to, opts) {
+    opts = opts || {};
+    if (to < from) return [];
+    if (opts.whole || to - from + 1 <= PAGE_BLOCKS) {
+      try { return (await logsOnce(base, from, to)) || []; }
+      catch (e) { if (to - from + 1 <= MIN_PAGE) throw e; /* page it */ }
+    }
     const out = [];
-    for (let a = from; a <= to; a += PAGE_BLOCKS) {
-      const b = Math.min(to, a + PAGE_BLOCKS - 1);
-      const got = await F.rpcLogsRange(base, a, b, 0, true);
-      for (const l of got || []) out.push(l);
+    let page = Math.min(PAGE_BLOCKS, to - from + 1);
+    for (let a = from; a <= to;) {
+      const b = Math.min(to, a + page - 1);
+      try {
+        const got = await logsOnce(base, a, b);
+        for (const l of got || []) out.push(l);
+        a = b + 1;
+        page = Math.min(PAGE_BLOCKS, page * 2);
+        if (opts.progress) opts.progress(Math.min(1, (a - from) / (to - from + 1)));
+      } catch (e) {
+        if (page <= MIN_PAGE) throw e;
+        page = Math.max(MIN_PAGE, Math.floor(page / 2));
+      }
     }
     return out;
   }
+  const progress = (label) => (f) => { S.loading = `${label} ${Math.round(f * 100)}%`; render(); };
   const readCache = (key) => { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; } };
   const writeCache = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} };
 
@@ -80,7 +155,7 @@
     let c = readCache(KEY_ROUNDS);
     if (!c || c.v !== 1) c = { v: 1, to: CFG.deployBlock - 1, rows: [] };
     if (head > c.to) {
-      const logs = await scan({ address: CFG.engine, topics: [TOPIC.SETTLED] }, c.to + 1, head);
+      const logs = await scan({ address: CFG.engine, topics: [TOPIC.SETTLED] }, c.to + 1, head, { whole: true, progress: progress("the settled hours…") });
       for (const l of logs) c.rows.push([Number(BigInt(l.topics[1])), big(l.data, 0).toString(), big(l.data, 1).toString(), Number(BigInt(l.blockNumber))]);
       c.to = head;
       writeCache(KEY_ROUNDS, c);
@@ -98,7 +173,7 @@
     if (!c || c.v !== 2) c = null;
     // brokers ever received: the cache's set plus anything received since
     const ever = new Set(c ? c.ids : []);
-    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, c ? c.to + 1 : CFG.deployBlock, head);
+    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, c ? c.to + 1 : CFG.deployBlock, head, { whole: true });
     for (const l of recv) ever.add(Number(BigInt(l.topics[3])));
     const ids = [...ever].sort((a, b) => a - b);
     // a new broker needs his whole history: start the cache over (rare)
@@ -107,15 +182,13 @@
       const topicsOf = (g) => g.map((id) => "0x" + word(id));
       for (let i = 0; i < ids.length; i += 100) {
         const group = ids.slice(i, i + 100);
-        // the three histories of a group side by side: three requests in flight
-        // is well under the public node's patience, and a first visit that
-        // took 50 s for four brokers one request at a time (2026-09-06) is a
-        // page nobody waits for
-        const [tr, sy, dl] = await Promise.all([
-          scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, null, topicsOf(group)] }, c.to + 1, head),
-          scan({ address: CFG.engine, topics: [TOPIC.SYNCED, topicsOf(group)] }, c.to + 1, head),
-          scan({ address: CFG.engine, topics: [TOPIC.DELIVERED, topicsOf(group)] }, c.to + 1, head),
-        ]);
+        // the group's two histories: the NFT's transfers, and the engine's
+        // Synced AND Delivered in ONE filter (topic0 is an OR) — two paged
+        // scans through the gate instead of three side by side (see the gate:
+        // parallel requests were what got the page throttled, 2026-09-07)
+        const tr = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, null, topicsOf(group)] }, c.to + 1, head, { progress: progress("your brokers' history…") });
+        const en = await scan({ address: CFG.engine, topics: [[TOPIC.SYNCED, TOPIC.DELIVERED], topicsOf(group)] }, c.to + 1, head, { progress: progress("your brokers' pay…") });
+        const sy = en.filter((l) => l.topics[0] === TOPIC.SYNCED), dl = en.filter((l) => l.topics[0] === TOPIC.DELIVERED);
         for (const l of tr) c.transfers.push([Number(BigInt(l.topics[3])), "0x" + l.topics[1].slice(26).toLowerCase(), "0x" + l.topics[2].slice(26).toLowerCase(), Number(BigInt(l.blockNumber)), Number(BigInt(l.logIndex || 0))]);
         for (const l of sy) c.syncs.push([Number(BigInt(l.topics[1])), big(l.data, 0).toString(), Number(big(l.data, 1)), Number(BigInt(l.blockNumber)), Number(BigInt(l.logIndex || 0))]);
         for (const l of dl) c.deliveries.push([Number(BigInt(l.topics[1])), Number(BigInt(l.topics[2])), big(l.data, 0).toString(), big(l.data, 1).toString(), Number(BigInt(l.blockNumber)), l.transactionHash]);
@@ -146,12 +219,17 @@
     // the authoritative "on the machine" number (the brokers held NOW) and the dollar rate, one batch
     const reqs = S.owned.map((id) => ({ to: CFG.engine, data: SEL.pendingEth + word(id) }));
     reqs.push({ to: CFG.engine, data: SEL.twapQuote + word(11) + word(10n ** 18n) });
-    const res = await F.callBatch(reqs);
+    const res = await gate(() => F.callBatch(reqs)); // through the gate: right after the scans it was the request the limiter caught
     S.pending = 0n;
     for (let i = 0; i < S.owned.length; i++) S.pending += res[i] && res[i].length >= 66 ? big(res[i], 0) : 0n;
     const q = res[S.owned.length];
     S.usdPerEth = q && q.length >= 66 && big(q, 0) > 0n ? big(q, 0) : null;
-    try { S.meta = await F.assetMeta(); } catch (e) { S.meta = null; }
+    // the asset menu: three round trips through firm.js, and the menu is full and closed → cached a day
+    const mc = readCache(KEY_META);
+    if (mc && mc.v === 1 && Date.now() - mc.at < 86_400_000 && mc.meta) S.meta = mc.meta;
+    else {
+      try { S.meta = await gate(() => F.assetMeta()); if (S.meta) writeCache(KEY_META, { v: 1, at: Date.now(), meta: S.meta }); } catch (e) { S.meta = null; }
+    }
   }
 
   /// who held a broker at a block: the last transfer at or before it
