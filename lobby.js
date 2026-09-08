@@ -59,6 +59,18 @@
   .fb-billboard.bb-tight p { margin-top: 10px !important; }
   .fb-billboard.bb-tiny h1 { font-size: 26px !important; }
   .fb-billboard.bb-tiny p  { font-size: 19px !important; }
+  /* phones: the wordmark stays ONE line. At 34px "FIRM BROKERS" wrapped to two
+     lines on every phone and the sign grew to ~220px — a third of the screen —
+     which is what pushed it into the hiring sign below (measured 2026-09-08:
+     the sign covered the tagline at 560 and 600 tall). 22px is one line at
+     390, 18px (bb-tiny) at 360. */
+  @media (max-width: 480px) {
+    .fb-billboard .inner { padding: 14px 12px !important; }
+    .fb-billboard h1 { font-size: 22px !important; letter-spacing: 0 !important; }
+    .fb-billboard p  { font-size: 17px !important; margin-top: 10px !important; }
+    .fb-billboard.bb-tiny h1 { font-size: 18px !important; }
+    .fb-billboard.bb-tiny p  { font-size: 15px !important; }
+  }
 
   /* --- street furniture --------------------------------------------------- */
   .fb-hydrant {
@@ -271,7 +283,12 @@
         // the inner screen is what the type has to live inside, and it can only
         // be measured once the width rule above has done its clamping
         const inner = bbEl.querySelector(".inner");
-        return !inner || inner.scrollWidth <= inner.clientWidth + 1;
+        if (inner && inner.scrollWidth > inner.clientWidth + 1) return false;
+        // a wrapped headline overflows nothing, so scrollWidth never saw it: the
+        // wordmark on two lines is the failure the ladder exists to prevent
+        const h1 = bbEl.querySelector("h1");
+        if (h1) { const fs = parseFloat(getComputedStyle(h1).fontSize) || 0; if (fs && h1.offsetHeight > fs * 2.2) return false; }
+        return true;
       };
       // Measured, not decided once. The ladder used to be walked a single time
       // at build, which is before the pixel fonts land: the headline was sized
@@ -292,7 +309,17 @@
         // screen is not a sign. Anything that still cannot fit sits lower and
         // overlaps the roof, which is the cheaper of the two failures.
         const top = Math.min(260, innerHeight - groundH - h - 40);
-        bbEl.style.setProperty("--bb-lift", Math.max(top < 96 ? 24 : 96, top) + "px");
+        const lift = Math.max(top < 96 ? 24 : 96, top);
+        bbEl.style.setProperty("--bb-lift", lift + "px");
+        // The hiring sign hangs from the billboard's bottom edge, so it must
+        // follow the lift: published on the root for level.css's .fb-hire rule.
+        // When the billboard had to come down (a short window) the sign goes
+        // compact — headline and APPLY only — so it never reaches the walkers.
+        // Before this the sign sat at a fixed height and the lowered billboard
+        // covered its own tagline behind it (phones, 2026-09-08).
+        document.documentElement.style.setProperty("--bb-lift", lift + "px");
+        const hire = document.querySelector(".fb-hire");
+        if (hire) hire.classList.toggle("compact", lift < 260);
       };
       place();
       try { document.fonts.ready.then(place); } catch (e) { /* no font api: one pass stands */ }

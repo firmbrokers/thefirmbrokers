@@ -122,11 +122,16 @@
         drawing, last, rounds: h.count,
       });
     }
-    const q3 = out.filter((o) => o.last && o.last.jackpotWinner !== ZERO).map((o) => ({ to: o.pool, data: SEL.codeOf + word(o.last.jackpotWinner) }));
+    // the winner the signs name: the jackpot winner, or — when one player's refund
+    // was the WHOLE pot (refund = min(deposit, pot), so there is no second winner;
+    // Frong round 2, 2026-09-07) — the refund winner and what they took. Before
+    // this the sign read "LAST: – TOOK 0".
+    for (const o of out) if (o.last) o.last.shown = o.last.jackpotWinner !== ZERO ? { addr: o.last.jackpotWinner, paid: o.last.jackpotPaid } : { addr: o.last.refundWinner, paid: o.last.refundPaid };
+    const q3 = out.filter((o) => o.last && o.last.shown.addr !== ZERO).map((o) => ({ to: o.pool, data: SEL.codeOf + word(o.last.shown.addr) }));
     if (q3.length) {
       const r3 = await f.callBatch(q3);
       let j = 0;
-      for (const o of out) if (o.last && o.last.jackpotWinner !== ZERO) o.last.winnerCode = decodeCode(r3[j++]);
+      for (const o of out) if (o.last && o.last.shown.addr !== ZERO) o.last.winnerCode = decodeCode(r3[j++]);
     }
     return out;
   }
@@ -173,7 +178,7 @@
     return fmtShort(v, dec);
   }
   const short = (a) => (a && a !== ZERO ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
-  const who = (o) => (o && o.last ? (o.last.winnerCode || short(o.last.jackpotWinner)) : "—");
+  const who = (o) => (o && o.last ? (o.last.winnerCode || short(o.last.shown ? o.last.shown.addr : o.last.jackpotWinner)) : "—");
   /// seconds until a branch's bell, by the chain's clock plus the time since we read it
   function secondsLeft(o) {
     const elapsed = Math.floor((Date.now() - (o.readAt || Date.now())) / 1000);
@@ -381,14 +386,15 @@
 
   // ------------------------------------------------------------ the counters
   const STAFF = [
-    // Bob · Fair · Black · Green candle — the HQ teller
-    { look: "hr-bob pk-badge", pal: { H: "#3c2c20", S: "#eecaaa", d: "#c9a382", N: "#1c1c20", D: "#161619", T: "#388e54", L: "#16161a", M: "#111114" } },
-    // Slick · Tan · Navy · Blue — the second window
-    { look: "hr-slick pk-badge", pal: { H: "#201c1a", S: "#d8ac80", d: "#9f7f5e", N: "#2a3858", D: "#1e2940", T: "#3454a0", L: "#16161a", M: "#111114" } },
-    // Buzz · Brown · Charcoal · Gold — the third
-    { look: "hr-buzz pk-badge", pal: { H: "#584636", S: "#966a48", d: "#734f34", N: "#3a3a3e", D: "#2c2c30", T: "#deb23e", L: "#16161a", M: "#111114" } },
-    // Bald · Fair · Black · Red — the fourth
-    { look: "hr-bald ey-glasses", pal: { H: "#201c1a", S: "#eecaaa", d: "#c9a382", N: "#1c1c20", D: "#161619", T: "#c8283a", L: "#16161a", M: "#111114" } },
+    // the tellers are women (user, 2026-09-07): hair, skin, suit, accent, and a pendant or brooch
+    // Long · Blonde · Black · Gold pendant — the HQ teller
+    { look: "hr-long pk-pendant", pal: { H: "#e6c36a", S: "#f0d2b4", d: "#cfa98a", N: "#1c1c20", D: "#161619", T: "#d4af37", L: "#16161a", M: "#111114" } },
+    // Waves · Auburn · Navy · Brooch — the second window
+    { look: "hr-waves pk-brooch", pal: { H: "#7a3a22", S: "#ead0b6", d: "#c8a488", N: "#2a3858", D: "#1e2940", T: "#3454a0", L: "#16161a", M: "#111114" } },
+    // Ponytail · Black · Charcoal · Pendant — the third
+    { look: "hr-ponytail pk-pendant", pal: { H: "#1e1a18", S: "#c98e66", d: "#a06f4c", N: "#3a3a3e", D: "#2c2c30", T: "#deb23e", L: "#16161a", M: "#111114" } },
+    // Curls · Dark · Emerald · Brooch — the fourth
+    { look: "hr-curls pk-brooch", pal: { H: "#2b1d16", S: "#8a5a3c", d: "#6b432a", N: "#1f4a3a", D: "#163628", T: "#c8283a", L: "#16161a", M: "#111114" } },
   ];
   const COUNTER_W = 400, COUNTER_GAP = 60;
   function buildCounter(ctx, b, i, x) {
@@ -465,7 +471,7 @@
       inn.textContent = "OPENS WITH THE FIRST CHIP-IN";
       c.classList.add("is-shut"); c.classList.remove("is-drawing");
     }
-    last.textContent = o.last ? `LAST: ${who(o)} TOOK ${fmtShort(o.last.jackpotPaid, o.decimals)}` : "NO DRAW YET";
+    last.textContent = o.last ? `LAST: ${who(o)} TOOK ${fmtShort(o.last.shown ? o.last.shown.paid : o.last.jackpotPaid, o.decimals)}` : "NO DRAW YET";
   }
   function tickCounter(c, o) {
     const cd = c.querySelector(".bell .cd");
@@ -753,7 +759,7 @@
           const i = bs.findIndex((b) => b.slug === o.slug);
           tape(roomLayer, X_C + i * (COUNTER_W + COUNTER_GAP) - 40, COUNTER_W + 80);
           flash(counters[i]);
-          toast && toast(`${o.short} PAID: ${fmtShort(o.last.jackpotPaid, o.decimals)} ${o.symbol} TO ${who(o)}`, true);
+          toast && toast(`${o.short} PAID: ${fmtShort(o.last.shown ? o.last.shown.paid : o.last.jackpotPaid, o.decimals)} ${o.symbol} TO ${who(o)}`, true);
         }
         lastSeen[o.slug] = o.last ? o.last.id : 0;
       }
@@ -761,10 +767,13 @@
       lines = [];
       for (const o of s) {
         if (o.open) lines.push(`${o.players} in at ${o.short} so far. Bell in ${Math.floor(secondsLeft(o) / 3600)}h ${Math.floor((secondsLeft(o) % 3600) / 60)}m.`);
-        if (o.last) lines.push(`Yesterday: ${who(o)} took ${fmtShort(o.last.jackpotPaid, o.decimals)} ${o.symbol}.`);
+        if (o.last) lines.push(`Yesterday: ${who(o)} took ${fmtShort(o.last.shown ? o.last.shown.paid : o.last.jackpotPaid, o.decimals)} ${o.symbol}.`);
       }
       lines.push("Every counter pays at the four o'clock bell, New York time.");
-      if (bs.some((b) => b.boost)) lines.push("Hired brokers boost your odds at the OFFICE POOL counter. Up to 2x.");
+      // every branch with the boost, by its board name: a third branch (the
+      // CASHCAT DESK) boosts too, and the line used to name only the Office Pool
+      const boosted = bs.filter((b) => b.boost).map((b) => (b.short || b.name).toUpperCase());
+      if (boosted.length) lines.push(`Hired brokers boost your odds at the ${boosted.join(" and ")} counter${boosted.length > 1 ? "s" : ""}. Up to 2x.`);
       lines.push("Want a counter for your token? The desk at the end of the hall.");
       if (lineAt === 0) speak(lines[0]);
     });

@@ -248,6 +248,9 @@
 
   // ------------------------------------------------------------- wallet
   const WALLET_KEY = "firmbrokers.wallet.v1";
+  // the room to come back to after a reload the wallet forced (see watchWallet)
+  const RESUME_KEY = "firmbrokers.resume.v1";
+  const rememberRoom = () => { try { if (state.mode && state.mode !== "street") sessionStorage.setItem(RESUME_KEY, state.mode); } catch (e) { /* storage blocked */ } };
 
   function openWalletPicker(list) {
     closePopover();
@@ -382,8 +385,22 @@
         if (document.body.classList.contains("flat-mode")) buildFlat();
         refreshBrokers();
       });
-      // the safe move on a network change is a clean slate
-      p.on("chainChanged", () => location.reload());
+      // A network change used to reload the page, full stop. But connecting asks
+      // the wallet to switch to Robinhood Chain, and some wallets (Rainbow's
+      // in-app browser, 2026-09-08) report that switch a beat AFTER the request
+      // resolves — so the listener attached right after it fired, the page
+      // reloaded, and the player who had just tapped CLOCK IN on the trading
+      // floor was dropped back on the street, every time. Landing on OUR chain
+      // is never a reason to start over: refresh in place. Any other chain is
+      // still the clean slate, but the room is remembered so the reload puts
+      // the player back where they were.
+      p.on("chainChanged", (cid) => {
+        let hex = "";
+        try { hex = typeof cid === "number" ? "0x" + cid.toString(16) : /^0x/i.test(String(cid)) ? String(cid).toLowerCase() : "0x" + Number(cid).toString(16); } catch (e) { hex = ""; }
+        if (hex === String(CFG.chainHex).toLowerCase()) { updateThought(); paintHud(); refreshBrokers(); return; }
+        rememberRoom();
+        location.reload();
+      });
     } catch (e) {}
   }
 
@@ -410,9 +427,15 @@
   async function doConnect() {
     const p = F.provider();
     if (!p) return toast("no wallet in this browser. Open the site in your wallet app", false);
+    // some wallet browsers reload the page on their own when they connect or
+    // switch networks: whatever happens next, the player comes back to this room
+    rememberRoom();
     try {
       const accounts = await p.request({ method: "eth_requestAccounts" });
       state.account = accounts[0];
+      // the note is for a reload the wallet forces during this connect; if none
+      // comes, it must not linger and send a later plain refresh into the room
+      setTimeout(() => { try { sessionStorage.removeItem(RESUME_KEY); } catch (e) {} }, 2500);
       try {
         await p.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CFG.chainHex }] });
       } catch (e) {
@@ -4781,6 +4804,16 @@
       // the hash has done its job: the address bar goes back to the plain
       // street, so it never says #hall/frong from the lobby (user, 2026-09-07)
       try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* cosmetic */ }
+    }
+  }
+  // Back from a reload a wallet forced (a network switch on connect; Rainbow,
+  // 2026-09-08): straight back into the room the player was in, not the lobby.
+  {
+    let resume = null;
+    try { resume = sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); } catch (e) { resume = null; }
+    const z = resume && resume !== "street" ? ZONES.find((zz) => zz.id === resume && zz.room) : null;
+    if (z && zoneLive(z) && state.mode === "street" && !wantsFlat()) {
+      try { enterRoom(z.id); state.anim && (state.anim.prevX = state.x); } catch (e) { /* the street, then */ }
     }
   }
   requestAnimationFrame(tick);

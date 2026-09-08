@@ -327,10 +327,19 @@ button { font-family: inherit; cursor: pointer; }
    light, no bulbs chasing and nothing bouncing. It is a link; the arrow says
    so quietly. */
 .fb-hire {
-  /* the billboard's box ends 260px above the ground (measured); 130px hang from there */
-  position: absolute; bottom: calc(var(--ground-h) + 130px); width: 520px; height: 130px;
+  /* hangs from the billboard's bottom edge: lobby.js publishes the billboard's
+     lift as --bb-lift (260px on a tall window, less when the sky is short) and
+     this follows it, so the two can never overlap. --hire-h is 130 for the full
+     sign, 64 when .compact (headline + APPLY only), set below. */
+  --hire-h: 130px;
+  position: absolute; bottom: calc(var(--ground-h) + var(--bb-lift, 260px) - var(--hire-h)); width: 520px; height: var(--hire-h);
   display: block; text-decoration: none; z-index: 3;
 }
+.fb-hire.compact { --hire-h: 72px; }
+.fb-hire.compact .board { height: 56px; padding: 8px 10px 6px; }
+.fb-hire.compact u, .fb-hire.compact .beam { display: none; }
+.fb-hire.compact b { font-size: 10px; }
+.fb-hire.compact em { margin-top: 5px; font-size: 8px; }
 .fb-hire .rod {
   position: absolute; top: 0; width: 6px; height: 18px;
   background: linear-gradient(90deg, #7b8590, #454d55); border: 2px solid #06080c; box-sizing: border-box;
@@ -391,6 +400,9 @@ button { font-family: inherit; cursor: pointer; }
    sign and the flat chip already carry it and a sixth button would cost a row */
 @media (max-width: 480px) {
   .fb-hudbtn.pay { display: none; }
+  /* the PAGE/STREET glyph was the lone tile on a THIRD row at 390 (measured at
+     every height, 2026-09-08); the street is the site on a phone, so it goes */
+  .fb-hudbtn.icon { display: none; }
   /* 520 wide would meet both edges of a 390 phone; 340 keeps the same centre */
   .fb-hire { width: 340px; margin-left: 90px; }
   .fb-hire b { font-size: 11px; } .fb-hire u { font-size: 16px; }

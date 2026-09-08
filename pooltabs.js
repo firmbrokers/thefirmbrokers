@@ -43,8 +43,20 @@
     host.appendChild(a);
     tabs[b.slug] = a;
   }
-  // on a phone the strip scrolls: bring the open tab into view
-  try { const on = host.querySelector(".op-tab.on"); if (on && host.scrollWidth > host.clientWidth) on.scrollIntoView({ block: "nearest", inline: "center" }); } catch (e) { /* cosmetic */ }
+  // on a phone the strip scrolls: keep the open tab in view. Not only at mount —
+  // the pots arrive later ("…" → "704k") and widen the tabs, which is when a
+  // third branch first overflows (audit F2, 2026-09-07: the page's own tab 60%
+  // visible at 390 until a swipe). scrollLeft on the strip, never the page.
+  const reveal = () => {
+    try {
+      const on = host.querySelector(".op-tab.on");
+      if (!on || host.scrollWidth <= host.clientWidth + 1) { if (host.scrollLeft) host.scrollLeft = 0; return; }
+      const want = on.offsetLeft - (host.clientWidth - on.offsetWidth) / 2;
+      host.scrollLeft = Math.max(0, Math.min(host.scrollWidth - host.clientWidth, want));
+    } catch (e) { /* cosmetic */ }
+  };
+  reveal();
+  window.addEventListener("resize", reveal);
 
   if (window.__BRANCHES && window.__BRANCHES.subscribe) {
     window.__BRANCHES.subscribe((s) => {
@@ -54,7 +66,8 @@
         pot.textContent = o.open ? window.__BRANCHES.fmtShort(o.pot, o.decimals) : o.drawing ? "drawing" : "at the bell";
         a.classList.toggle("is-open", !!o.open);
       }
+      reveal();
     });
   }
-  window.__POOL_TABS = { slug, hrefOf, list: list.map((b) => b.slug) };
+  window.__POOL_TABS = { slug, hrefOf, reveal, list: list.map((b) => b.slug) };
 })();
