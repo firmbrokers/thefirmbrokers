@@ -99,9 +99,15 @@
   const hex = (n) => "0x" + n.toString(16);
   const logsOnce = (base, a, b) => gate(async () => {
     const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getLogs", params: [Object.assign({}, base, { fromBlock: hex(a), toBlock: hex(b) })] });
+    // Phones share their carrier's address, so the official RPC's per-IP limit
+    // is exhausted by other people's phones as much as by this one; the 429 is
+    // invisible to the browser (its CORS header is malformed → "Load failed" on
+    // Safari). Six tries, waits 1·2·3·5·8 s: a shared bucket refills in seconds,
+    // and one range given up on means "could not read the chain" for the page.
+    const WAITS = [0, 1000, 2000, 3000, 5000, 8000];
     let last = null;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      if (attempt) await sleep(1000 * attempt);
+    for (let attempt = 0; attempt < WAITS.length; attempt++) {
+      if (attempt) await sleep(WAITS[attempt]);
       const ctl = typeof AbortController === "function" ? new AbortController() : null;
       const timer = ctl ? setTimeout(() => ctl.abort(), REQ_TIMEOUT) : null;
       try {
@@ -161,6 +167,7 @@
     let c = readCache(KEY_ROUNDS);
     if (!c || c.v !== 1) c = { v: 1, to: CFG.deployBlock - 1, rows: [] };
     if (head > c.to) {
+      S.loading = "the settled hours…"; render();
       const logs = await scan({ address: CFG.engine, topics: [TOPIC.SETTLED] }, c.to + 1, head, { whole: true, progress: progress("the settled hours…") });
       for (const l of logs) c.rows.push([Number(BigInt(l.topics[1])), big(l.data, 0).toString(), big(l.data, 1).toString(), Number(BigInt(l.blockNumber))]);
       c.to = head;
@@ -179,7 +186,8 @@
     if (!c || c.v !== 2) c = null;
     // brokers ever received: the cache's set plus anything received since
     const ever = new Set(c ? c.ids : []);
-    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, c ? c.to + 1 : CFG.deployBlock, head, { whole: true });
+    S.loading = "finding your brokers…"; render();
+    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, c ? c.to + 1 : CFG.deployBlock, head, { whole: true, progress: progress("finding your brokers…") });
     for (const l of recv) ever.add(Number(BigInt(l.topics[3])));
     const ids = [...ever].sort((a, b) => a - b);
     // a new broker needs his whole history: start the cache over (rare)
@@ -367,7 +375,7 @@
     head = `<div class="cab"><div class="scr">
       <div class="lab">RECORDS FOR</div>
       <div class="who"><a href="${explorer(S.view)}" rel="noopener">${S.view === S.account ? "YOU · " : ""}${short(S.view)}</a> · ${S.owned.length} broker${S.owned.length === 1 ? "" : "s"}${S.ids.length > S.owned.length ? ` <span class="dim">· ${S.ids.length - S.owned.length} held before</span>` : ""}${S.loading ? ` · <span class="dim">${esc(S.loading)}</span>` : ""}</div>
-      ${S.error ? `<div class="fine bad">${esc(S.error)}</div>` : ""}
+      ${S.error ? `<div class="fine bad">${esc(S.error)} <button class="chip" data-act="retry" type="button">TRY AGAIN</button></div>` : ""}
       ${model ? `<div class="totals">
         <div><div class="lab">ON THE PAYDAY MACHINE NOW</div><div class="hi">${fmtEth(S.pending)} ETH</div><div class="fine">${fmtUsd(S.pending)}${fmtUsd(S.pending) ? " · " : ""}earned, not yet delivered</div></div>
         <div><div class="lab">SLIPS SINCE LAST PAYDAY</div><div class="hi">${fmtEth(model.sincePayday)} ETH</div><div class="fine">${model.lastPayday ? `last payday ${dayLabel(model.lastPayday.r)} ${hourLabel(model.lastPayday.r)}` : "no payday yet"}${S.ids.length > S.owned.length && model.sincePayday > S.pending ? " · part of it left with brokers since sold" : ""}</div></div>
@@ -429,7 +437,9 @@
       S.loaded = true;
     } catch (e) {
       S.loading = "";
-      S.error = "could not read the chain: " + String(e && e.message || e).slice(0, 120) + " — reload to try again";
+      // "Load failed" (Safari) / "Failed to fetch" (Chrome) is the RPC's rate limit seen from a browser
+      const m = String(e && e.message || e); const throttled = /load failed|failed to fetch|rate limit|429|too many/i.test(m);
+      S.error = throttled ? "the chain's public node is busy right now (it limits each network's phones together) — wait a few seconds and try again" : "could not read the chain: " + m.slice(0, 120);
       console.warn("records: " + (e && e.stack || e));
     }
     render();
@@ -443,6 +453,7 @@
     if (act === "lookup") { const i = document.getElementById("rr-addr"); return view(String(i && i.value || "").trim()); }
     if (act === "days") { S.days = Number(b.dataset.d); return render(); }
     if (act === "switch") { S.view = null; S.loaded = false; S.ids = []; return render(); }
+    if (act === "retry") { const a = S.view; if (a) return view(a); }
   }
 
   function page(mount) {
