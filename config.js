@@ -81,6 +81,10 @@ window.FIRM_CFG = {
   auction: "0x86ca9F9a4733A60C180A512AbC5a7272DD795aec",      // AuctionHouse address
   bonusPool: "0x0D14533213C09E979d8DE000D40161189cb233a1",    // BonusPool address
   auctionToken: "0x223E93B1beD7de244445dB2dea4c7900e8045Acc", // the bid token ($9TO5). Symbol/decimals are read on-chain.
+  // THE AUCTION HOUSE IS CLOSED FOR NOW (user, 2026-09-09): no new lots, lot 7 cancelled on chain. The last lot (6)
+  // hammers at this time; from then on the street booth, the queue sign and the sale room say "closed for now"
+  // (the room stays open to browse past hammers). Remove this line to reopen.
+  auctionClosedAfter: 1788987600, // 2026-09-09 21:00Z
   // The bid token's dEaD balance at the moment the house was deployed, printed
   // by DeployFrongAuction. The room shows balanceOf(dEaD) MINUS this, so BURNED
   // is what this house burned and not what the token's whole history left

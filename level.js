@@ -1159,7 +1159,7 @@
     // three signs on this front used to say "one a day / hammer at five" in
     // three ways; this one labels the LINE, which is what a pole sign by a
     // queue is for
-    const qs = el("div", "fb-queue-sign", auctionLive() ? "LINE FOR<br>TODAY'S LOT" : "HIRING LINE<br>STARTS HERE");
+    const qs = el("div", "fb-queue-sign", auctionOpen() ? "LINE FOR<br>TODAY'S LOT" : auctionLive() ? "SALE ROOM<br>CLOSED FOR NOW" : "HIRING LINE<br>STARTS HERE");
     qs.appendChild(el("i", "leg g"));
     qs.appendChild(el("i", "leg r"));
     front.appendChild(px(qs, { left: "1585px" }));
@@ -1167,7 +1167,7 @@
     // the security booth: he checks clearance from behind the glass
     const booth = el("div", "fb-booth");
     booth.innerHTML = '<div class="roof"></div><div class="plate"><span>'
-      + (auctionLive() ? "VIEWINGS" : "SECURITY")
+      + (auctionOpen() ? "VIEWINGS" : "SECURITY")
       + '</span></div><div class="win"></div><div class="scr"></div>';
     px(booth, { left: BOOTH_X + "px", bottom: "var(--ground-h)" });
     booth.addEventListener("click", openApply);
@@ -1348,10 +1348,16 @@
     // biggest sign on the street stops advertising a supply, a price and a
     // door that no longer opens on any of it. It was still reading
     // "MINTING NOW / 5,000 BROKERS / 0.0035 ETH EACH / WALK RIGHT IN".
-    if (auctionLive()) {
+    if (auctionOpen()) {
       wall.innerHTML = `<b>AUCTION TODAY</b>
         <span>ONE BROKER A DAY</span><span>OUTBID PAYS YOU 105%</span>
         <span>HAMMER AT FIVE, NY</span>`;
+      return;
+    }
+    if (auctionLive()) {
+      wall.innerHTML = `<b>AUCTION HOUSE</b>
+        <span>CLOSED FOR NOW</span><span>PAST HAMMERS INSIDE</span>
+        <span>2ND FLOOR OF THE TOWER</span>`;
       return;
     }
     const gated = open && !st.publicOpen && !clearanceDone();
@@ -3311,6 +3317,8 @@
   /// Gated on the auction actually being configured: before that the street
   /// behaves exactly as it did.
   const auctionLive = () => !!(CFG.auction && CFG.auctionToken);
+  /// the house is taking bids today: live AND not past the closing hammer
+  const auctionOpen = () => auctionLive() && !(CFG.auctionClosedAfter && Date.now() / 1000 >= Number(CFG.auctionClosedAfter));
   const applyOpen = () => !applyClosed() && !!(CFG.applyUrl || CFG.applyFormUrl);
   /// every broker is minted (28 Aug 2026): the whitelist surfaces are dead ends
   /// after this, and the paperwork must stop promising a mint
@@ -3336,11 +3344,15 @@
   function agentLine() {
     // the sale room is running: the booth points at today's lot instead of a
     // list nobody can join any more
-    if (auctionLive()) {
+    if (auctionOpen()) {
       // the tower wall already says one a day / 105% / hammer at five; this
       // board says the two things it does not
       return '<span class="hd">TODAY\'S LOT</span>' +
         '<span class="dt">Viewing inside.<br>Bid at the desk, in $9TO5</span>';
+    }
+    if (auctionLive()) {
+      return '<span class="hd">THE AUCTION HOUSE</span>' +
+        '<span class="dt">Closed for now.<br>Past hammers on the 2nd floor</span>';
     }
     // after the cut the booth is the list desk: the sign says so and invites
     // the check, instead of vanishing (a silent booth reads as broken)

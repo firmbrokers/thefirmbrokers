@@ -1092,12 +1092,17 @@
           mount.tote.querySelector(".lad").innerHTML = "";
           const curt = mount.stage.querySelector(".curtain");
           curt.style.display = "";
-          curt.innerHTML = loaded ? "NEXT BROKER<br>TOMORROW" : "READING<br>THE BOOK\u2026";
+          // closed for now (CFG.auctionClosedAfter passed): say so, never promise tomorrow
+          const closed = !!(CFG.auctionClosedAfter && Date.now() / 1000 >= Number(CFG.auctionClosedAfter));
+          curt.innerHTML = !loaded ? "READING<br>THE BOOK\u2026" : closed ? "CLOSED<br>FOR NOW" : "NEXT BROKER<br>TOMORROW";
+          if (closed) mount.tote.querySelector(".big").textContent = "CLOSED FOR NOW";
+          const ew = mount.root && mount.root.querySelector(".au-easel .ewhen");
+          if (ew && closed) ew.textContent = "no lots scheduled";
           const f = mount.stage.querySelector(".frame");
           if (f) f.remove();
           mount.stage.querySelector(".plate").textContent = "";
         } else {
-          mount.card.querySelector(".who").textContent = "nothing scheduled";
+          mount.card.querySelector(".who").textContent = (CFG.auctionClosedAfter && Date.now() / 1000 >= Number(CFG.auctionClosedAfter)) ? "closed for now" : "nothing scheduled";
         }
         const e0 = mount.root && mount.root.querySelector(".au-easel .elot");
         if (e0) e0.textContent = "\u2014";
