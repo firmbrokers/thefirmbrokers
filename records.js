@@ -162,10 +162,44 @@
   const readCache = (key) => { try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; } };
   const writeCache = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} };
 
+  // ------------------------------------------------------- the records, precomputed
+  /// The payroll history is scanned ONCE an hour by the records-data repo and
+  /// served as JSON from GitHub Pages (CFG.recordsData). The page reads that
+  /// and asks the chain only for the tail after the data's head — the one
+  /// range every public node serves. Phones used to scan three weeks of logs
+  /// here and die on the RPC's carrier-shared rate limit (2026-09-09). Any
+  /// failure below falls back to scanning the chain, as before.
+  const DATA = CFG.recordsData ? String(CFG.recordsData).replace(/\/+$/, "") : "";
+  async function dataJson(name, bust) {
+    const ctl = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), 20000) : null;
+    try {
+      const r = await fetch(`${DATA}/${name}?h=${bust}`, { signal: ctl ? ctl.signal : undefined });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error("records http " + r.status);
+      return await r.json();
+    } finally { if (timer) clearTimeout(timer); }
+  }
+  /// the block the records are complete to, or null when there are none to use
+  async function dataHead() {
+    if (!DATA) return null;
+    try { const h = await dataJson("head.json", Math.floor(Date.now() / 300000)); return h && Number(h.head) >= CFG.deployBlock ? { head: Number(h.head) } : null; }
+    catch (e) { return null; }
+  }
+  async function mapLimit(items, n, fn) {
+    const out = new Array(items.length); let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } }));
+    return out;
+  }
+
   /// the settled hours, all of them since launch: ~24 events a day
-  async function loadRounds(head) {
+  async function loadRounds(head, seed) {
     let c = readCache(KEY_ROUNDS);
     if (!c || c.v !== 1) c = { v: 1, to: CFG.deployBlock - 1, rows: [] };
+    if (seed && c.to < seed.head) {
+      S.loading = "the records…"; render();
+      try { const rows = await dataJson("rounds.json", seed.head); if (Array.isArray(rows)) c = { v: 1, to: seed.head, rows }; } catch (e) { /* the chain, then */ }
+    }
     if (head > c.to) {
       S.loading = "the settled hours…"; render();
       const logs = await scan({ address: CFG.engine, topics: [TOPIC.SETTLED] }, c.to + 1, head, { whole: true, progress: progress("the settled hours…") });
@@ -179,19 +213,46 @@
 
   /// every broker the viewed wallet ever held, who held each one when, their
   /// weight history and their paydays
-  async function loadWallet(head) {
+  async function loadWallet(head, seed) {
     const me = S.view.toLowerCase();
     const key = KEY_WALLET + me;
     let c = readCache(key);
     if (!c || c.v !== 2) c = null;
-    // brokers ever received: the cache's set plus anything received since
+    // brokers ever received: the records' list for this wallet, the cache's
+    // set, and anything received since either
     const ever = new Set(c ? c.ids : []);
+    let scanFrom = c ? c.to + 1 : CFG.deployBlock;
+    let seeded = 0;
+    if (seed && (!c || c.to < seed.head)) {
+      S.loading = "the records…"; render();
+      try {
+        const idx = await dataJson(`w/${me}.json`, seed.head);
+        for (const id of (idx && idx.ids) || []) ever.add(Number(id));
+        seeded = seed.head; scanFrom = seed.head + 1;
+      } catch (e) { seeded = 0; scanFrom = c ? c.to + 1 : CFG.deployBlock; }
+    }
     S.loading = "finding your brokers…"; render();
-    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, c ? c.to + 1 : CFG.deployBlock, head, { whole: true, progress: progress("finding your brokers…") });
+    const recv = await scan({ address: CFG.nft, topics: [TOPIC.TRANSFER, null, "0x" + word(me)] }, scanFrom, head, { whole: true, progress: progress("finding your brokers…") });
     for (const l of recv) ever.add(Number(BigInt(l.topics[3])));
     const ids = [...ever].sort((a, b) => a - b);
-    // a new broker needs his whole history: start the cache over (rare)
-    if (!c || c.ids.join(",") !== ids.join(",")) c = { v: 2, ids, to: CFG.deployBlock - 1, transfers: [], syncs: [], deliveries: [] };
+    // a new broker needs his whole history: start the cache over (rare) —
+    // from the records when they cover him, else from the chain
+    if (!c || c.ids.join(",") !== ids.join(",")) {
+      c = { v: 2, ids, to: CFG.deployBlock - 1, transfers: [], syncs: [], deliveries: [] };
+      if (seeded && ids.length) {
+        S.loading = `the records… ${ids.length} broker${ids.length === 1 ? "" : "s"}`; render();
+        try {
+          const files = await mapLimit(ids, 8, (id) => dataJson(`t/${id}.json`, seeded));
+          files.forEach((f, i) => {
+            const id = ids[i]; if (!f) return;
+            for (const [from, to, block, li] of f.t || []) c.transfers.push([id, from, to, block, li]);
+            for (const [wgt, liveFrom, block, li] of f.s || []) c.syncs.push([id, wgt, liveFrom, block, li]);
+            for (const [asset, ethIn, out, block, tx] of f.d || []) c.deliveries.push([id, asset, ethIn, out, block, tx]);
+          });
+          c.to = seeded;
+        } catch (e) { c = { v: 2, ids, to: CFG.deployBlock - 1, transfers: [], syncs: [], deliveries: [] }; }
+      }
+    }
     if (ids.length && head > c.to) {
       const topicsOf = (g) => g.map((id) => "0x" + word(id));
       for (let i = 0; i < ids.length; i += 100) {
@@ -429,10 +490,11 @@
     render();
     try {
       const head = await F.blockNumber();
+      const seed = await dataHead();
       S.loading = "the settled hours…"; render();
-      await loadRounds(head);
+      await loadRounds(head, seed);
       S.loading = "your brokers' history…"; render();
-      await loadWallet(head);
+      await loadWallet(head, seed);
       S.loading = "";
       S.loaded = true;
     } catch (e) {

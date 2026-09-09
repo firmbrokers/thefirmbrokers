@@ -23,6 +23,10 @@ window.FIRM_CFG = {
   // offers a CASHCAT buy. Empty = the plate is not built.
   cashcatBuyUrl: "https://www.letscash.fun/token/0x020bfC650A365f8BB26819deAAbF3E21291018b4",
   explorer: "https://robinhoodchain.blockscout.com",
+  // THE RECORDS ROOM reads the payroll history as JSON from the records-data repo (scanned hourly by a
+  // GitHub Action, served by Pages) and asks the chain only for the last hour — phones used to scan
+  // three weeks of logs and die on the RPC's carrier-shared rate limit (2026-09-09). Empty = scan in the browser.
+  recordsData: "https://firmbrokers.github.io/records-data/data",
 
   // ---- fill these at launch ----
   nft: "0x2d4dFF47ba18c89847facA0C968e073d8B70ABb4",        // EmployeeNFT — deployed 2026-08-27, block 47105759
