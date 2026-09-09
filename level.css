@@ -400,9 +400,15 @@ button { font-family: inherit; cursor: pointer; }
    sign and the flat chip already carry it and a sixth button would cost a row */
 @media (max-width: 480px) {
   .fb-hudbtn.pay { display: none; }
-  /* the PAGE/STREET glyph was the lone tile on a THIRD row at 390 (measured at
-     every height, 2026-09-08); the street is the site on a phone, so it goes */
-  .fb-hudbtn.icon { display: none; }
+  /* The PAGE/STREET glyph stays on phones: the page is where a holder sees ALL
+     his brokers and hires/promotes in bulk, and hiding it (2026-09-08, to keep
+     the bar at two rows) took that away — a holder asked where PAGES went the
+     same evening. Instead every second-row tile gives up a few px of padding so
+     the seven of them share one row: measured 390 → widths 56/70/61/54/47/31/32
+     = two rows, 360 → 48/62/56/49/42/31/32, no label clipped. */
+  /* the tighter tile paddings live in the LAST block of this file: the phone
+     bar rules further down (flex-wrap / gap 5px / padding 10px 6px) would win
+     over anything written here at equal specificity */
   /* 520 wide would meet both edges of a 390 phone; 340 keeps the same centre */
   .fb-hire { width: 340px; margin-left: 90px; }
   .fb-hire b { font-size: 11px; } .fb-hire u { font-size: 16px; }
@@ -4235,4 +4241,15 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ---- phone bar, seven tiles on the second row (2026-09-08). Kept LAST on
+   purpose: the ≤1024 phone-bar block above sets gap 5px / padding 10px 6px and
+   would otherwise win. Measured at 360/390: BUY 48/56 · JACKPOT 62/70 · MARKET
+   56/61 · SLIPS 49/54 · DOCS 42/47 · X 31 · PAGE 32 = two rows, no clipping. */
+@media (max-width: 480px) {
+  .fb-zonebar { gap: 4px; }
+  .fb-hudbtn { padding: 10px 4px; }
+  .fb-hudbtn.x, .fb-hudbtn.icon { padding: 10px 6px; }
+  .fb-hudbtn.tile { padding: 7px 3px; }
 }
