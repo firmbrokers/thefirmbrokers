@@ -450,8 +450,43 @@
     _owners = { at: Date.now(), byId, complete };
     return _owners;
   }
+  /// The records-data repo (config recordsData) publishes, per wallet, every
+  /// broker it ever RECEIVED, an hour behind the chain. Candidates = that list
+  /// + anything received since its head (one small log scan) → current owners
+  /// in ONE multicall. The old path read the owner of all 5,000 brokers in 25
+  /// multicalls, three in flight, and on a phone behind its carrier's shared
+  /// address that got throttled, marked incomplete, and fell through to a
+  /// three-week log scan that died the same way — holders "waited too long"
+  /// or reconnected to see their floor (2026-09-09). Null = use the old path.
+  async function tokensOfByRecords(addr) {
+    if (!CFG.recordsData) return null;
+    const base = String(CFG.recordsData).replace(/\/+$/, "");
+    const me = addr.toLowerCase();
+    const get = async (name, bust) => { const r = await fetch(`${base}/${name}?h=${bust}`); if (r.status === 404) return null; if (!r.ok) throw new Error("records http " + r.status); return r.json(); };
+    let head;
+    try { const h = await get("head.json", Math.floor(Date.now() / 300000)); head = h && Number(h.head); if (!head || head < CFG.deployBlock) return null; } catch (e) { return null; }
+    let ids;
+    try { const idx = await get(`w/${me}.json`, head); ids = new Set(((idx && idx.ids) || []).map(Number)); } catch (e) { return null; }
+    // received since the records' head: a range every public node serves
+    try {
+      const tail = await rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, "0x" + word(addr)] }, head + 1, "latest", 13, true);
+      for (const g of tail) ids.add(Number(BigInt(g.topics[3])));
+    } catch (e) { return null; }
+    const list = [...ids].sort((a, b) => a - b);
+    if (!list.length) {
+      // nothing on record: believed only if the chain agrees (a wallet that got
+      // its brokers inside the last hour AND a failed tail would read as empty)
+      const bal = toBig(await call(CFG.nft, SEL.balanceOf + word(addr), true));
+      return bal && bal > 0n ? null : [];
+    }
+    const raws = await callBatch(list.map((id) => ({ to: CFG.nft, data: SEL.ownerOf + word(id) })));
+    if (raws.some((r) => r === null)) return null;
+    const mine = list.filter((id, i) => raws[i] !== "0x" && toAddr(raws[i]) && toAddr(raws[i]).toLowerCase() === me);
+    return mine;
+  }
   async function tokensOf(addr) {
     const me = addr.toLowerCase();
+    try { const fast = await tokensOfByRecords(addr); if (fast) return fast; } catch (e) { /* the scans below */ }
     try {
       const t = await ownerTable();
       if (t.complete) {
@@ -1124,6 +1159,7 @@
     hasChosen,
     call,
     callBatch,
+    tokensOfByRecords,
     blockNumber,
     rpcLogsRange,
     TOPICS: { ACTIVATED: ACTIVATED_TOPIC, DEACTIVATED: DEACTIVATED_TOPIC, DELIVERED: DELIVERED_TOPIC },
