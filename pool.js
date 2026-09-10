@@ -65,6 +65,7 @@
   // keccak of Referred(address,address,bytes32) and ReferralClaimed(address,uint128)
   const TOPIC_REFERRED = "0xba442039c47ea54000d2f7a9c4aa7cd72a58fc993dc668fb5239b3f598ac9f38";
   const TOPIC_REF_CLAIMED = "0x47578b51557a1054d7224edb0fdc3fd8974f54ceb0ee2dd4049989e6d973db49";
+  const TOPIC_DEPOSITED = "0x631cd71101aa091d2ab18a275056bc1c53c98df47cb2fa88240e9a20bd92e0be"; // Deposited(uint256 indexed round, address indexed player, uint128, uint128, uint16, uint128)
   const POLL_IDLE = 20000, POLL_HOT = 4000, HOT_WINDOW = 600;
   const DRAND = ["https://api.drand.sh", "https://api2.drand.sh", "https://api3.drand.sh", "https://drand.cloudflare.com"];
   const ZERO = "0x0000000000000000000000000000000000000000";
@@ -584,7 +585,9 @@
     const key = REFS_KEY + me;
     let cache = null;
     try { cache = JSON.parse(localStorage.getItem(key) || "null"); } catch (e) {}
-    if (!cache || cache.v !== 1) cache = { v: 1, to: B.block - 1, players: [], claimed: "0" };
+    // v2 (2026-09-10) adds the referrals' chip-ins by round ("which of my referrals played on
+    // which day", a referrer's ask): an older cache is rebuilt from the pool's first block once
+    if (!cache || cache.v !== 2) cache = { v: 2, to: B.block - 1, players: [], claimed: "0", byRound: {}, rounds: {} };
     const head = await F.blockNumber();
     const from = cache.to + 1;
     if (head >= from) {
@@ -601,11 +604,46 @@
       let sum = BigInt(cache.claimed || "0");
       for (const l of claimed || []) sum += BigInt(l.data);
       cache.claimed = sum.toString();
+      // every chip-in by those players over the same range (a referral's first chip-in sits in
+      // the very block that bound them, so the range that found them also holds it), 40 wallets
+      // a query; summed per round per wallet
+      const all = cache.players.map((p) => p.addr);
+      for (let i = 0; i < all.length; i += 40) {
+        const chunk = all.slice(i, i + 40).map((a) => "0x" + word(a));
+        const deps = await F.rpcLogsRange(Object.assign({ topics: [TOPIC_DEPOSITED, null, chunk] }, base), from, head);
+        for (const l of deps || []) {
+          const id = String(Number(BigInt(l.topics[1]))), a = "0x" + String(l.topics[2]).slice(26).toLowerCase();
+          const m = cache.byRound[id] || (cache.byRound[id] = {});
+          m[a] = (BigInt(m[a] || "0") + BigInt("0x" + String(l.data).slice(2, 66))).toString();
+        }
+      }
+      // the bell and the referral share of each round seen for the first time
+      const need = Object.keys(cache.byRound).filter((id) => !cache.rounds[id]);
+      if (need.length) {
+        const views = await F.callBatch(need.map((id) => ({ to: B.pool, data: SEL.roundView + word(BigInt(id)) })));
+        need.forEach((id, i) => { const r = decodeRound(views[i]); if (r && r.closesAt) cache.rounds[id] = { closesAt: r.closesAt, refBps: r.refBps }; });
+      }
       cache.to = head;
       try { localStorage.setItem(key, JSON.stringify(cache)); } catch (e) {}
     }
-    S.refs = { for: me, players: cache.players, claimed: BigInt(cache.claimed || "0") };
+    S.refs = { for: me, players: cache.players, claimed: BigInt(cache.claimed || "0"), byRound: cache.byRound || {}, rounds: cache.rounds || {} };
     S.refsDirty = false;
+  }
+  /// SENT BY YOU, by day: one row per round any referral chipped in, newest first, open for the names
+  function referralsByDay(r) {
+    const ids = Object.keys(r.byRound).map(Number).sort((a, b) => b - a).slice(0, 30);
+    if (!ids.length) return "";
+    const rows = ids.map((id) => {
+      const m = r.byRound[String(id)]; const info = r.rounds[String(id)];
+      const addrs = Object.keys(m).sort((a, b) => (BigInt(m[b]) > BigInt(m[a]) ? 1 : BigInt(m[b]) < BigInt(m[a]) ? -1 : 0));
+      const total = addrs.reduce((acc, a) => acc + BigInt(m[a]), 0n);
+      const share = info ? (total * BigInt(info.refBps)) / 10000n : null;
+      const open = S.cur && S.curId === id;
+      const when = info ? nyTime(info.closesAt, true).replace(/,\s[^,]*$/, "") : `round ${id}`; // the bell's date, New York
+      return `<details class="byday" data-id="${id}"><summary>${when}${open ? ' <span class="ok">· open</span>' : ""} · ${addrs.length} of ${r.players.length} chipped in · ${fmt(total)} ${SYM}${share != null ? ` · yours ${fmt(share)}` : ""}</summary>
+        <div class="fine">${addrs.map((a) => `<a href="${explorer(a)}" rel="noopener">${short(a)}</a> ${fmt(BigInt(m[a]))}`).join(" · ")}</div></details>`;
+    });
+    return `<div class="lab" style="margin-top:8px">BY DAY</div>${rows.join("")}`;
   }
   function referralsBody() {
     const r = S.refs && S.refs.for === String(S.account).toLowerCase() ? S.refs : null;
@@ -615,7 +653,7 @@
     const list = r.players.slice().reverse().slice(0, 12).map((p) => `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`).join(", ");
     return `<div class="fine">${r.players.length} player${r.players.length === 1 ? "" : "s"} · earned <b>${fmt(earned)}</b> ${SYM} so far${S.refOwed > 0n ? ` (${fmt(S.refOwed)} to claim)` : ""}</div>
       <div class="fine">${list}${r.players.length > 12 ? ` and ${r.players.length - 12} more` : ""}</div>
-      <div class="fine">a player shows up here after their first chip-in through your link</div>`;
+      <div class="fine">a player shows up here after their first chip-in through your link</div>${referralsByDay(r)}`;
   }
 
   /// GOT A CODE? at the desk: live while the sender is open, disabled with the
@@ -645,7 +683,8 @@
     // buttons need two clicks", 2026-09-05.)
     const active = document.activeElement;
     if (active && host.contains(active) && active.tagName === "INPUT" && active.type === "text") return;
-    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, ref: (host.querySelector("#op-ref") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked };
+    const keep = { amt: (host.querySelector("#op-amt") || {}).value, code: (host.querySelector("#op-code") || {}).value, ref: (host.querySelector("#op-ref") || {}).value, brk: (host.querySelector("#op-brk") || {}).checked,
+      byday: [...host.querySelectorAll("details.byday[open]")].map((d) => d.dataset.id) };
 
     const r = S.cur;
     const now = Math.floor(Date.now() / 1000) - S.skew;
@@ -818,6 +857,7 @@
     if (c && keep.code) c.value = keep.code;
     if (rf && keep.ref != null) rf.value = keep.ref;
     if (b && keep.brk != null) b.checked = keep.brk;
+    for (const id of keep.byday || []) { const d = host.querySelector(`details.byday[data-id="${id}"]`); if (d) d.open = true; }
   }
 
   // ---------------------------------------------------------------- wiring
