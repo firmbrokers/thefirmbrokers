@@ -236,31 +236,45 @@
     S.loaded = true;
   }
 
-  /// the wallet's hired brokers not yet used this round
+  /// the wallet's hired brokers not yet used this round.
+  /// The list is replaced only once the new one is in hand. It used to be
+  /// CLEARED first and refilled seconds later (a phone behind a throttled
+  /// node: ownerOf + isActive + brokerUsed for every broker, every poll, every
+  /// 4 s before the bell), and a chip-in in that window went out with an EMPTY
+  /// list while the ticked box was still on screen — "0 brokers counted",
+  /// a holder of 98 at the 2026-09-09 bell (block 58,815,376).
+  let brokersLoading = null; // the read in flight; a chip-in that counts brokers waits for it
   async function loadBrokers() {
-    S.brokers = [];
+    if (S.brokersFor !== S.account) { S.brokers = []; S.brokersOwned = 0; S.brokersEligible = 0; S.brokersFor = S.account; }
     if (!S.account || !BOOST) return;
-    // before the first chip-in of a day there is no round yet: nothing is used, every hired broker counts
-    const roundId = S.cur ? S.curId : 0;
-    let ids = [];
-    try { ids = await F.tokensOf(S.account); } catch (e) { return; }
-    ids = ids.map((x) => BigInt(x));
-    S.brokersOwned = ids.length;
-    if (!ids.length) return;
-    const reqs = [];
-    for (const id of ids) { reqs.push({ to: CFG.nft, data: SEL.isActive + word(id) }); if (roundId) reqs.push({ to: B.pool, data: SEL.brokerUsed + word(roundId) + word(id) }); }
-    const res = await F.callBatch(reqs);
-    const eligible = [];
-    const per = roundId ? 2 : 1;
-    ids.forEach((id, i) => { if (toBig(res[i * per]) === 1n && (!roundId || toBig(res[i * per + 1]) === 0n)) eligible.push(id); });
-    S.brokersEligible = eligible.length;
-    // only as many as the multiplier can use: past the cap they cost gas for nothing
-    S.brokers = eligible.slice(0, maxUseful());
+    const run = (async () => {
+      // before the first chip-in of a day there is no round yet: nothing is used, every hired broker counts
+      const roundId = S.cur ? S.curId : 0;
+      const ids = (await F.tokensOf(S.account)).map((x) => BigInt(x));
+      const eligible = [];
+      if (ids.length) {
+        const reqs = [];
+        for (const id of ids) { reqs.push({ to: CFG.nft, data: SEL.isActive + word(id) }); if (roundId) reqs.push({ to: B.pool, data: SEL.brokerUsed + word(roundId) + word(id) }); }
+        const res = await F.callBatch(reqs);
+        const per = roundId ? 2 : 1;
+        ids.forEach((id, i) => { if (toBig(res[i * per]) === 1n && (!roundId || toBig(res[i * per + 1]) === 0n)) eligible.push(id); });
+      }
+      if (S.brokersFor !== S.account) return; // the wallet changed under the read
+      S.brokersOwned = ids.length;
+      S.brokersEligible = eligible.length;
+      // only as many as the multiplier can still use: past the cap they cost gas for nothing
+      S.brokers = eligible.slice(0, useful());
+    })();
+    brokersLoading = run;
+    try { await run; } finally { if (brokersLoading === run) brokersLoading = null; }
   }
   /// the quick amounts: 2.5×, 5×, 10×, 25× the minimum (10k → 25k 50k 100k 250k), whole tokens
   const presets = (min) => { const m = Number(min) / 1e18 || 10000; return [2.5, 5, 10, 25].map((k) => Math.round(m * k)).filter((n, i, a) => n > 0 && a.indexOf(n) === i); };
   const terms = () => S.cur || S.knobs || { minDeposit: 10000n * 10n ** 18n, divBps: 2500, refBps: 500, houseBps: 1000, boostBps: 1000, boostCapBps: 20000 };
   const maxUseful = () => { const t = terms(); return Math.max(0, Math.ceil((t.boostCapBps - 10000) / t.boostBps)); };
+  /// how many more brokers can still raise this wallet's multiplier today
+  const useful = () => Math.max(0, maxUseful() - (S.me ? S.me.brokers : 0));
+  const multXOf = (n) => { const t = terms(); const x = Math.min(10000 + t.boostBps * n, t.boostCapBps) / 10000; return (Number.isInteger(x) ? x : x.toFixed(1)) + "×"; };
 
   // ---------------------------------------------------------------- wallet
   const WALLET_KEY = "firmbrokers.wallet.v1";
@@ -341,7 +355,14 @@
   const senderOpen = () => S.referrer === ZERO && !S.inBefore && !(S.me && S.me.deposited > 0n);
   async function chipIn(amountWei) {
     const P = B.pool;
-    const brokers = S.useBrokers ? S.brokers : [];
+    let brokers = [];
+    if (BOOST && S.useBrokers) {
+      // the box promised a count: wait for a read in flight rather than send fewer
+      if (S.counting) return;
+      if (brokersLoading) { S.counting = true; toast("counting your brokers…"); try { await brokersLoading; } catch (e) {} finally { S.counting = false; } }
+      brokers = S.brokers;
+      if (!brokers.length && S.brokersEligible && useful()) return toast("still counting your brokers — try again in a moment", false);
+    }
     const field = host.querySelector("#op-ref");
     const typed = parseRef((field || {}).value);
     let code = "";
@@ -386,6 +407,26 @@
       if (g > 150000n && g < fallback * 2n) limit = g;
     } catch (e) { /* the wallet could not estimate: the ceiling stands */ }
     await tx("chipping in", () => F.send(P, data, 0n, S.account, limit), async () => { toast("you're in — see you at the bell", true); });
+  }
+  /// already in today: count hired brokers now, no new chip-in (the contract
+  /// takes registerBrokers from any player of the open round; the boost then
+  /// applies to everything the wallet has in it)
+  async function countBrokers() {
+    if (S.counting) return;
+    if (brokersLoading) { S.counting = true; try { await brokersLoading; } catch (e) {} finally { S.counting = false; } }
+    const ids = S.brokers;
+    if (!ids.length) return toast("no brokers to count right now", false);
+    let data = SEL.registerBrokers + word(32) + word(ids.length);
+    for (const id of ids) data += word(id);
+    const fallback = BigInt(150000 + 50000 * ids.length);
+    let limit = fallback;
+    try {
+      const est = await F.provider().request({ method: "eth_estimateGas", params: [{ from: S.account, to: B.pool, data }] });
+      const g = (BigInt(est) * 125n) / 100n;
+      if (g > 60000n && g < fallback * 2n) limit = g;
+    } catch (e) { /* the wallet could not estimate: the ceiling stands */ }
+    const after = (S.me ? S.me.brokers : 0) + ids.length;
+    await tx("counting your brokers", () => F.send(B.pool, data, 0n, S.account, limit), async () => { toast(`counted — ${multXOf(after)} today`, true); });
   }
   async function claimDividends() {
     const ids = decodeUintArray((await F.callBatch([{ to: B.pool, data: SEL.roundsOf + word(S.account) }]))[0]);
@@ -693,13 +734,22 @@
         ? `<div class="lab">WHICH WALLET?</div>${S.pickWallet.map((x, i) => `<button class="go" data-act="wallet" data-i="${i}" type="button">CLOCK IN WITH ${esc(x.info.name).toUpperCase()}</button>`).join("")}<div class="fine">this browser has more than one wallet</div>`
         : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to chip in, claim, or ring the bell${sender ? ` · sent by <b>${sender}</b>${senderNote}` : ""}</div>${badCode}`;
     } else {
+      const counted = me ? me.brokers : 0;
       const brokerLine = S.brokers.length
-        ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> count my ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of ${S.brokersEligible}` : S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"} <span class="dim">(${multX(S.brokers.length)})</span></label>
-           <div class="fine">each hired broker you count adds ${T.boostBps / 100}% to your chance today, up to ${cap / 10000}× (${maxUseful()} brokers)${S.brokersEligible > maxUseful() ? `; you have ${S.brokersEligible}, so ${maxUseful()} are counted` : ""}. Counting only tells the pool: your brokers stay in your wallet and keep earning. A broker counts once a day.</div>`
+        ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> count my ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of ${S.brokersEligible}` : S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"} <span class="dim">(${multX(counted + S.brokers.length)})</span></label>
+           <div class="fine">each hired broker you count adds ${T.boostBps / 100}% to your chance today, up to ${cap / 10000}× (${maxUseful()} brokers)${S.brokersEligible > useful() ? `; you have ${S.brokersEligible}, so ${useful()} are counted` : ""}. Counting only tells the pool: your brokers stay in your wallet and keep earning. A broker counts once a day.</div>`
+        : counted && counted >= maxUseful() ? `<div class="fine">your ${counted} brokers are counted today (${multX(counted)}) — the most the pool takes</div>`
         : S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already counted today</div>`
         : `<div class="fine">no hired brokers to count · hiring one boosts your chance ${T.boostBps / 100}%</div>`;
+      // in today with brokers still uncounted (a chip-in that went out without
+      // them, or brokers hired since): count them now, no new chip-in
+      const countNow = me && me.deposited > 0n && BOOST && S.brokers.length
+        ? `<button class="go" data-act="count">COUNT MY ${S.brokers.length} BROKER${S.brokers.length === 1 ? "" : "S"} · ${multX(counted + S.brokers.length)}</button>
+           <div class="fine">${counted ? `${counted} counted so far` : "none counted yet"} — counting boosts everything you have in today's pool, no new chip-in needed</div>`
+        : "";
       deskBody = `
       ${me && me.deposited > 0n ? `<div class="hi">you're in with ${fmt(me.deposited)}${BOOST ? " · " + multX(me.brokers) : ""} · ${odds ? "1 in " + odds : "—"}</div>` : ""}
+      ${countNow}
       ${poor ? `<div class="need">you need at least ${fmt(T.minDeposit)} ${SYM} to chip in${buyHref ? ` · <a href="${buyHref}" target="_blank" rel="noopener">${IS_HQ ? "get it on letscash" : "get " + SYM} →</a>` : ""}</div>` : ""}
       <div class="amt"><input type="text" inputmode="decimal" id="op-amt" placeholder="${fmt(T.minDeposit) + " min"}"></div>
       <div class="presets"><button class="chip" data-act="min" type="button">MIN</button>${presets(T.minDeposit).map((n) => `<button class="chip" data-act="preset" data-n="${n}" type="button">${n >= 1000 ? n / 1e3 + "k" : n}</button>`).join("")}<button class="chip" data-act="max" type="button">MAX</button></div>
@@ -771,16 +821,26 @@
   }
 
   // ---------------------------------------------------------------- wiring
-  async function refresh() {
-    try {
-      await load();
-      if (S.account) await loadBrokers();
-    } catch (e) { console.warn("office pool: read failed, will retry: " + (e && e.stack || e)); }
-    if (S.account && (!S.refs || S.refs.for !== S.account.toLowerCase() || S.refsDirty)) {
-      try { await loadReferrals(); S.refsError = false; } catch (e) { S.refsError = true; console.warn("office pool: referral scan failed: " + (e && e.message || e)); }
-    }
-    render();
-    schedule();
+  // one refresh at a time: a call while one is in flight (the bell click, a
+  // wallet change, a landed transaction) makes it run once more when done
+  let refreshing = null, refreshAgain = false;
+  function refresh() {
+    if (refreshing) { refreshAgain = true; return refreshing; }
+    refreshing = (async () => {
+      do {
+        refreshAgain = false;
+        try {
+          await load();
+          if (S.account) await loadBrokers();
+        } catch (e) { console.warn("office pool: read failed, will retry: " + (e && e.stack || e)); }
+        if (S.account && (!S.refs || S.refs.for !== S.account.toLowerCase() || S.refsDirty)) {
+          try { await loadReferrals(); S.refsError = false; } catch (e) { S.refsError = true; console.warn("office pool: referral scan failed: " + (e && e.message || e)); }
+        }
+        render();
+      } while (refreshAgain);
+      schedule();
+    })().finally(() => { refreshing = null; });
+    return refreshing;
   }
   function schedule() {
     clearTimeout(timer);
@@ -806,6 +866,7 @@
       const brk = document.getElementById("op-brk"); S.useBrokers = !brk || brk.checked;
       return chipIn(v);
     }
+    if (act === "count") return countBrokers();
     if (act === "claimdiv") return claimDividends();
     if (act === "claimref") return claimReferral();
     if (act === "claimall") return (async () => { await claimDividends(); await claimReferral(); })();
