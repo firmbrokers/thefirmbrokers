@@ -179,3 +179,29 @@ button { font: inherit; }
   body.deep .mk-look input { width: 96px; }
   body.deep .mk-look .go { margin-left: 8px; padding: 0 10px; }
 }
+
+/* a wallet's brokers: "paste one of the bots' addresses and put in offers on just their holdings" (2026-09-10) */
+.mk-look form.addr .hash { display: none; }
+.mk-look form.addr .hash, .mk-look form.addr .mini { display: none; }
+.mk-look form.addr input { flex: 1 1 auto; width: auto; min-width: 0; max-width: 440px; font-size: 15px; letter-spacing: 0; }
+.wc { background: #0b0e13; border: 4px solid var(--cream); box-shadow: 0 0 0 3px var(--ink2), 0 0 0 5px var(--rim); text-align: left; }
+.wc .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 0 14px; border-bottom: 3px solid var(--ink2); background: #14181e; }
+.wc h2 { margin: 0; font-family: var(--fd); font-size: 14px; line-height: 14px; color: var(--gold); text-shadow: 0 0 10px #ffc93355; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wc .st { font-family: var(--fb); font-size: 22px; line-height: 22px; white-space: nowrap; } .wc .st.on { color: var(--green); } .wc .st.new { color: var(--grey); }
+.wc .wsum { padding: 10px 14px; font-family: var(--fb); font-size: 20px; line-height: 24px; color: var(--paper); border-bottom: 2px solid #171b21; }
+.wc .wsum .dim { color: var(--grey); } .wc .wsum .up { color: var(--green); } .wc .wsum .gold { color: var(--gold); }
+.wc .rw .pr .dim { color: var(--grey); font-size: 20px; }
+.wc .wfoot { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 14px; background: #14181e; border-top: 3px solid var(--ink2); }
+.wc .osbtn { display: inline-flex; align-items: center; height: 44px; padding: 0 16px; font-family: var(--fd); font-size: 9px; color: var(--ink); background: var(--gold); border: 3px solid var(--ink2); box-shadow: 0 0 0 2px var(--rim); text-decoration: none; white-space: nowrap; }
+.wc .osbtn.ghost, .wc .copy { background: linear-gradient(#10151d, #0a0e14); color: var(--gold-deep); }
+.wc .osbtn:hover { background: #ffd964; color: var(--ink); }
+.wc .copy { height: 44px; padding: 0 12px; font-family: var(--fd); font-size: 8px; border: 3px solid var(--ink2); box-shadow: 0 0 0 2px var(--rim); cursor: pointer; }
+.wc .copy:hover { color: var(--gold); }
+.wc .wfoot .fine { flex-basis: 100%; font-family: var(--fb); font-size: 18px; line-height: 20px; color: var(--grey); }
+@media (max-width: 640px) {
+  .mk-look form.addr input, body.deep .mk-look form.addr input { width: auto; flex: 1 1 auto; font-size: 12px; }
+  .wc .head { height: 48px; padding: 0 10px; } .wc h2 { font-size: 11px; line-height: 11px; } .wc .st { font-size: 18px; }
+  .wc .wsum { font-size: 18px; line-height: 22px; padding: 8px 10px; }
+  .wc .wfoot { padding: 10px; gap: 8px; } .wc .osbtn { padding: 0 12px; font-size: 8px; } .wc .copy { padding: 0 10px; }
+  .wc .wfoot .fine { font-size: 15px; line-height: 17px; }
+}

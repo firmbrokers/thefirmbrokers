@@ -177,6 +177,19 @@
     tapeText(parts);
   }
   const pips = (lvl) => `<span class="pips">${[1, 2, 3, 4, 5].map((i) => `<i class="${i <= lvl ? "on" : ""}"></i>`).join("")}</span>`;
+  /// one row: portrait, number, level line, and whatever goes in the price column
+  function rowHtml(id, s, priceHtml, best) {
+    const t = levelOf(s);
+    let lv;
+    if (!s || s.failed) lv = `<span class="dim">${DASH}</span>`;
+    else if (s.gone) lv = `<span class="dim">GONE</span>`;
+    else if (!t) lv = `<span class="new">NEW</span>`;
+    else lv = `${pips(t.level)}<span>L${t.level} ${t.name}</span><b class="x">×${(potential(s) / 100).toFixed(2).replace(/0$/, "")}</b>`;
+    const marks = s && !s.failed ? `${s.parts >= 2 ? `<span class="mg">${s.parts} PARTS</span>` : ""}` : "";
+    const led = !s || s.failed || s.gone || !t ? "" : `<i class="led ${s.active ? "on" : "off"}"></i>`;
+    const img = s && !s.failed ? `<img loading="lazy" src="${pic(s.artwork)}" onerror="this.src='${CFG.sealedImage}'" alt="">` : `<img src="${CFG.sealedImage}" alt="">`;
+    return `<a class="rw${best ? " bv" : ""}" href="${osUrl(id)}" rel="noopener" target="_blank">${img}<div class="who"><div class="id">${isLegendary(s) ? '<span class="star">★</span>' : ""}#${id}</div><div class="lv">${led}${lv}${marks}</div></div><div class="pr">${priceHtml}</div></a>`;
+  }
   let shown = 12;
   function renderRows() {
     if (!book) return;
@@ -184,18 +197,7 @@
     if (sortBy === "level") items.sort((a, b) => potential(state.get(b.id)) - potential(state.get(a.id)) || Number(a.price) - Number(b.price));
     else if (sortBy === "value") items.sort((a, b) => potential(state.get(b.id)) / Number(b.price) - potential(state.get(a.id)) / Number(a.price));
     else items.sort((a, b) => Number(a.price) - Number(b.price));
-    const rows = items.slice(0, shown).map((x) => {
-      const s = state.get(x.id); const t = levelOf(s); const best = isBest(x, s);
-      let lv;
-      if (!s || s.failed) lv = `<span class="dim">${DASH}</span>`;
-      else if (s.gone) lv = `<span class="dim">GONE</span>`;
-      else if (!t) lv = `<span class="new">NEW</span>`;
-      else lv = `${pips(t.level)}<span>L${t.level} ${t.name}</span><b class="x">×${(potential(s) / 100).toFixed(2).replace(/0$/, "")}</b>`;
-      const marks = s && !s.failed ? `${s.parts >= 2 ? `<span class="mg">${s.parts} PARTS</span>` : ""}` : "";
-      const led = !s || s.failed || s.gone || !t ? "" : `<i class="led ${s.active ? "on" : "off"}"></i>`;
-      const img = s && !s.failed ? `<img loading="lazy" src="${pic(s.artwork)}" onerror="this.src='${CFG.sealedImage}'" alt="">` : `<img src="${CFG.sealedImage}" alt="">`;
-      return `<a class="rw${best ? " bv" : ""}" href="${osUrl(x.id)}" rel="noopener" target="_blank">${img}<div class="who"><div class="id">${isLegendary(s) ? '<span class="star">★</span>' : ""}#${x.id}</div><div class="lv">${led}${lv}${marks}</div></div><div class="pr">${fmtEth(x.price)}<small>ETH</small>${best ? '<b class="bv">★</b>' : ""}</div></a>`;
-    });
+    const rows = items.slice(0, shown).map((x) => { const s = state.get(x.id); const best = isBest(x, s); return rowHtml(x.id, s, `${fmtEth(x.price)}<small>ETH</small>${best ? '<b class="bv">★</b>' : ""}`, best); });
     $("#mk-rows").innerHTML = rows.join("") + (items.length > shown ? `<button type="button" class="more" id="mk-more">MORE · ${items.length - shown} LEFT</button>` : "");
     const more = $("#mk-more"); if (more) more.addEventListener("click", () => { shown += 24; renderRows(); });
   }
@@ -261,9 +263,85 @@
       setTimeout(() => { btn.textContent = "COPY"; }, 1500);
     }));
   }
-  $("#mk-form").addEventListener("submit", (e) => { e.preventDefault(); lookup($("#mk-q").value); });
-  $("#mk-q").addEventListener("paste", (e) => { const t = (e.clipboardData || window.clipboardData).getData("text"); const d = t.replace(/[^0-9]/g, "").slice(0, 4); if (d) { e.preventDefault(); $("#mk-q").value = d; lookup(d); } });
+  // ------------------------------------------------------------ a wallet
+  // "a box that lets us paste one of the bots' addresses and put in offers on
+  // just their holdings" (a holder, 2026-09-10): every broker a wallet holds,
+  // best first, level and listing next to each, one tap to the OpenSea item
+  // where an offer is made. The ids come from the records index (seconds),
+  // the levels from the chain, filling in as they arrive.
+  const isAddr = (s) => /^0x[0-9a-fA-F]{40}$/.test(String(s || "").trim());
+  const shortAddr = (a) => a.slice(0, 6) + "…" + a.slice(-4);
+  const profileUrl = (a) => `https://opensea.io/${a}`;
+  let walletRun = 0, wShown = 24; // a newer lookup cancels an older one's paints
+  async function walletLookup(raw) {
+    const addr = String(raw).trim();
+    const cardEl = $("#mk-card");
+    const run = ++walletRun; wShown = 24;
+    cardEl.hidden = false; cardEl.innerHTML = '<p class="mk-msg">READING THE WALLET…</p>';
+    history.replaceState(null, "", `?wallet=${addr}`);
+    let ids;
+    try { ids = (await F.tokensOf(addr)).map(Number).filter((n) => n >= 1).sort((a, b) => a - b); }
+    catch (e) { if (run === walletRun) cardEl.innerHTML = '<p class="mk-msg err">COULDN\'T READ THE CHAIN · TRY AGAIN</p>'; return; }
+    if (run !== walletRun) return;
+    if (!ids.length) {
+      cardEl.innerHTML = `<article class="wc"><div class="head"><h2>WALLET ${shortAddr(addr)}</h2><span class="st new">NO FIRM BROKERS</span></div><div class="wfoot"><a class="osbtn ghost" href="${profileUrl(addr)}" rel="noopener" target="_blank">OPENSEA PROFILE →</a><span class="fine">this wallet holds no Firm Broker right now</span></div></article>`;
+      return;
+    }
+    const paint = () => { if (run === walletRun) renderWallet(addr, ids); };
+    paint();
+    Promise.all([roundRate(), stats()]).then(paint).catch(() => {});
+    // twelve at a time, the list filling in as the chain answers
+    for (let i = 0; i < ids.length && run === walletRun; i += 12) { await readBrokers(ids.slice(i, i + 12)); paint(); }
+  }
+  function renderWallet(addr, ids) {
+    const cardEl = $("#mk-card");
+    const rows = ids.map((id) => ({ id, s: state.get(id) }));
+    const read = rows.filter((r) => r.s && !r.s.failed);
+    const pending = ids.length - read.length;
+    rows.sort((a, b) => potential(b.s) - potential(a.s) || a.id - b.id);
+    const byLevel = {}; let never = 0, earning = 0, listed = 0; let wei = 0n;
+    for (const { id, s } of read) {
+      if (s.gone) continue;
+      const t = levelOf(s); if (t) byLevel[t.level] = (byLevel[t.level] || 0) + 1; else never++;
+      if (s.active) earning++;
+      if (book && book.items.some((x) => x.id === id)) listed++;
+      if (_round) wei += _round.perWeight * BigInt(Math.round(potential(s)));
+    }
+    const levels = TIERS.filter((t) => byLevel[t.level]).reverse().map((t) => `${byLevel[t.level]} ${t.name}`);
+    if (never) levels.push(`${never} NEW`);
+    const hour = _round && read.length && !pending ? moneyOf(wei, (_stats || {}).usdPerEth) : null;
+    const parts = [];
+    if (pending) parts.push(`<span class="dim">reading ${pending} more…</span>`);
+    if (levels.length) parts.push(levels.join(" · "));
+    if (earning) parts.push(`<span class="up">${earning} earning</span>`);
+    if (listed) parts.push(`<span class="gold">${listed} listed</span>`);
+    if (hour) parts.push(`${hour} an hour once all hired`);
+    const list = rows.slice(0, wShown).map(({ id, s }) => {
+      const x = book ? book.items.find((y) => y.id === id) : null;
+      const best = x ? isBest(x, s) : false;
+      return rowHtml(id, s, x ? `${fmtEth(x.price)}<small>ETH</small>${best ? '<b class="bv">★</b>' : ""}` : s && s.gone ? `<span class="dim">${DASH}</span>` : `<span class="dim">OFFER →</span>`, best);
+    }).join("");
+    cardEl.innerHTML = `<article class="wc">
+      <div class="head"><h2>WALLET ${shortAddr(addr)}</h2><span class="st on">${ids.length} BROKER${ids.length === 1 ? "" : "S"}</span></div>
+      <div class="wsum">${parts.join(" · ")}</div>
+      <div class="rows">${list}${rows.length > wShown ? `<button type="button" class="more" id="wc-more">MORE · ${rows.length - wShown} LEFT</button>` : ""}</div>
+      <div class="wfoot"><a class="osbtn" href="${profileUrl(addr)}" rel="noopener" target="_blank">OPENSEA PROFILE →</a><button type="button" class="copy" id="wc-copy">COPY ${ids.length} IDS</button><span class="fine">tap a broker for his OpenSea page, where offers are made · levels live on-chain, not in the picture</span></div>
+    </article>`;
+    const more = $("#wc-more"); if (more) more.addEventListener("click", () => { wShown += 48; renderWallet(addr, ids); });
+    const cp = $("#wc-copy"); if (cp) cp.addEventListener("click", async () => { try { await navigator.clipboard.writeText(ids.join(", ")); cp.textContent = "COPIED"; } catch (e) { cp.textContent = "COPY FAILED"; } setTimeout(() => { cp.textContent = `COPY ${ids.length} IDS`; }, 1500); });
+  }
+  const submitQ = () => { const v = $("#mk-q").value.trim(); return isAddr(v) ? walletLookup(v) : lookup(v); };
+  $("#mk-form").addEventListener("submit", (e) => { e.preventDefault(); submitQ(); });
+  $("#mk-q").addEventListener("input", () => $("#mk-form").classList.toggle("addr", /^0x/i.test($("#mk-q").value.trim())));
+  $("#mk-q").addEventListener("paste", (e) => {
+    const t = (e.clipboardData || window.clipboardData).getData("text");
+    const a = (t.match(/0x[0-9a-fA-F]{40}/) || [])[0];
+    if (a) { e.preventDefault(); $("#mk-q").value = a; $("#mk-form").classList.add("addr"); walletLookup(a); return; }
+    const d = t.replace(/[^0-9]/g, "").slice(0, 4); if (d) { e.preventDefault(); $("#mk-q").value = d; lookup(d); }
+  });
   const qs = new URLSearchParams(location.search); const q = qs.get("id") || (location.hash.match(/^#(\d+)$/) || [])[1];
-  if (q) { document.body.classList.add("deep"); $("#mk-q").value = q; lookup(q, qs.get("token") === "1"); }
+  const wq = qs.get("wallet");
+  if (wq && isAddr(wq)) { document.body.classList.add("deep"); $("#mk-q").value = wq; $("#mk-form").classList.add("addr"); walletLookup(wq); }
+  else if (q) { document.body.classList.add("deep"); $("#mk-q").value = q; lookup(q, qs.get("token") === "1"); }
   loadBook();
 })();
