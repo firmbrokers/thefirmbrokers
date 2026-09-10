@@ -22,6 +22,7 @@ window.FIRM_CFG = {
   // anti-phishing rule as the mint and the token: nothing else on the site ever
   // offers a CASHCAT buy. Empty = the plate is not built.
   cashcatBuyUrl: "https://www.letscash.fun/token/0x020bfC650A365f8BB26819deAAbF3E21291018b4",
+  shareOrigin: "https://firmbrokers.io", // the domain written into links people share (X blocks the .com); "" = the domain the visitor is on
   explorer: "https://robinhoodchain.blockscout.com",
   // THE RECORDS ROOM reads the payroll history as JSON from the records-data repo (scanned hourly by a
   // GitHub Action, served by Pages) and asks the chain only for the last hour — phones used to scan

@@ -258,7 +258,7 @@
     cardEl.innerHTML = card(b, `FIRM BROKER #${b.artwork}`, n, twin);
     const tw = cardEl.querySelector(".twin"); if (tw) tw.addEventListener("click", () => lookup(n, !showToken));
     cardEl.querySelectorAll(".copy").forEach((btn) => btn.addEventListener("click", async () => {
-      const url = `${location.origin}${location.pathname}?id=${btn.dataset.id}${showToken ? "&token=1" : ""}`;
+      const url = `${CFG.shareOrigin || location.origin}${location.pathname}?id=${btn.dataset.id}${showToken ? "&token=1" : ""}`;
       try { await navigator.clipboard.writeText(url); btn.textContent = "COPIED"; } catch (e) { btn.textContent = url; }
       setTimeout(() => { btn.textContent = "COPY"; }, 1500);
     }));

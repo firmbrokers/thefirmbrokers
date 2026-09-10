@@ -561,7 +561,7 @@
   function drandUrl(round) { return `https://api.drand.sh/v2/beacons/quicknet/rounds/${round}`; }
   /// the post is the same anti-phishing shape as the application post: the site's
   /// own page, nothing else linked
-  const pageLink = () => `${location.origin}/pool${IS_HQ ? "" : "/" + B.slug}`; // the clean URL, whichever way the visitor arrived
+  const pageLink = () => `${CFG.shareOrigin || location.origin}/pool${IS_HQ ? "" : "/" + B.slug}`; // the clean URL on the domain we want shared, whichever way the visitor arrived
   const refLink = (code) => `${pageLink()}?ref=${code}`;
   function xIntent(code) {
     const link = refLink(code);
