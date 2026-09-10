@@ -348,12 +348,16 @@
   /// the link's code when it can actually send this wallet: registered, and not
   /// the wallet's own
   const linkCode = () => (refCode() && S.refOwner !== ZERO && !same(S.refOwner, S.account) ? refCode() : "");
-  /// the sender is settled once: by the contract at the first chip-in that
-  /// carries a code. The page sends a code ONLY before the wallet's first
-  /// chip-in, so a link opened later changes nothing (the handbook's rule;
-  /// the contract would still accept a code from an unreferred player, but
-  /// "it changes every time I open a link" is what that read as, 2026-09-06)
-  const senderOpen = () => S.referrer === ZERO && !S.inBefore && !(S.me && S.me.deposited > 0n);
+  /// the sender is settled once, by the contract, at the first chip-in that
+  /// CARRIES a code (an earlier chip-in without one sets nothing). So the
+  /// field is open for anyone without a sender, whether or not they are in
+  /// already. (Until 2026-09-10 the page closed it after any chip-in, and a
+  /// giveaway that asked past players to chip in with a code found the field
+  /// disabled for most of them.)
+  const senderOpen = () => S.referrer === ZERO;
+  /// "first" for a wallet that never chipped in, "next" for one already in
+  const nextOrFirst = () => (S.inBefore || (S.me && S.me.deposited > 0n) ? "next" : "first");
+
   async function chipIn(amountWei) {
     const P = B.pool;
     let brokers = [];
@@ -495,7 +499,7 @@
     if (check.error) return { cls: "fine", html: "could not read the chain · the code is checked again at chip-in" };
     if (same(check.owner, S.account)) return { cls: "fine bad", html: "that is your own code · it cannot send you, share it instead" };
     if (check.owner === ZERO) return { cls: "fine bad", html: `'${esc(code)}' is not a registered code · check the spelling` };
-    return { cls: "fine ok", html: `sent by <b>${esc(code)}</b> · locks at your first chip-in · they earn ${terms().refBps / 100}% of everything you chip in, never out of your share` };
+    return { cls: "fine ok", html: `sent by <b>${esc(code)}</b> · locks at your ${nextOrFirst()} chip-in · they earn ${terms().refBps / 100}% of everything you chip in, never out of your share` };
   }
   /// the name box, as typed: free or taken, and the link it would make
   function nameNote(code, check) {
@@ -667,11 +671,10 @@
       <div class="amt"><input type="text" id="op-ref" placeholder="a code, or a link · optional" value="${esc(value)}" maxlength="200" autocapitalize="off" spellcheck="false" autocomplete="off"></div>
       <div class="${n.cls}" id="op-refnote">${n.html}</div>`;
     }
-    const settled = S.referrer !== ZERO;
-    const who = settled ? (S.referrerCode ? esc(S.referrerCode) : short(S.referrer)) : "";
+    const who = S.referrerCode ? esc(S.referrerCode) : short(S.referrer);
     return `<div class="lab" style="margin-top:8px">GOT A CODE?</div>
       <div class="amt"><input type="text" id="op-ref" value="${who}" placeholder="—" disabled></div>
-      <div class="fine" id="op-refnote">${settled ? `your sender was set at your first chip-in: <b>${who}</b> · ${T.refBps / 100}% of every chip-in you make goes to them, never out of your share` : "you chipped in before without a code · a sender is set only at the first chip-in, so a code changes nothing now"}</div>`;
+      <div class="fine" id="op-refnote">your sender is <b>${who}</b>, set at the chip-in that carried their code · ${T.refBps / 100}% of every chip-in you make goes to them, never out of your share</div>`;
   }
 
   function render() {
@@ -709,11 +712,10 @@
     const ownLink = !!refCode() && !!S.account && same(S.refOwner, S.account);
     const settled = S.referrer !== ZERO;
     const sender = settled ? (S.referrerCode ? esc(S.referrerCode) : short(S.referrer)) : codeKnown && (!S.account || senderOpen()) ? esc(refCode()) : "";
-    const senderNote = sender && !settled ? (S.account ? " · locks on your first chip-in" : " · set on your first chip-in") : "";
+    const senderNote = sender && !settled ? (S.account ? ` · locks on your ${nextOrFirst()} chip-in` : " · set on your first chip-in") : "";
     // a settled sender makes every link note moot (their 5% goes to the sender, not the jackpot)
     let badCode = refCode() && !codeKnown && !ownLink && !settled && S.loaded ? `<div class="fine">link code '${esc(refCode())}' is not registered · their 5% would go to the jackpot</div>` : "";
     if (ownLink && !settled) badCode = `<div class="fine">that is your own link · it cannot send you, share it</div>`;
-    else if (codeKnown && S.account && !settled && !senderOpen()) badCode = `<div class="fine">link '${esc(refCode())}' changes nothing now · a sender is set on your first chip-in, and you are already in</div>`;
 
     // ---- the results banner: from the draw until the next bell
     const last = S.history.find((h) => h.state === 2 && h.playerCount > 0 && now < h.closesAt + 86400 + 600);
