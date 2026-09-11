@@ -644,10 +644,12 @@
       const share = info ? (total * BigInt(info.refBps)) / 10000n : null;
       const open = S.cur && S.curId === id;
       const when = info ? nyTime(info.closesAt, true).replace(/,\s[^,]*$/, "") : `round ${id}`; // the bell's date, New York
-      return `<details class="byday" data-id="${id}"><summary>${when}${open ? ' <span class="ok">· open</span>' : ""} · ${addrs.length} of ${r.players.length} chipped in · ${fmt(total)} ${SYM}${share != null ? ` · yours ${fmt(share)}` : ""}</summary>
-        <div class="fine">${addrs.map((a) => `<a href="${explorer(a)}" rel="noopener">${short(a)}</a> ${fmt(BigInt(m[a]))}`).join(" · ")}</div></details>`;
+      // the row is a tap target and says so: nothing on a phone hints that a plain line opens
+      // (tester, 2026-09-11: "I see the deposits, but not the specific wallet")
+      return `<details class="byday" data-id="${id}"><summary>${when}${open ? ' <span class="ok">· open</span>' : ""} · ${addrs.length} of ${r.players.length} chipped in · ${fmt(total)} ${SYM}${share != null ? ` · yours ${fmt(share)}` : ""} <span class="see"><u>who</u> ›</span></summary>
+        <div class="fine">${addrs.map((a) => `<span class="w"><a href="${explorer(a)}" rel="noopener">${short(a)}</a><span class="n">${fmt(BigInt(m[a]))} ${SYM}</span></span>`).join("")}</div></details>`;
     });
-    return `<div class="lab" style="margin-top:8px">BY DAY</div>${rows.join("")}`;
+    return `<div class="lab" style="margin-top:8px">BY DAY <span class="dim">· tap a day for the wallets</span></div>${rows.join("")}`;
   }
   function referralsBody() {
     const r = S.refs && S.refs.for === String(S.account).toLowerCase() ? S.refs : null;
@@ -860,6 +862,10 @@
     if (rf && keep.ref != null) rf.value = keep.ref;
     if (b && keep.brk != null) b.checked = keep.brk;
     for (const id of keep.byday || []) { const d = host.querySelector(`details.byday[data-id="${id}"]`); if (d) d.open = true; }
+    // the newest day starts open the first time the list is painted, so the pattern shows
+    // itself; after that the reader's own opening and closing is what survives a repaint
+    const first = host.querySelector("details.byday");
+    if (first && !S.bydaySeeded) { S.bydaySeeded = true; first.open = true; }
   }
 
   // ---------------------------------------------------------------- wiring
