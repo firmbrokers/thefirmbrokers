@@ -3039,6 +3039,23 @@ body.flat-mode .fb-flat .fb-btn { position: relative; z-index: 1; }
 .fb-merge .pick .card b { font-family: var(--font-display); font-size: 7px; }
 .fb-merge .pick .card u { font-family: var(--font-data); font-size: 14px; color: #8fa0b0; text-decoration: none; }
 .fb-merge .pick .card.in { box-shadow: inset 0 0 0 2px #6fe08c; }
+/* The roster's status dot, in the Merger too (a holder asked, 2026-09-12): the
+   top-right corner of the portrait on a pick card, the top-right corner of a
+   loaded slot. Same three colours and the same legend as the roster footer;
+   IN sits along the bottom of the portrait, so the two never meet. */
+.fb-merge .pick .card .dot, .fb-merge .slot .dot {
+  position: absolute; top: 3px; right: 3px; z-index: 2; width: 9px; height: 9px;
+  background: #1b2026; box-shadow: inset 0 0 0 2px #06080c;
+}
+.fb-merge .slot { position: relative; }
+.fb-merge .slot .dot { top: 6px; right: 6px; }
+.fb-merge .s-live .dot { background: #6fe08c; box-shadow: inset 0 0 0 2px #06080c, 0 0 6px #6fe08c88; }
+.fb-merge .s-soon .dot { background: #ffc933; box-shadow: inset 0 0 0 2px #06080c; }
+.fb-merge .pickhd .key { display: flex; align-items: center; gap: 5px; font-size: 14px; color: #7d8b98; margin-left: auto; }
+.fb-merge .pickhd .key i { width: 9px; height: 9px; margin-left: 7px; flex: none; background: #1b2026; box-shadow: inset 0 0 0 2px #06080c; }
+.fb-merge .pickhd .key i:first-child { margin-left: 0; }
+.fb-merge .pickhd .key i.live { background: #6fe08c; }
+.fb-merge .pickhd .key i.soon { background: #ffc933; }
 .fb-merge .pick .card.no { opacity: .32; cursor: not-allowed; }
 .fb-merge .none { grid-column: 1 / -1; font-size: 17px; color: #8fa0b0; padding: 8px; }
 

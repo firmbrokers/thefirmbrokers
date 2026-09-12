@@ -2723,6 +2723,12 @@
   }
   /// What is in the machine right now, and what would come out. Anything sold
   /// or already merged away falls out of the hopper on its own.
+  /// a broker's earning status, the roster's three words: live (earning now),
+  /// soon (hired, starts next hour), off (not hired). Shared by the roster
+  /// cards' classes and the Merger's dots so both panels can never disagree.
+  function statusOf(b) { return b.liveNow ? "live" : b.active ? "soon" : "off"; }
+  function statusWord(b) { return b.liveNow ? "earning now" : b.active ? "starts next hour" : "not hired"; }
+
   function mergeState() {
     const byId = new Map(state.brokers.map((b) => [b.id, b]));
     const picked = [...state.fusePick].map((i) => byId.get(i)).filter(Boolean);
@@ -2789,8 +2795,9 @@
       if (!b) return '<div class="slot empty"><span>EMPTY</span></div>';
       const t = tierOf(b.tierBurned);
       const leg = isLegendary(b);
-      return `<div class="slot ${i === 0 ? "keep" : "burn"}${leg ? " leg" : ""}">
+      return `<div class="slot ${i === 0 ? "keep" : "burn"}${leg ? " leg" : ""} s-${statusOf(b)}">
           <img src="${CFG.imageBase}/${b.artwork}.png" onerror="this.src='${CFG.sealedImage}'" alt="">
+          <span class="dot" title="${statusWord(b)}"></span>
           <em>${i === 0 ? "SURVIVES" : "BURNED"}</em>
           <b>#${b.id}${leg ? " ★" : ""}</b>
           <u>${t.name} · ${(b.weight / 100).toFixed(2)}x${b.parts > 1 ? " · " + b.parts + " PARTS" : ""}</u>
@@ -2814,9 +2821,13 @@
       const stop = mergeBlocker(b, m);
       const t = tierOf(b.tierBurned);
       const leg = isLegendary(b);
-      return `<button class="card${inside ? " in" : ""}${stop ? " no" : ""}" type="button" data-id="${b.id}"
-          title="${inside ? "loaded — click to take it out" : stop || "click to load it in"}">
+      // the same status dot as the roster (a holder asked for it, 2026-09-12):
+      // green earning now, gold starts next hour, grey not hired — the legend
+      // sits in the LOAD A BROKER IN line
+      return `<button class="card s-${statusOf(b)}${inside ? " in" : ""}${stop ? " no" : ""}" type="button" data-id="${b.id}"
+          title="${inside ? "loaded — click to take it out" : stop || "click to load it in"} · ${statusWord(b)}">
           <span class="pic"><img loading="lazy" src="${CFG.imageBase}/${b.artwork}.png" onerror="this.src='${CFG.sealedImage}'" alt="">
+          <span class="dot"></span>
           ${inside ? "<s>IN</s>" : ""}</span>
           <b>#${b.id}${leg ? " ★" : ""}</b><u>${(b.weight / 100).toFixed(2)}x${b.parts > 1 ? " · " + b.parts + "p" : ""}</u>
         </button>`;
@@ -2842,7 +2853,7 @@
         <button class="fb-btn go" type="button">MERGE ${m.picked.length || ""}</button>
         <button class="fb-btn small ghost clr" type="button">EMPTY THE MACHINE</button>
       </div>
-      <div class="pickhd"><b>LOAD A BROKER IN</b><span>${state.brokers.length} owned · click one to put it in the machine</span></div>
+      <div class="pickhd"><b>LOAD A BROKER IN</b><span>${state.brokers.length} owned · click one to put it in the machine</span><span class="key"><i class="live"></i>earning <i class="soon"></i>starts next hour <i class="off"></i>not hired</span></div>
       <div class="pick">${cards || '<div class="none">No brokers in this wallet yet.</div>'}</div>`;
 
     card.querySelector(".pick").scrollTop = scroll;
