@@ -19,9 +19,9 @@
   <meta name="twitter:image" content="https://thefirmbrokers.com/og-street.png">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="apple-touch-icon" href="favicon.png">
-  <link rel="stylesheet" href="level.css?v=1789141322">
-  <link rel="stylesheet" href="branches.css?v=1789141322">
-  <link rel="stylesheet" href="xapply.css?v=1789141322">
+  <link rel="stylesheet" href="level.css?v=1789233944">
+  <link rel="stylesheet" href="branches.css?v=1789233944">
+  <link rel="stylesheet" href="xapply.css?v=1789233944">
 </head>
 <body>
 
@@ -46,6 +46,9 @@
     <i class="fb-break" aria-hidden="true"></i>
     <a id="fb-buybtn" class="fb-hudbtn tile buy" href="#" target="_blank" rel="noopener" style="display:none"><small>BUY <b class="tok">$9TO5</b></small><span>the token</span></a>
     <a id="fb-poolbtn" class="fb-hudbtn tile jackpot" href="/pool"><small>JACKPOT</small><span><b id="fb-jackpot-pot">today's pot</b><i class="unit"></i></span></a>
+    <!-- THE CALL: today's stock and what each side pays (level.js writes it);
+         hidden until config.js names the call desk -->
+    <a id="fb-callbtn" class="fb-hudbtn tile call" href="/call" style="display:none"><small><em class="long">THE CALL</em><em class="short">CALL</em></small><span><b id="fb-call-line">today's stock</b><i class="unit"></i></span></a>
     <a id="fb-marketbtn" class="fb-hudbtn" href="/market">MARKET</a>
     <a id="fb-recordsbtn" class="fb-hudbtn" href="/records" title="Hourly pay slips for your brokers, from the chain">SLIPS</a>
     <a id="fb-paybtn" class="fb-hudbtn pay" href="apply" target="_blank" rel="noopener"
@@ -75,22 +78,22 @@
 
   <div id="fb-toast" class="fb-toast"></div>
 
-  <script src="config.js?v=1789141322"></script>
-  <script src="firm.js?v=1789141322"></script>
-  <script src="city.js?v=1789141322"></script>
-  <script src="lobby.js?v=1789141322"></script>
-  <script src="flathero.js?v=1789141322"></script>
-  <script src="xapply.js?v=1789141322"></script>
+  <script src="config.js?v=1789233944"></script>
+  <script src="firm.js?v=1789233944"></script>
+  <script src="city.js?v=1789233944"></script>
+  <script src="lobby.js?v=1789233944"></script>
+  <script src="flathero.js?v=1789233944"></script>
+  <script src="xapply.js?v=1789233944"></script>
   <!-- registers window.__AUCTION; level.js calls it guarded, so this file
        being absent or stale is a working page, not a broken room -->
-  <script src="auction.js?v=1789141322"></script>
-  <script src="branches.js?v=1789141322"></script>
-  <script src="branches-flat.js?v=1789141322"></script>
-<script src="cashcat.js?v=1789141322"></script>
+  <script src="auction.js?v=1789233944"></script>
+  <script src="branches.js?v=1789233944"></script>
+  <script src="branches-flat.js?v=1789233944"></script>
+<script src="cashcat.js?v=1789233944"></script>
   <!-- registers window.__CAMPAIGN (sponsored campaigns); level.js calls it guarded -->
-  <script src="campaign.js?v=1789141322"></script>
-  <script src="autopay.js?v=1789141322"></script>
-  <script src="level.js?v=1789141322"></script>
+  <script src="campaign.js?v=1789233944"></script>
+  <script src="autopay.js?v=1789233944"></script>
+  <script src="level.js?v=1789233944"></script>
 <!-- SELF-HEAL. index.html is served cache-control: max-age=600, so for ten
      minutes after a deploy a returning visitor holds the previous index, which
      carries the previous ?v= stamps and therefore loads the previous JS as a

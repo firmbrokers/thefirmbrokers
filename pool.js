@@ -46,6 +46,21 @@
   const IS_HQ = B.slug === "hq";
   const SYM = B.symbol || "$9TO5";
   const BOOST = B.boost !== false;
+  // the cadence: a bell every `period` seconds (config; absent = a day). THE PUNCH
+  // CLOCK is 14400: "today" becomes "this round", "tomorrow's pot" "the next pot",
+  // and a round needs three players at its bell or the bell moves a period on.
+  // The words come from branches.js (one source for the hall, the tabs and this
+  // page); the fallback keeps the page whole if that file is missing.
+  const PERIOD = Number(B.period) > 0 ? Number(B.period) : 86400;
+  const PW = window.__BRANCHES && window.__BRANCHES.periodWords ? window.__BRANCHES.periodWords(PERIOD)
+    : { daily: true, sec: 86400, every: "every day", span: "a day", round: "today", rounds: "today's", roundCap: "TODAY", roundsCap: "TODAY'S", last: "yesterday", lasts: "yesterday's", nextPot: "tomorrow's pot" };
+  const MIN_PLAYERS = PW.daily ? 0 : 3; // the punch clock's floor (PunchClockPool MIN_PLAYERS); daily pools draw with anyone in
+  const MAX_MOVES = 2;
+  /// the card's words for a faster branch (poolcard.js merges them over its daily defaults)
+  const cardWords = () => (PW.daily ? {} : {
+    potLabel: `${PW.roundsCap} POT`, subtitle: `one pot ${PW.every} in {sym} · drawn by drand, checked on-chain`, in: `is in ${PW.rounds} pool`,
+    inCount: `{n} in ${PW.round}`, first: `be the first in ${PW.round}`, tomorrow: `${PW.nextPot} is open`,
+  });
 
   const SEL = {
     deposit: "0xb927dab6", registerBrokers: "0xfb9a75f4", claimDividends: "0xccbba739", claimReferral: "0xe02f1ebd",
@@ -324,7 +339,7 @@
     if (/reject|denied|cancel/i.test(m)) return "cancelled in the wallet";
     // wallets surface revert DATA more often than error names: match both
     if (/BadAmount|0x749b5939/.test(m)) return "below the minimum for this round, or not a whole amount";
-    if (/BadBroker|0xef6303e2/.test(m)) return "one of those brokers is not yours, not hired, or already counted today";
+    if (/BadBroker|0xef6303e2/.test(m)) return `one of those brokers is not yours, not hired, or already counted ${PW.round}`;
     if (/RoundNotClosed|0x29e3b953/.test(m)) return "the bell has not rung yet";
     if (/RoundNotOpen|0x402bc007/.test(m)) return "that round is already settled";
     if (/NotAPlayer|0xabca3517/.test(m)) return "chip in first, then clock in brokers";
@@ -431,7 +446,7 @@
       if (g > 60000n && g < fallback * 2n) limit = g;
     } catch (e) { /* the wallet could not estimate: the ceiling stands */ }
     const after = (S.me ? S.me.brokers : 0) + ids.length;
-    await tx("counting your brokers", () => F.send(B.pool, data, 0n, S.account, limit), async () => { toast(`counted — ${multXOf(after)} today`, true); });
+    await tx("counting your brokers", () => F.send(B.pool, data, 0n, S.account, limit), async () => { toast(`counted — ${multXOf(after)} ${PW.round}`, true); });
   }
   async function claimDividends() {
     const ids = decodeUintArray((await F.callBatch([{ to: B.pool, data: SEL.roundsOf + word(S.account) }]))[0]);
@@ -574,7 +589,7 @@
   }
   function explorer(a) { return `${CFG.explorer}/address/${a}`; }
   /// what the card needs to know about this branch
-  const cardBranch = () => ({ slug: B.slug, branch: B.name, house: "FIRM BROKERS", symbol: SYM, mark: B.mark || "", branchObj: B });
+  const cardBranch = () => ({ slug: B.slug, branch: B.name, house: "FIRM BROKERS", symbol: SYM, mark: B.mark || "", branchObj: B, period: PERIOD, words: cardWords() });
 
   // ---------------------------------------------------------------- SENT BY YOU
   /// Who arrived through this wallet's link: the Referred events naming it as
@@ -643,13 +658,14 @@
       const total = addrs.reduce((acc, a) => acc + BigInt(m[a]), 0n);
       const share = info ? (total * BigInt(info.refBps)) / 10000n : null;
       const open = S.cur && S.curId === id;
-      const when = info ? nyTime(info.closesAt, true).replace(/,\s[^,]*$/, "") : `round ${id}`; // the bell's date, New York
+      // the bell's date, New York (a faster branch has several bells a day: keep the time)
+      const when = info ? (PW.daily ? nyTime(info.closesAt, true).replace(/,\s[^,]*$/, "") : nyTime(info.closesAt, true)) : `round ${id}`;
       // the row is a tap target and says so: nothing on a phone hints that a plain line opens
       // (tester, 2026-09-11: "I see the deposits, but not the specific wallet")
       return `<details class="byday" data-id="${id}"><summary>${when}${open ? ' <span class="ok">· open</span>' : ""} · ${addrs.length} of ${r.players.length} chipped in · ${fmt(total)} ${SYM}${share != null ? ` · yours ${fmt(share)}` : ""} <span class="see"><u>who</u> ›</span></summary>
         <div class="fine">${addrs.map((a) => `<span class="w"><a href="${explorer(a)}" rel="noopener">${short(a)}</a><span class="n">${fmt(BigInt(m[a]))} ${SYM}</span></span>`).join("")}</div></details>`;
     });
-    return `<div class="lab" style="margin-top:8px">BY DAY <span class="dim">· tap a day for the wallets</span></div>${rows.join("")}`;
+    return `<div class="lab" style="margin-top:8px">BY ${PW.daily ? "DAY" : "ROUND"} <span class="dim">· tap a ${PW.daily ? "day" : "round"} for the wallets</span></div>${rows.join("")}`;
   }
   function referralsBody() {
     const r = S.refs && S.refs.for === String(S.account).toLowerCase() ? S.refs : null;
@@ -720,11 +736,11 @@
     if (ownLink && !settled) badCode = `<div class="fine">that is your own link · it cannot send you, share it</div>`;
 
     // ---- the results banner: from the draw until the next bell
-    const last = S.history.find((h) => h.state === 2 && h.playerCount > 0 && now < h.closesAt + 86400 + 600);
+    const last = S.history.find((h) => h.state === 2 && h.playerCount > 0 && now < h.closesAt + PERIOD + 600);
     let banner = "";
     if (last) {
       const who = (a) => (youWon(a) ? `<b class="won">YOU</b>` : `<b>${short(a)}</b>`);
-      banner = `<div class="last">🔔 ${now - last.closesAt < 12 * 3600 ? "today" : "yesterday"}: ${last.jackpotWinner !== ZERO ? `jackpot ${fmt(last.jackpotPaid)} → ${who(last.jackpotWinner)} · ` : ""}money back ${fmt(last.refundPaid)} → ${who(last.refundWinner)}`;
+      banner = `<div class="last">🔔 ${PW.daily ? (now - last.closesAt < 12 * 3600 ? "today" : "yesterday") : "last round"}: ${last.jackpotWinner !== ZERO ? `jackpot ${fmt(last.jackpotPaid)} → ${who(last.jackpotWinner)} · ` : ""}money back ${fmt(last.refundPaid)} → ${who(last.refundWinner)}`;
       if (S.account) {
         const mine = [];
         if (youWon(last.jackpotWinner)) mine.push(`<b class="won">YOU took the jackpot: ${fmt(last.jackpotPaid)} ${SYM}</b>`);
@@ -737,7 +753,7 @@
     }
 
     const tickerItems = [];
-    if (r) tickerItems.push(`<span class="up">TODAY'S JACKPOT ${fmt(r.pot)} ${SYM}</span> · closes ${bellNY} NY`);
+    if (r) tickerItems.push(`<span class="up">${PW.roundsCap} JACKPOT ${fmt(r.pot)} ${SYM}</span> · closes ${bellNY} NY`);
     for (const h of S.history.filter((x) => x.state === 2 && x.playerCount > 0).slice(0, 6)) {
       tickerItems.push(h.jackpotWinner !== ZERO ? `${nyTime(h.closesAt, true)} · jackpot <span class="up">${fmt(h.jackpotPaid)}</span> → ${short(h.jackpotWinner)}` : `${nyTime(h.closesAt, true)} · money back ${fmt(h.refundPaid)} → ${short(h.refundWinner)}`);
     }
@@ -748,14 +764,15 @@
     const half = tape.repeat(Math.max(2, Math.ceil(2400 / Math.max(80, tape.replace(/<[^>]+>/g, "").length * 11))));
     const ticker = tickerItems.length > 1 ? `<div class="op-ticker"><div class="tape">${half}${half}</div></div>` : "";
     const board = `<div class="cab board"><div class="scr">${banner}<div class="hero">
-      <div class="lab">${r ? "TODAY'S JACKPOT" : "THE JACKPOT"}</div>
+      <div class="lab">${r ? PW.roundsCap + " JACKPOT" : "THE JACKPOT"}</div>
       <div class="pot${left > 0 && left <= 600 ? " hot2" : left > 0 && left <= 3600 ? " hot1" : ""}" data-pot="${r ? r.pot.toString() : "0"}"><span class="num">${r ? fmt(S.potShown && S.potShown < r.pot ? S.potShown : r.pot) : "—"}</span>${r ? ` <span class="unit">${SYM}</span>` : ""}</div>
-      <div class="one">chip in ${SYM} before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span></div>
-      <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? "nobody has chipped in yet today — the first one opens the pool" : "reading the chain…")}</div></div>
+      <div class="one">chip in ${SYM} before the ${bellNY} <span class="long">New York</span><span class="short">NY</span> bell · one takes the jackpot, one gets their money back<span class="long"> · ${T.divBps / 100}% of every chip-in is paid out to everyone already in</span>${PW.daily ? "" : ` · <b>${PW.every}</b>`}</div>
+      <div class="fine">${r ? [`${r.playerCount} player${r.playerCount === 1 ? "" : "s"}`, `${fmt(r.deposits)}&nbsp;in`, r.seed > 0n ? `${fmt(r.seed)} seeded` : "", ethStr(r.pot)].filter(Boolean).join(" · ") : (S.loaded ? `nobody has chipped in yet ${PW.round} — the first one opens the pool` : "reading the chain…")}</div>
+      ${MIN_PLAYERS && r && r.playerCount < MIN_PLAYERS ? `<div class="fine rule3">needs ${MIN_PLAYERS} players at the bell, or the bell moves ${PW.span} on (up to ${MAX_MOVES === 2 ? "twice" : MAX_MOVES + " times"}) · tickets and pot stay in</div>` : ""}</div>
       <div class="row">
         <div><div class="lab">${left > 0 ? "CLOSES IN" : "CLOSED"}</div><div class="cd${left > 0 && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${S.closesAt ? `<span class="long">${nyTime(S.closesAt, true)} NY${localTime(S.closesAt)} · draw 5 min after the bell</span><span class="short">${nyTime(S.closesAt)} NY${localTime(S.closesAt, true)} · draw +5 min</span>` : ""}</div></div>
-        ${me && me.deposited > 0n ? `<div><div class="lab">YOU TODAY</div><div class="hi">${fmt(me.deposited)} ${SYM}</div><div class="fine">${BOOST ? `${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}` : ""}</div></div>
-        <div><div class="lab">YOUR CHANCE AT THE JACKPOT</div><div class="hi">${odds ? "1 in " + odds : "—"}</div><div class="fine">${me.divEarned > 0n ? "earned " + fmt(me.divEarned) + " in dividends today" : ""}</div></div>` : ""}
+        ${me && me.deposited > 0n ? `<div><div class="lab">YOU ${PW.roundCap}</div><div class="hi">${fmt(me.deposited)} ${SYM}</div><div class="fine">${BOOST ? `${me.brokers} broker${me.brokers === 1 ? "" : "s"} counted · ${multX(me.brokers)}` : ""}</div></div>
+        <div><div class="lab">YOUR CHANCE AT THE JACKPOT</div><div class="hi">${odds ? "1 in " + odds : "—"}</div><div class="fine">${me.divEarned > 0n ? "earned " + fmt(me.divEarned) + " in dividends " + PW.round : ""}</div></div>` : ""}
       </div></div></div>`;
 
     // ---- the bell, for a closed pool nobody has drawn
@@ -763,7 +780,7 @@
     if (S.due.length) {
       const d = S.history.find((h) => h.id === S.due[0]);
       const when = d ? nyTime(d.closesAt, true) : "round " + S.due[0];
-      bell = `<div class="cab"><div class="scr"><div class="lab">THE BELL</div><div>${d && now - d.closesAt < 86400 ? "yesterday's" : "a"} pool (${when}) is waiting for its draw.</div>
+      bell = `<div class="cab"><div class="scr"><div class="lab">THE BELL</div><div>${d && now - d.closesAt < PERIOD ? PW.lasts : "a"} pool (${when}) is waiting for its draw.</div>
       <button class="go" data-act="bell" data-id="${S.due[0]}" ${S.account ? "" : "disabled"} style="margin-top:8px">RING THE BELL</button>
       <div class="fine">fetches the beacon and hands it to the contract · anyone may${S.account ? "" : " · connect a wallet first"}</div></div></div>`;
     }
@@ -780,15 +797,15 @@
       const counted = me ? me.brokers : 0;
       const brokerLine = S.brokers.length
         ? `<label class="tog"><input type="checkbox" id="op-brk" ${S.useBrokers ? "checked" : ""}> count my ${S.brokersEligible > S.brokers.length ? `${S.brokers.length} of ${S.brokersEligible}` : S.brokers.length} hired broker${S.brokers.length === 1 ? "" : "s"} <span class="dim">(${multX(counted + S.brokers.length)})</span></label>
-           <div class="fine">each hired broker you count adds ${T.boostBps / 100}% to your chance today, up to ${cap / 10000}× (${maxUseful()} brokers)${S.brokersEligible > useful() ? `; you have ${S.brokersEligible}, so ${useful()} are counted` : ""}. Counting only tells the pool: your brokers stay in your wallet and keep earning. A broker counts once a day.</div>`
-        : counted && counted >= maxUseful() ? `<div class="fine">your ${counted} brokers are counted today (${multX(counted)}) — the most the pool takes</div>`
-        : S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already counted today</div>`
+           <div class="fine">each hired broker you count adds ${T.boostBps / 100}% to your chance ${PW.round}, up to ${cap / 10000}× (${maxUseful()} brokers)${S.brokersEligible > useful() ? `; you have ${S.brokersEligible}, so ${useful()} are counted` : ""}. Counting only tells the pool: your brokers stay in your wallet and keep earning. A broker counts once a day.</div>`
+        : counted && counted >= maxUseful() ? `<div class="fine">your ${counted} brokers are counted ${PW.round} (${multX(counted)}) — the most the pool takes</div>`
+        : S.brokersOwned && !S.brokersEligible ? `<div class="fine">your brokers are not hired, or already counted ${PW.round}</div>`
         : `<div class="fine">no hired brokers to count · hiring one boosts your chance ${T.boostBps / 100}%</div>`;
       // in today with brokers still uncounted (a chip-in that went out without
       // them, or brokers hired since): count them now, no new chip-in
       const countNow = me && me.deposited > 0n && BOOST && S.brokers.length
         ? `<button class="go" data-act="count">COUNT MY ${S.brokers.length} BROKER${S.brokers.length === 1 ? "" : "S"} · ${multX(counted + S.brokers.length)}</button>
-           <div class="fine">${counted ? `${counted} counted so far` : "none counted yet"} — counting boosts everything you have in today's pool, no new chip-in needed</div>`
+           <div class="fine">${counted ? `${counted} counted so far` : "none counted yet"} — counting boosts everything you have in ${PW.rounds} pool, no new chip-in needed</div>`
         : "";
       deskBody = `
       ${me && me.deposited > 0n ? `<div class="hi">you're in with ${fmt(me.deposited)}${BOOST ? " · " + multX(me.brokers) : ""} · ${odds ? "1 in " + odds : "—"}</div>` : ""}
@@ -825,7 +842,7 @@
     </div></div>` : "";
 
     const ranked = S.players.slice().sort((a, b) => (b.v.deposited > a.v.deposited ? 1 : -1)).slice(0, 10);
-    const lead = `<div class="cab floor"><div class="scr"><div class="lab">TODAY'S BOARD</div>
+    const lead = `<div class="cab floor"><div class="scr"><div class="lab">${PW.roundsCap} BOARD</div>
       <div class="grid3 head"><span>player<span class="long">${BOOST ? " · brokers counted" : ""}</span></span><span>chipped in<span class="long"> · earned in dividends</span></span></div>
       <div class="list">${ranked.length ? ranked.map((p, i) =>
         `<div class="grid3${same(p.addr, S.account) ? " me" : ""}"><span class="who">${i + 1}. ${same(p.addr, S.account) ? "<b class='won'>YOU</b>" : `<a href="${explorer(p.addr)}" rel="noopener">${short(p.addr)}</a>`}${p.v.brokers ? ` <span class="dim brk" title="${p.v.brokers} brokers counted · ${multX(p.v.brokers)}">+${p.v.brokers} · ${multX(p.v.brokers)}</span>` : ""}</span><span class="n">${fmt(p.v.deposited)}<span class="dim sub"><span class="dot"> · </span>earned ${fmt(p.v.divEarned)}</span></span></div>`).join("")
@@ -844,8 +861,8 @@
       }).join("") : `<div class="dim">${S.loaded ? "none yet" : "loading…"}</div>`}</div></div></div>`;
 
     const rules = `<div class="cab rules"><div class="lab">HOUSE RULES</div>
-      <p><b>1.</b> Chip in ${SYM} before the ${bellNY} New York bell. <b>${T.divBps / 100}%</b> of every chip-in is paid out on the spot to everyone already in that day; <b>${T.refBps / 100}%</b> goes to whoever sent you.</p>
-      <p><b>2.</b> Five minutes after the bell, drand's public beacon picks two players: one takes the jackpot, one gets their money back. Your chance is your chip-ins${BOOST ? `, up to <b>${cap / 10000}×</b> with hired brokers counted` : ""}. A chip-in is final.</p>
+      <p><b>1.</b> Chip in ${SYM} before the ${bellNY} New York bell. <b>${T.divBps / 100}%</b> of every chip-in is paid out on the spot to everyone already in that ${PW.daily ? "day" : "round"}; <b>${T.refBps / 100}%</b> goes to whoever sent you.${PW.daily ? "" : ` The bell comes round <b>${PW.every}</b>.`}</p>
+      <p><b>2.</b> ${MIN_PLAYERS ? `A round needs <b>${MIN_PLAYERS} players</b> at its bell; with fewer, the bell moves ${PW.span} on (${MAX_MOVES === 2 ? "twice" : MAX_MOVES + " times"} at most, then it draws with whoever is in) and every ticket stays. ` : ""}Five minutes after the bell, drand's public beacon picks two players: one takes the jackpot, one gets their money back. Your chance is your chip-ins${BOOST ? `, up to <b>${cap / 10000}×</b> with hired brokers counted` : ""}. A chip-in is final.</p>
       <p><b>3.</b> The contract checks the beacon itself; nobody at the firm can pick or delay it. Fine print: the <a href="/docs#pool">handbook</a>.</p></div>`;
 
     // the bell panel (a missed draw, rare) goes after the desk: on a phone it was pushing CHIP IN below the first screen
@@ -909,7 +926,7 @@
       if (S.closesAt && Math.floor(Date.now() / 1000) - S.skew >= S.closesAt) { refresh(); return toast("closed — the next pool opens at the bell", false); }
       const v = parseAmount(amt() && amt().value);
       if (v == null) return toast(`type an amount of ${SYM}, like 25,000 or 25k`, false);
-      if (v < terms().minDeposit) return toast(`the minimum today is ${fmt(terms().minDeposit)} ${SYM}`, false);
+      if (v < terms().minDeposit) return toast(`the minimum ${PW.round} is ${fmt(terms().minDeposit)} ${SYM}`, false);
       if (v > S.balance) return toast("that is more than you have", false);
       const brk = document.getElementById("op-brk"); S.useBrokers = !brk || brk.checked;
       return chipIn(v);
@@ -922,10 +939,10 @@
     if (act === "card") {
       const r = S.cur;
       const link = refLink(S.code);
-      const jackpot = r ? fmt(r.pot) : "today's";
+      const jackpot = r ? fmt(r.pot) : PW.rounds;
       const inToday = !!(S.me && S.me.deposited > 0n);
       const where = IS_HQ ? "the office pool" : B.name.toLowerCase();
-      const lead = inToday ? `i'm in today's ${where} at @thefirmbrokers` : `${where} at @thefirmbrokers`;
+      const lead = inToday ? (PW.daily ? `i'm in today's ${where} at @thefirmbrokers` : `i'm in ${where} ${PW.round} at @thefirmbrokers`) : `${where} at @thefirmbrokers`;
       const postText = (CFG.poolPost || "{lead}: {jackpot} {sym} jackpot, one takes it, one gets their money back. chip in before the closing bell.\n\n{link} \u00b7 code {code} \u00b7 {sym}").replace("{lead}", lead).replace("{jackpot}", jackpot).replace("{link}", link).replace("{code}", S.code).replace(/\{sym\}/g, SYM);
       const date = S.closesAt ? new Date(S.closesAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : "";
       const lastDrawn = S.history.find((h) => h.state === 2 && h.playerCount > 0);
@@ -937,7 +954,7 @@
       if (!h || !window.__POOL_CARD) return;
       const where = IS_HQ ? "the office pool" : B.name.toLowerCase();
       const winner = h.jackpotWinner !== ZERO ? h.jackpotWinner : h.refundWinner;
-      const postText = `the bell rang at ${where} (@thefirmbrokers): ${fmt(h.jackpotPaid + h.refundPaid)} ${SYM} paid out, drawn by drand and checked on-chain. tomorrow's pot is open.\n\n${pageLink()}`;
+      const postText = `the bell rang at ${where} (@thefirmbrokers): ${fmt(h.jackpotPaid + h.refundPaid)} ${SYM} paid out, drawn by drand and checked on-chain. ${PW.nextPot} is open.\n\n${pageLink()}`;
       window.__POOL_CARD.open(Object.assign(cardBranch(), { kind: "winner", link: pageLink(), pot: fmt(h.pot > 0n ? h.pot : h.jackpotPaid + h.refundPaid), players: h.playerCount, winner, winnerCode: same(winner, S.account) ? S.code : "", refundWinner: h.refundWinner, refundPaid: fmt(h.refundPaid), beaconRound: h.beaconRound, bell: nyTime(h.closesAt), date: new Date(h.closesAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }), postText, code: "result" }));
       return;
     }
@@ -970,7 +987,7 @@
       document.title = `${B.name} — Firm Brokers`;
       const marq = document.querySelector(".op-hero .marq"), sub = document.querySelector(".op-hero .sub");
       if (marq) marq.textContent = B.name;
-      if (sub) sub.textContent = `a Firm Brokers branch · every day · one pot in ${SYM} · the closing bell`;
+      if (sub) sub.textContent = `a Firm Brokers branch · ${PW.every} · one pot in ${SYM} · the ${PW.daily ? "closing " : ""}bell`;
     }
     render();
     refresh();

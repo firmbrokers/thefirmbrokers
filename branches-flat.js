@@ -63,11 +63,17 @@
     const BR = window.__BRANCHES;
     if (!BR || !BR.live || !BR.live()) return null;
     injectCss();
+    // the faster branches, named: " THE PUNCH CLOCK rings every 4 hours, three in or the bell waits." (nothing when every branch is daily)
+    const fastLine = () => {
+      if (!BR.periodOf || !BR.periodWords) return "";
+      return BR.list().filter((b) => !BR.periodWords(BR.periodOf(b)).daily)
+        .map((b) => ` <b>${esc(b.name)}</b> rings ${esc(BR.periodWords(BR.periodOf(b)).every)}, three in or the bell waits.`).join("");
+    };
     if (live) { try { live.unsub(); } catch (e) {} clearInterval(live.tick); live = null; }
 
     const card = el("div", "fb-card dark br-flat");
     card.innerHTML = `<h2>THE BRANCH OFFICES</h2>
-      <p>Firm opens a daily pot in any Robinhood Chain token: same bell, same audited contract, same draw nobody can rig. One player takes the pot, one gets their money back, every day.</p>
+      <p>Firm opens a daily pot in any Robinhood Chain token: same bell, same audited contract, same draw nobody can rig. One player takes the pot, one gets their money back, every day.${fastLine()}</p>
       <div class="rows"><p class="dim">Reading the branches…</p></div>`;
     host.appendChild(card);
     const rows = card.querySelector(".rows");
@@ -115,7 +121,7 @@
         const left = BR.secondsLeft(o);
         line.innerHTML = o.open
           ? `${esc(o.symbol)} · ${o.players} in · bell in <span class="bell${left <= 600 ? " hot" : ""}">${hms(left)}</span>`
-          : (o.drawing ? `${esc(o.symbol)} · the bell rang · drawing…` : `${esc(o.symbol)} · nobody in yet · the first chip-in opens today's pot`);
+          : (o.drawing ? `${esc(o.symbol)} · the bell rang · drawing…` : `${esc(o.symbol)} · nobody in yet · the first chip-in opens ${BR.periodWords ? (BR.periodWords(o.period).daily ? "today's pot" : "the next pot") : "today's pot"}`);
         who.appendChild(line);
         if (o.last) who.appendChild(el("div", "last", `last bell ${esc(BR.fmtShort(o.last.jackpotPaid + o.last.refundPaid, o.decimals))} paid, jackpot to ${esc(BR.who(o))}`));
         a.appendChild(who);

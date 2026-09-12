@@ -158,7 +158,8 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--font-data); font-size: 17px; line-height: 1;
   color: #6fe08c; text-shadow: 0 0 6px #6fe08c44; white-space: nowrap; text-transform: none;
 }
-.fb-hudbtn.tile span b, .fb-hudbtn.tile span i, .fb-hudbtn.tile small b { font-weight: normal; font-style: normal; }
+.fb-hudbtn.tile span b, .fb-hudbtn.tile span i, .fb-hudbtn.tile small b, .fb-hudbtn.tile small em { font-weight: normal; font-style: normal; }
+/* the label's long/short pair is <em>, not <span>: the span rule above sizes the data line */
 .fb-hudbtn.tile.call span i { color: #6fe08c; }
 .fb-hudbtn.tile.call span i .dn { color: #ff9a90; }
 /* THE CALL tile only where the bar has room for it (measured 2026-09-06: at
@@ -4252,4 +4253,20 @@ a.fb-btn { display: inline-block; text-decoration: none; text-align: center; lin
   .fb-hudbtn { padding: 10px 4px; }
   .fb-hudbtn.x, .fb-hudbtn.icon { padding: 10px 6px; }
   .fb-hudbtn.tile { padding: 7px 3px; }
+  /* THE CALL rides the zone row on a phone (2026-09-12). The second row is
+     full: its seven tiles measure 386px at their minimum at 360 (+28 of gaps
+     = 414 for 344 of bar) and an eighth made a third row (call-hud 155 vs 111).
+     The zone row has room to spare (five zones 253 natural, 344/374 of bar),
+     so the tile goes there by flex order — after the zones and the room name,
+     before the break — at the zones' own height (stretch, no vertical
+     padding) with its short label. Measured: 390 zones 61/61/61/61/66 + CALL
+     40, 360 zones 56/56/56/56/66 + CALL 40, bar 111/110 = unchanged. */
+  .fb-zonebtn, .fb-roomname { order: 0; }
+  .fb-break { order: 1; }
+  .fb-hudbtn { order: 2; }
+  .fb-hudbtn.tile.call { order: 0; flex: 0 0 auto; padding: 0 5px; min-height: 0; align-self: stretch; }
+  /* the flat page hides the zones, so there the tile is a strip of its own
+     across the row above the buttons (alone at 36px it read as a stray key);
+     measured 34px tall, bar 67 → 105 at 390/360/430 */
+  body.flat-mode .fb-hudbtn.tile.call { flex: 1 1 100%; padding: 3px 5px; }
 }

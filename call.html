@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script>/* clean address: an old .html link shows the clean URL (Pages serves both) */(function(){var p=location.pathname;if(/\.html$/.test(p)){try{history.replaceState(null,"",p.replace(/index\.html$/,"").replace(/\.html$/,"")+location.search+location.hash)}catch(e){}}})();</script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1c2026">
+  <title>The Morning Call — Firm Brokers</title>
+  <meta name="description" content="Every trading day the office picks one stock. Before the opening bell your broker calls it UP or DOWN by the close, staking $9TO5. At 4 PM New York the Chainlink price decides. Wrong callers pay right callers.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://thefirmbrokers.com/call">
+  <link rel="canonical" href="https://thefirmbrokers.com/call">
+  <meta property="og:title" content="The Morning Call — Firm Brokers">
+  <meta property="og:description" content="One stock a day. Your broker calls it UP or DOWN before the opening bell, staking $9TO5. Chainlink decides at the close. Wrong callers pay right callers.">
+  <meta property="og:image" content="https://thefirmbrokers.com/og-street.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="The Morning Call — Firm Brokers">
+  <meta name="twitter:description" content="One stock a day. Call it UP or DOWN before the opening bell, staking $9TO5. Chainlink decides at the close.">
+  <meta name="twitter:image" content="https://thefirmbrokers.com/og-street.png">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="call.css?v=1789233944">
+</head>
+<body>
+  <main class="mc" id="mc">
+    <a class="mc-home" href="/">← THE STREET</a>
+    <header class="mc-hero">
+      <div class="marq">THE MORNING CALL</div>
+      <div class="sub">one stock a day · UP or DOWN · settled at the bell</div>
+    </header>
+    <div id="mc-host"></div>
+    <footer class="mc-foot">settled on Chainlink's Robinhood stock feeds, proved on-chain from the feed's own rounds · nobody at the firm can pick the price</footer>
+  </main>
+  <div class="toast" id="mc-toast"></div>
+  <script src="config.js?v=1789233944"></script>
+  <script src="firm.js?v=1789233944"></script>
+  <script src="call.js?v=1789233944"></script>
+  <script>window.__CALL && window.__CALL.page(document.getElementById("mc-host"));</script>
+</body>
+</html>

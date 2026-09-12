@@ -30,6 +30,28 @@
   const list = () => (Array.isArray(CFG.branches) ? CFG.branches : []).filter((b) => b && b.pool && b.token);
   const live = () => list().length > 0;
 
+  // ------------------------------------------------------------ the cadence
+  /// A branch's bell comes round every `period` seconds (config; absent = a
+  /// day, the Office Pool). THE PUNCH CLOCK is 14400. The words every surface
+  /// uses for it come from here, so an hourly branch would read "every hour"
+  /// without another edit: every · span · round (the unit a "today" becomes)
+  /// · last (what "yesterday" becomes) · nextPot (what "tomorrow's pot" becomes).
+  const periodOf = (b) => (b && Number(b.period) > 0 ? Number(b.period) : 86400);
+  function periodWords(sec) {
+    const p = Number(sec) || 86400;
+    if (p === 86400) return { daily: true, sec: p, every: "every day", span: "a day", spanCap: "A DAY", round: "today", rounds: "today's", roundCap: "TODAY", roundsCap: "TODAY'S", last: "yesterday", lasts: "yesterday's", nextPot: "tomorrow's pot" };
+    const h = p / 3600, n = Number.isInteger(h) ? String(h) : h.toFixed(1);
+    const span = h === 1 ? "an hour" : `${n} hours`, every = h === 1 ? "every hour" : `every ${n} hours`;
+    return { daily: false, sec: p, hours: h, every, span, spanCap: span.toUpperCase(), round: "this round", rounds: "this round's", roundCap: "THIS ROUND", roundsCap: "THIS ROUND'S", last: "last round", lasts: "the last round's", nextPot: "the next pot" };
+  }
+  /// the tab, the wall line and the board name a branch by its symbol — unless
+  /// two branches share one (HQ and the punch clock are both $9TO5): then by its short name
+  function tabName(b) {
+    const twins = list().filter((x) => x.symbol === b.symbol).length > 1;
+    return twins ? (b.short || b.name) : b.symbol;
+  }
+  const anyPeriod = () => list().some((b) => !periodWords(periodOf(b)).daily);
+
   // ------------------------------------------------------------ the chain
   // OfficePool selectors (verified against pool.js and cast, 2026-09-06)
   const SEL = {
@@ -74,16 +96,26 @@
     const f = F(), bs = list();
     if (!f || !bs.length) return [];
     const q1 = [];
+    // which branches ask for their token's decimals in THIS batch: decided once,
+    // here, and reused when the answers are read. (Deciding it again at read
+    // time, by whether decimalsOf is filled, went wrong the moment two branches
+    // shared a token — HQ and THE PUNCH CLOCK are both $9TO5: the first fill
+    // made the second branch skip its own answer and every branch after it read
+    // the wrong words until the next poll.)
+    const asked = new Set(), wantDec = [];
     for (const b of bs) {
       q1.push({ to: b.pool, data: SEL.currentRound }, { to: b.pool, data: SEL.roundCount });
-      if (decimalsOf[b.token] == null) q1.push({ to: b.token, data: SEL.decimals });
+      const want = decimalsOf[b.token] == null && !asked.has(b.token);
+      wantDec.push(want);
+      if (want) { asked.add(b.token); q1.push({ to: b.token, data: SEL.decimals }); }
     }
     const r1 = await f.callBatch(q1);
     const heads = [];
     let k = 0;
-    for (const b of bs) {
+    for (let i = 0; i < bs.length; i++) {
+      const b = bs[i];
       const cur = r1[k++], cnt = r1[k++];
-      if (decimalsOf[b.token] == null) { const d = r1[k++]; decimalsOf[b.token] = d && d.length >= 66 ? Number(wordAt(d, 0)) || 18 : 18; }
+      if (wantDec[i]) { const d = r1[k++]; decimalsOf[b.token] = d && d.length >= 66 ? Number(wordAt(d, 0)) || 18 : 18; }
       heads.push({
         b, id: Number(wordAt(cur, 0)), closesAt: Number(wordAt(cur, 1)), open: wordAt(cur, 2) === 1n, nowTs: Number(wordAt(cur, 3)),
         count: Number(wordAt(cnt, 0)),
@@ -115,7 +147,7 @@
       }
       out.push({
         slug: h.b.slug, name: h.b.name, short: h.b.short || h.b.name, symbol: h.b.symbol, decimals: decimalsOf[h.b.token] || 18,
-        token: h.b.token, pool: h.b.pool, block: h.b.block || 0, page: h.b.page || "", boost: !!h.b.boost, mark: h.b.mark || "",
+        token: h.b.token, pool: h.b.pool, block: h.b.block || 0, page: h.b.page || "", boost: !!h.b.boost, mark: h.b.mark || "", period: periodOf(h.b),
         id: h.open ? h.id : 0, open: h.open, closesAt: h.closesAt, nowTs: h.nowTs, readAt: Date.now(),
         pot: cur ? cur.pot : 0n, players: cur ? cur.players : 0, deposits: cur ? cur.deposits : 0n,
         minDeposit: cur ? cur.minDeposit : (latest ? latest.minDeposit : 0n),
@@ -247,7 +279,7 @@
       const o = s && s.find((x) => x.slug === b.slug);
       const potTxt = !o ? "…" : o.open ? fmtShort(o.pot, o.decimals) : o.drawing ? "DRAWING" : "AT THE BELL";
       const bell = o && o.open ? hm(secondsLeft(o)) : "";
-      return `<span class="br"><i>${esc(b.symbol)}</i><u>${esc(potTxt)}</u><em>${bell}</em></span>`;
+      return `<span class="br"><i>${esc(tabName(b))}</i><u>${esc(potTxt)}</u><em>${bell}</em></span>`;
     }).join("");
     wall.classList.add("br-wall");
     wall.innerHTML = `<b>THE BRANCH OFFICES</b>${rows}<span class="br-open">A POT IN EVERY TOKEN</span>`;
@@ -308,11 +340,19 @@
   }
   // BRANCH 11 · POT 9 · IN 3 · BELL 5 · WINNER 11 · lamp
   const COLS = [["BRANCH", 11, "l"], ["POT", 9, "r"], ["IN", 3, "r"], ["BELL IN", 5, "r"], ["LAST WINNER", 11, "l"]];
+  /// the board's subtitle: the daily bell, and the faster branches when there are any
+  /// ("ONE EVERY 4 HOURS"); byte-identical to the old line when every branch is daily
+  function boardLine() {
+    const fast = list().map((b) => periodWords(periodOf(b))).filter((w) => !w.daily);
+    if (!fast.length) return "DAILY POTS · DRAWN AT THE FOUR O'CLOCK BELL, NEW YORK";
+    const every = [...new Set(fast.map((w) => w.every.toUpperCase()))].join(", ");
+    return `DAILY POTS · ${fast.length === 1 ? "ONE" : fast.length} ${every} · DRAWN AT THE BELL, NEW YORK`;
+  }
   const BOARD_ROWS = 5;
   function buildBoard(el, px, host, x, onRow) {
     const board = el("div", "br-board");
     board.innerHTML = `<i class="bolt a"></i><i class="bolt b"></i><i class="bolt c"></i><i class="bolt d"></i>
-      <div class="hd"><b>THE BRANCH OFFICES</b><span>DAILY POTS · DRAWN AT THE FOUR O'CLOCK BELL, NEW YORK</span></div>`;
+      <div class="hd"><b>THE BRANCH OFFICES</b><span>${boardLine()}</span></div>`;
     const head = el("div", "br-row head");
     for (const [label, w, al] of COLS) { const h = el("span", "br-col " + al, label); h.style.width = `calc(${w} * var(--br-ch))`; head.appendChild(h); }
     head.appendChild(el("span", "br-col lamp", ""));
@@ -430,9 +470,9 @@
       <div class="panel">
         <a class="key chip-in" href="${esc(b.page)}">CHIP IN →</a>
         <a class="key link" href="${esc(b.page)}${b.page.indexOf("#") === -1 ? "#link" : ""}">INVITE<br>EARN 5%</a>
-        <span class="fine">${b.boost ? "brokers boost odds, up to 2x" : "flat odds, no boost"}</span>
+        <span class="fine">${periodWords(periodOf(b)).daily ? "" : periodWords(periodOf(b)).every + " · "}${b.boost ? "brokers boost odds, up to 2x" : "flat odds, no boost"}</span>
       </div>
-      <b class="plate">WINDOW ${i + 1} · ${esc(b.symbol)}</b><i class="sill"></i><i class="tray"></i>`;
+      <b class="plate">WINDOW ${i + 1} · ${esc(tabName(b))}</b><i class="sill"></i><i class="tray"></i>`;
     const st = STAFF[i % STAFF.length];
     const npc = walkerEl("fb-walker npc " + st.look);
     dress(npc, st.pal);
@@ -458,7 +498,9 @@
       const prev = n.dataset.v != null ? BigInt(n.dataset.v) : null;
       countUp(n, prev, o.pot, o.decimals, fmtLong);
       lab.textContent = "BELL IN"; ny.textContent = nyBell(o) + " NY";
-      inn.textContent = `${o.players} IN TODAY`;
+      // "18 IN TODAY" at a daily counter; "2 IN · EVERY 4 HOURS" at the punch clock
+      const pw = periodWords(o.period);
+      inn.textContent = pw.daily ? `${o.players} IN TODAY` : `${o.players} IN · ${pw.every.toUpperCase()}`;
       c.classList.remove("is-drawing", "is-shut");
     } else if (o.drawing) {
       countUp(n, null, o.drawing.pot, o.decimals, fmtLong);
@@ -767,9 +809,12 @@
       lines = [];
       for (const o of s) {
         if (o.open) lines.push(`${o.players} in at ${o.short} so far. Bell in ${Math.floor(secondsLeft(o) / 3600)}h ${Math.floor((secondsLeft(o) % 3600) / 60)}m.`);
-        if (o.last) lines.push(`Yesterday: ${who(o)} took ${fmtShort(o.last.shown ? o.last.shown.paid : o.last.jackpotPaid, o.decimals)} ${o.symbol}.`);
+        if (o.last) lines.push(`${periodWords(o.period).daily ? "Yesterday" : "Last round at " + o.short}: ${who(o)} took ${fmtShort(o.last.shown ? o.last.shown.paid : o.last.jackpotPaid, o.decimals)} ${o.symbol}.`);
       }
-      lines.push("Every counter pays at the four o'clock bell, New York time.");
+      // the daily bell; and each faster counter by name ("THE PUNCH CLOCK pays every 4 hours, three in or the bell waits")
+      const fast = bs.filter((b) => !periodWords(periodOf(b)).daily);
+      lines.push(fast.length ? "The daily counters pay at the four o'clock bell, New York time." : "Every counter pays at the four o'clock bell, New York time.");
+      for (const b of fast) lines.push(`${b.name} pays ${periodWords(periodOf(b)).every}, three in or the bell waits.`);
       // every branch with the boost, by its board name: a third branch (the
       // CASHCAT DESK) boosts too, and the line used to name only the Office Pool
       const boosted = bs.filter((b) => b.boost).map((b) => (b.short || b.name).toUpperCase());
@@ -795,7 +840,7 @@
 
   // ------------------------------------------------------------ exports
   window.__BRANCHES = {
-    live, list, read, subscribe, snapshot: () => snapshot, marksReady, drawMark, markEl,
+    live, list, read, subscribe, snapshot: () => snapshot, marksReady, drawMark, markEl, periodOf, periodWords, tabName, anyPeriod,
     paintWall, wallTicker, hall, elevator, stairs, ride, cancelRide, goTo, fmtShort, fmtLong, secondsLeft, who,
     get liftAt() { return api.liftAt; }, get stairsAt() { return api.stairsAt; }, get floor() { return api.floor; },
     // for the suite: the flap alphabet and the board's row count

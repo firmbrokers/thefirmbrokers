@@ -158,7 +158,8 @@
 
   // ---------------------------------------------------------------- the cards
   /// d: { branch, house, symbol, pot, bell, date, code, link, handle, pfp, inToday, hero: "pot"|"code" }
-  const WORDS = { pot: "pot", potLabel: "TODAY'S POT", subtitle: "one pot a day in {sym} · drawn by drand, checked on-chain", take: "one takes the pot · one gets their money back", before: "chip in before the {bell} New York bell", in: "is in today's pool", plays: "plays the pool", type: "type the code at your first chip-in, open the link", chipIn: "chip-in", tomorrow: "tomorrow's pot is open" };
+  const WORDS = { pot: "pot", potLabel: "TODAY'S POT", subtitle: "one pot a day in {sym} · drawn by drand, checked on-chain", take: "one takes the pot · one gets their money back", before: "chip in before the {bell} New York bell", in: "is in today's pool", plays: "plays the pool", type: "type the code at your first chip-in, open the link", chipIn: "chip-in", tomorrow: "tomorrow's pot is open", inCount: "{n} in today", first: "be the first in today" };
+  // a faster branch (THE PUNCH CLOCK, a bell every four hours) sends its own words in d.words (pool.js cardWords)
   const words = (d) => Object.assign({}, WORDS, d.words || {});
   function drawCard(canvas, d) {
     canvas.width = W; canvas.height = H;
@@ -173,7 +174,7 @@
       fit(x, wd.potLabel, RX, 172, { color: C.green, from: 18, to: 16, max: RW });
       // the social proof, right-aligned under the bell: who is in, what was paid
       const n = Number(d.players || 0);
-      fit(x, n > 0 ? `${n} in today` : "be the first in today", 1150, 176, { font: FB, color: C.cream, from: 30, to: 24, max: 300, align: "right" });
+      fit(x, n > 0 ? wd.inCount.replace("{n}", String(n)) : wd.first, 1150, 176, { font: FB, color: C.cream, from: 30, to: 24, max: 300, align: "right" });
       if (d.lastPaid) fit(x, `last bell ${d.lastPaid} ${d.symbol || "$9TO5"} paid`, 1150, 210, { font: FB, color: C.green, from: 30, to: 24, max: 300, align: "right" });
       x.save(); x.shadowColor = C.bright; x.shadowBlur = 28;
       sizes.pot = fit(x, String(d.pot), RX - 4, 278, { color: C.bright, from: 84, to: 48, max: 560 });
@@ -202,7 +203,7 @@
       sizes.code = fit(x, String(d.code), RX - 4, 278, { color: C.gold, from: 84, to: 40, max: RW });
       x.restore();
       fit(x, String(d.link).replace(/^https?:\/\//, ""), RX, 318, { font: FB, color: C.cream, from: 32, to: 24, max: RW });
-      fit(x, `TODAY'S POT${d.date ? " · " + String(d.date).toUpperCase() : ""}`, RX, 372, { color: C.green, from: 18, to: 14, max: RW });
+      fit(x, `${wd.potLabel}${d.date ? " · " + String(d.date).toUpperCase() : ""}`, RX, 372, { color: C.green, from: 18, to: 14, max: RW });
       const SY = 384, SH = 200;
       x.fillStyle = C.crt2; x.fillRect(RX, SY, RW, SH);
       x.fillStyle = C.goldDeep; x.fillRect(RX, SY, RW, 4); x.fillRect(RX, SY + SH - 4, RW, 4);
@@ -379,5 +380,5 @@
     });
   }
 
-  window.__POOL_CARD = { open, drawCard, drawWinner, pixelPfp, loadPfp, isPhone };
+  window.__POOL_CARD = { open, drawCard, drawWinner, pixelPfp, loadPfp, isPhone, get state() { return state; } };
 })();

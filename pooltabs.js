@@ -38,7 +38,9 @@
     if (b.slug === slug) a.setAttribute("aria-current", "page");
     const mark = window.__BRANCHES && window.__BRANCHES.markEl ? window.__BRANCHES.markEl(el, b, 24) : null;
     if (mark) a.appendChild(mark);
-    a.appendChild(el("b", null, esc(b.symbol || b.slug.toUpperCase())));
+    // the symbol — unless two branches share one (HQ and THE PUNCH CLOCK are both $9TO5): then the short name
+    const label = window.__BRANCHES && window.__BRANCHES.tabName ? window.__BRANCHES.tabName(b) : b.symbol;
+    a.appendChild(el("b", null, esc(label || b.slug.toUpperCase())));
     a.appendChild(el("i", "pot", "…"));
     host.appendChild(a);
     tabs[b.slug] = a;
