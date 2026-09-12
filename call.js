@@ -24,6 +24,7 @@
   const SEL = {
     call: "0x64a252f4", sponsor: "0x1375f191", settle: "0x255d823f", claim: "0x50618519", claimAll: "0x7b305ab6", poke: "0x32145f90", openNext: "0xf23fb1d7",
     roundView: "0xb7a0b212", roundCount: "0x127f0b3f", currentRound: "0x8a19c8bc", preview: "0xafb739ce", nextTradingDay: "0x0ab0c530",
+    codeOf: "0x2cfc2716", // OfficePool.codeOf(address): the wallet's link code, shared with the pool page
     callView: "0x69c354d3", callsOf: "0x9731bf5f", claimable: "0x2d25091b", odds: "0xfb93e737", maxStake: "0xfc6216a6", record: "0x2c16cd8a", records: "0x9cc8525d",
     recentRounds: "0xf36ea453", dueForSettle: "0xc4ed128f", knobs: "0x48fe7e53", feedOf: "0x6bdb90a9",
     latestRoundData: "0xfeaf968c", getRoundData: "0x9a6fc8f5", decimals: "0x313ce567",
@@ -48,6 +49,23 @@
   const addr = (hex, i) => "0x" + w(hex, i).slice(24);
   const okHex = (hex, words) => !!hex && hex.length >= 2 + 64 * words;
   const short = (a) => (a && a !== ZERO ? a.slice(0, 6) + "…" + a.slice(-4) : "—");
+  // ---- the link (SHARE cab): the office pool's code registry, read here and
+  // never written here — a name is picked once on the pool page. A visitor who
+  // arrives through /call?ref=<code> is remembered under the pool page's own
+  // key, so their first chip-in at the office pool credits the sender there.
+  const REF_KEY = "firmbrokers.pool.ref.v1";
+  const validCode = (s) => /^[a-z0-9]{3,20}$/.test(s);
+  const fromBytes32 = (hex) => { let s = ""; const h = String(hex || "").replace(/^0x/, "").slice(0, 64); for (let i = 0; i < 64; i += 2) { const c = parseInt(h.slice(i, i + 2), 16); if (!c) break; s += String.fromCharCode(c); } return validCode(s) ? s : ""; };
+  const pageLink = () => `${CFG.shareOrigin || location.origin}/call`; // the clean URL on the domain we want shared
+  const refLink = (code) => `${pageLink()}?ref=${code}`;
+  const poolLink = "/pool#link"; // where a name is picked (the office pool's GET MY LINK box)
+  /// the post: the caller's own call when they made one, the day's call otherwise
+  function postText(cur, mine, code) {
+    const sym = cur ? "$" + cur.symbol : "$9TO5";
+    const when = cur ? `${nyWeekday(cur.lockAt).toLowerCase()}'s call` : "the call";
+    const lead = mine ? `i called ${mine.up ? "UP" : "DOWN"} on ${sym} at the morning call (@thefirmbrokers)` : `${when} is ${sym} at the morning call (@thefirmbrokers)`;
+    return `${lead}: UP or DOWN before 9:30 NY, settled at the 4 PM bell on chainlink's feed.\n\n${refLink(code)} · code ${code}`;
+  }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const same = (a, b) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
   /// bytes8 symbol: left-aligned in its word
@@ -145,6 +163,7 @@
     balance: 0n, allowance: 0n,
     brokers: [], brokersOwned: 0, // [{ id, weight, max, active, call, record }]
     myCalls: {}, // day → callsOf(day, me)
+    code: "", // the wallet's link code from the office pool's registry ("" = none picked yet)
     claimDays: [], claimTotal: 0n, // finished days with something of mine to collect
     side: null, sel: new Set(), selTouched: false,
     board: null, boardFor: -1, // the streak board: { ids, rows }, and the settle count it was built for
@@ -199,6 +218,8 @@
       reqs.push({ to: CFG.token, data: SEL.allowance + word(S.account) + word(P) });
       reqs.push({ to: P, data: SEL.callsOf + word(cur.day) + word(S.account) });
       for (const d of recent) reqs.push({ to: P, data: SEL.callsOf + word(d) + word(S.account) });
+      // the wallet's link code lives in the office pool's registry (one code, every page)
+      if (CFG.pool) reqs.push({ to: CFG.pool, data: SEL.codeOf + word(S.account) });
     }
     const res = await F.callBatch(reqs);
     let k = 0;
@@ -214,6 +235,7 @@
       S.allowance = okHex(res[k], 1) ? big(res[k], 0) : 0n; k++;
       S.myCalls[cur.day] = decodeCallsOf(res[k++]);
       for (const d of recent) S.myCalls[d] = decodeCallsOf(res[k++]);
+      if (CFG.pool) { const c = res[k++]; S.code = okHex(c, 1) ? fromBytes32(c) : ""; }
     }
     // the day after the one taking calls (the board names it after the lock)
     const t = now();
@@ -659,7 +681,19 @@
       <p><b>2.</b> At the ${bellNY} bell Chainlink's Robinhood feed decides: the first print after the open against the last print at or before the bell, both proved on-chain from the feed's own rounds. Wrong callers pay right callers, pro-rata. ${T.rakeBps / 100}% of the losing side is the house's, half of it burned.</p>
       <p><b>3.</b> Flat day (within ${(T.deadbandBps / 100).toFixed(2)}%), one side empty, market holiday: no contest, everyone refunded. Call it right three days running and your broker wears a pin. Fine print: the <a href="/docs#call">handbook</a>.</p></div>`;
 
-    host.innerHTML = tape + board + `<div class="cols"><div>${desk}${live}</div><div>${hist}${streaks}</div></div>` + bell + rules;
+    // ---- the link: the wallet's pool code, on the call's own address (a holder
+    // asked for a referral on the call, 2026-09-12: the call contract pays no
+    // referral, so this is the share side — the link, the card, the post; the
+    // 5% lands at the office pool when whoever arrives chips in there)
+    const myCall = mineToday[0] || null;
+    const share = !S.account ? "" : `<div class="cab share" id="link"><div class="scr"><div class="lab">${S.code ? "YOUR LINK" : "GET MY LINK"}</div>
+      ${S.code ? `<div class="link"><code class="lnk">${esc(refLink(S.code))}</code><button class="chip" data-act="copylink" type="button">COPY LINK</button></div>
+      ${window.__POOL_CARD ? `<button class="go" data-act="callcard" type="button" style="margin-top:8px">MAKE MY CARD · POST ON X</button>` : `<a class="chip" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:8px" href="https://x.com/intent/tweet?text=${encodeURIComponent(postText(cur, myCall, S.code))}" target="_blank" rel="noopener">POST ON X</a>`}
+      <div class="fine">${myCall ? `the card says you called ${myCall.up ? "UP" : "DOWN"} on $${esc(cur.symbol)}` : "the card names the day's call"} · your code is the office pool's: whoever arrives through it and chips in there sends you 5%, for life</div>`
+      : `<div class="fine">your link is the office pool's link, on this page's address. Pick a name once at the office pool and it works here too.</div>
+      <a class="chip" style="display:inline-flex;align-items:center;text-decoration:none;margin-top:8px" href="${poolLink}">PICK MY NAME AT THE OFFICE POOL ›</a>`}
+    </div></div>`;
+    host.innerHTML = tape + board + `<div class="cols"><div>${desk}${share}${live}</div><div>${hist}${streaks}</div></div>` + bell + rules;
     const a = host.querySelector("#mc-amt"), sp = host.querySelector("#mc-sp"), spd = host.querySelector("#mc-spd");
     if (a && keep.amt) a.value = keep.amt;
     if (sp && keep.sp) sp.value = keep.sp;
@@ -717,6 +751,20 @@
     }
     if (act === "sponsor") { const i = document.getElementById("mc-sp"); const v = parseAmount(i && i.value); if (v == null) return toast("type an amount of $9TO5", false); return sponsor(v); }
     if (act === "collect") return collect();
+    if (act === "copylink") { if (!S.code) return; const l = refLink(S.code); if (navigator.clipboard) navigator.clipboard.writeText(l).then(() => toast("link copied", true), () => toast(l)); else toast(l); return; }
+    if (act === "callcard") {
+      const cur = S.cur;
+      const mine = cur ? (S.myCalls[cur.day] || [])[0] || null : null;
+      const date = cur ? new Date(cur.lockAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : "";
+      const r = cur && cur.exists ? cur.r : null;
+      window.__POOL_CARD.open({
+        kind: "call", slug: "morning-call", branch: "THE MORNING CALL", house: "FIRM BROKERS", mark: "/art/marks/hq.png", symbol: cur ? "$" + cur.symbol : "$9TO5",
+        whose: cur ? `${nyWeekday(cur.lockAt).toUpperCase()}'S CALL` : "THE CALL", side: mine ? (mine.up ? "UP" : "DOWN") : "", stake: mine ? fmt(mine.stake) : "",
+        pot: r ? fmt(pot(r)) : "", calls: r ? Number(r.calls) : 0, lock: cur ? nyTime(cur.lockAt) : "9:30 AM", bell: cur ? nyTime(cur.bellAt) : "4:00 PM", date,
+        code: S.code, link: refLink(S.code), inToday: !!mine, postText: postText(cur, mine, S.code),
+      });
+      return;
+    }
     if (act === "bell") return ringBell(Number(b.dataset.day));
     if (act === "tab") { S.boardTab = b.dataset.tab; render(); return; }
   }
@@ -728,6 +776,8 @@
       return;
     }
     host.addEventListener("click", onClick);
+    // remember who sent you (the pool page's own key: the credit lands at the office pool)
+    try { const c = (new URL(location.href).searchParams.get("ref") || "").toLowerCase(); if (validCode(c)) localStorage.setItem(REF_KEY, c); } catch (e) { /* private mode */ }
     render();
     refresh();
     clearInterval(ticker);

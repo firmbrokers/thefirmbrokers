@@ -141,3 +141,19 @@ input, select { font: inherit; }
   .board .one { display: none; }
   .cab { margin-bottom: 12px; padding: 10px; }
 }
+
+/* the SHARE cab (YOUR LINK / GET MY LINK) and the card modal — the pool page's,
+   with its palette written out (call.css has no --cab/--ink2/--rim tokens) */
+.share .link { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 6px; }
+.share .link .lnk { font-family: "VT323", ui-monospace, monospace; font-size: 19px; color: #f6ead0; background: #0b0e13; border: 2px solid #06080c; padding: 4px 8px; word-break: break-all; }
+.pc-overlay { position: fixed; inset: 0; background: rgba(6, 8, 12, .82); z-index: 8; display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 24px 12px; }
+.pc-box { width: min(760px, 100%); background: #262b33; border: 3px solid #06080c; box-shadow: 0 4px 0 #3a4148; padding: 14px; }
+.pc-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.pc-row { display: flex; gap: 10px; align-items: center; margin: 6px 0 10px; }
+.pc-row input { flex: 1; height: 40px; padding: 0 10px; background: #0b1a11; border: 3px solid #06080c; color: #b6ffcf; font-size: 20px; }
+.pc-card canvas { width: 100%; height: auto; display: block; border: 3px solid #06080c; image-rendering: auto; }
+.pc-card img.pc-img { width: 100%; height: auto; display: block; border: 3px solid #06080c; -webkit-touch-callout: default; }
+.pc-post { margin: 10px 0; }
+.pc-text { white-space: pre-wrap; background: #0b0e13; border: 3px solid #06080c; padding: 8px 10px; color: #f6ead0; font-size: 19px; line-height: 1.3; }
+.pc-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+@media (max-width: 520px) { .pc-actions { grid-template-columns: 1fr 1fr; } .pc-actions .go { grid-column: 1 / -1; } }

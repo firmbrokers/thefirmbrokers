@@ -219,6 +219,55 @@
     return sizes;
   }
 
+  /// THE MORNING CALL's card (call.js, 2026-09-12): the caller's own call when
+  /// there is one, the day's call otherwise; the stub carries the office pool's
+  /// code and the /call link. d: { branch, house, symbol ("$NVDA"), whose, side
+  /// ("UP"|"DOWN"|""), stake, pot, calls, lock, bell, date, code, link, handle, pfp }
+  function drawCall(canvas, d) {
+    canvas.width = W; canvas.height = H;
+    const x = canvas.getContext("2d");
+    const dd = Object.assign({}, d, { words: Object.assign({ subtitle: "one stock a day · UP or DOWN · settled at the bell on chainlink's feed" }, d.words || {}) });
+    backdrop(x); header(x, dd);
+    face(x, dd, d.side ? `called ${d.side}` : "calls it");
+    const RX = 352, RW = 1150 - RX;
+    const sizes = {};
+    fit(x, `${d.whose || "THE CALL"} · ${d.symbol || ""}`.trim(), RX, 172, { color: C.green, from: 18, to: 14, max: RW });
+    if (d.side) {
+      const col = d.side === "UP" ? C.bright : "#ff8a7a";
+      x.save(); x.shadowColor = col; x.shadowBlur = 28;
+      sizes.hero = fit(x, d.side, RX - 4, 278, { color: col, from: 84, to: 48, max: 300 });
+      x.restore();
+      x.font = sizes.hero + "px " + FD;
+      const w = x.measureText(d.side).width;
+      fit(x, `${d.stake || ""} $9TO5 on ${d.symbol || ""}`.trim(), RX + w + 24, 278, { color: C.green, from: 30, to: 18, max: RW - w - 24 });
+    } else {
+      x.save(); x.shadowColor = C.bright; x.shadowBlur = 28;
+      sizes.hero = fit(x, d.symbol || "$9TO5", RX - 4, 278, { color: C.bright, from: 84, to: 48, max: 520 });
+      x.restore();
+      x.font = sizes.hero + "px " + FD;
+      const w = x.measureText(d.symbol || "$9TO5").width;
+      fit(x, "UP or DOWN?", RX + w + 24, 278, { color: C.green, from: 30, to: 18, max: RW - w - 24 });
+    }
+    const n = Number(d.calls || 0);
+    fit(x, n > 0 ? `${n} call${n === 1 ? "" : "s"} in · pot ${d.pot || "0"} $9TO5 · winners split the losing side` : "be the first call · winners split the losing side", RX, 318, { font: FB, color: C.cream, from: 32, to: 22, max: RW });
+    fit(x, `calls lock ${d.lock || "9:30 AM"} New York · settled at the ${d.bell || "4:00 PM"} bell`, RX, 352, { font: FB, color: C.grey, from: 32, to: 22, max: RW });
+    // the stub: the code and the QR, exactly the pool card's
+    const SY = 384, SH = 200;
+    x.fillStyle = C.crt2; x.fillRect(RX, SY, RW, SH);
+    x.fillStyle = C.goldDeep; x.fillRect(RX, SY, RW, 4); x.fillRect(RX, SY + SH - 4, RW, 4);
+    for (let dx = RX + 8; dx < RX + RW; dx += 16) { x.fillStyle = C.goldDeep; x.fillRect(dx, SY + 10, 8, 2); x.fillRect(dx, SY + SH - 12, 8, 2); }
+    const hasQr = drawQr(x, d.link, 960, SY + 10, 180);
+    const TW = hasQr ? 960 - RX - 24 : RW - 32;
+    fit(x, "SENT BY", RX + 16, SY + 40, { color: C.green, from: 16, to: 16, max: TW });
+    x.save(); x.shadowColor = C.gold; x.shadowBlur = 18;
+    sizes.code = fit(x, String(d.code), RX + 16, SY + 108, { color: C.gold, from: 56, to: 28, max: TW });
+    x.restore();
+    fit(x, String(d.link).replace(/^https?:\/\//, ""), RX + 16, SY + 148, { font: FB, color: C.cream, from: 30, to: 22, max: TW });
+    fit(x, `open the link${hasQr ? ", or scan" : ""} · call before the lock`, RX + 16, SY + 182, { font: FB, color: C.grey, from: 26, to: 20, max: TW });
+    scanlines(x);
+    return sizes;
+  }
+
   /// the result card, after the bell: { branch, house, symbol, pot, date, bell, winner, winnerCode, refundWinner, refundPaid, beaconRound, link, players }
   function drawWinner(canvas, d) {
     canvas.width = W; canvas.height = H;
@@ -289,6 +338,8 @@
     if (window.__BRANCHES && window.__BRANCHES.marksReady) { try { await window.__BRANCHES.marksReady(); } catch (e) { /* the coin */ } }
     else if (!state.markImg && state.mark) state.markImg = await loadImg(state.mark);
     const winner = state.kind === "winner";
+    const call = state.kind === "call";
+    const draw = winner ? drawWinner : call ? drawCall : drawCard;
     const file = () => `${state.slug || "office-pool"}-${winner ? "result" : state.code}.png`;
     modal = el("div", "pc-overlay");
     modal.innerHTML = `<div class="pc-box"><div class="pc-head"><span class="lab">YOUR CARD</span><button class="chip pc-x" type="button">CLOSE</button></div>
@@ -304,7 +355,7 @@
     const canvas = modal.querySelector("canvas");
     const textEl = modal.querySelector(".pc-text");
     const hint = modal.querySelector(".pc-hint");
-    const paint = () => { (winner ? drawWinner : drawCard)(canvas, state); textEl.textContent = state.postText; };
+    const paint = () => { draw(canvas, state); textEl.textContent = state.postText; };
     paint();
     if (state.handle && !winner) loadPfp(state.handle).then((img) => { state.pfp = img; paint(); });
     const input = modal.querySelector(".pc-handle");
@@ -380,5 +431,5 @@
     });
   }
 
-  window.__POOL_CARD = { open, drawCard, drawWinner, pixelPfp, loadPfp, isPhone, get state() { return state; } };
+  window.__POOL_CARD = { open, drawCard, drawWinner, drawCall, pixelPfp, loadPfp, isPhone, get state() { return state; } };
 })();
