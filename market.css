@@ -125,6 +125,7 @@ button { font: inherit; }
 .more:hover { color: var(--gold); }
 .mk-board .legend { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; padding: 10px 14px; font-family: var(--fb); font-size: 18px; line-height: 22px; color: var(--grey); border-top: 3px solid var(--ink2); }
 .mk-board .legend .bv { color: var(--gold-deep); }
+.mk-board .legend .mg { color: var(--green); }
 .mk-foot { font-family: var(--fb); font-size: 18px; line-height: 22px; color: var(--grey); }
 .mk-foot a { display: inline-block; padding: 11px 6px; }
 
@@ -165,7 +166,7 @@ button { font: inherit; }
   .idc .twin { height: 44px; font-size: 18px; }
   .rw { grid-template-columns: 48px 1fr auto; gap: 10px; padding: 0 10px; height: 60px; }
   .rw img { width: 44px; height: 44px; }
-  .rw .lv { font-size: 18px; line-height: 18px; gap: 6px 8px; white-space: normal; flex-wrap: wrap; max-height: 36px; margin-top: 6px; }
+  .rw .lv { font-size: 18px; line-height: 18px; gap: 6px 8px; white-space: normal; flex-wrap: wrap; max-height: 42px; margin-top: 6px; } /* two lines + the row gap: the PARTS mark on a merged broker sits on the second line */
   .rw .lv .x { display: none; }
   .rw .pr { font-size: 24px; }
   .mk-board .tabs button { padding: 0 9px; font-size: 8px; }
