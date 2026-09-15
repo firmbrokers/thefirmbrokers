@@ -339,8 +339,11 @@
     // hired first, then by weight; the desk offers the hired ones that have not called
     out.sort((a, b) => (b.active - a.active) || (b.weight > a.weight ? 1 : b.weight < a.weight ? -1 : 0) || Number(a.id - b.id));
     S.brokers = out;
-    if (!S.selTouched) { S.sel = new Set(out.filter((b) => b.active && !b.call && !b.blocked).map((b) => b.id.toString())); }
-    else for (const k of [...S.sel]) { const b = out.find((x) => x.id.toString() === k); if (!b || !b.active || b.call) S.sel.delete(k); }
+    // WHO CALLS IT is a pick, not a switch (a holder found the on/off chips unclear,
+    // 2026-09-14): with a choice nobody is sent in until tapped; a lone broker is picked
+    const able = out.filter((b) => b.active && !b.call && !b.blocked);
+    if (!S.selTouched) { S.sel = new Set(able.length === 1 ? [able[0].id.toString()] : []); }
+    else for (const k of [...S.sel]) { const b = out.find((x) => x.id.toString() === k); if (!b || !b.active || b.call || b.blocked) S.sel.delete(k); }
   }
 
   /// THE BOARD: brokers that have ever called (Called logs, cached forward),
@@ -574,17 +577,23 @@
 
     // ---- the board: the day taking calls
     const upPays = S.odds.up, downPays = S.odds.down;
-    const oddsLine = r && (r.upStake > 0n || r.downStake > 0n)
-      ? `<span class="up">UP <b>${r.upStake > 0n ? "pays " + times(upPays) : "— nobody yet"}</b></span><span class="down">DOWN <b>${r.downStake > 0n ? "pays " + times(downPays) : "— nobody yet"}</b></span>`
-      : `<span class="dim">no calls yet · the first call sets the odds</span>`;
+    // the odds: what a side pays per 1 staked, once both sides are in. With one side
+    // empty "pays 1×" is true and useless (the day would be a push), so say that instead
+    const oddsLine = r && r.upStake > 0n && r.downStake > 0n
+      ? `<span class="up">UP <b>pays ${times(upPays)}</b></span><span class="down">DOWN <b>pays ${times(downPays)}</b></span>`
+      : r && (r.upStake > 0n || r.downStake > 0n)
+        ? (r.upStake > 0n
+          ? `<span class="up">UP <b>${fmt(r.upStake)} in</b></span><span class="down">DOWN <b>empty</b> <span class="dim">· the first DOWN call sets the odds</span></span>`
+          : `<span class="up">UP <b>empty</b> <span class="dim">· the first UP call sets the odds</span></span><span class="down">DOWN <b>${fmt(r.downStake)} in</b></span>`)
+        : `<span class="dim">no calls yet · the first call sets the odds</span>`;
     const potLine = r ? [`${r.calls} call${r.calls === 1 ? "" : "s"}`, `pot <b>${fmt(pot(r))}</b> $9TO5`, r.upStake > 0n || r.downStake > 0n ? `UP ${fmt(r.upStake)} / DOWN ${fmt(r.downStake)}` : "", r.sponsored > 0n ? `${fmt(r.sponsored)} sponsored` : ""].filter(Boolean).join(" · ") : (S.loaded ? "nobody has called yet — the first call opens the day" : "reading the chain…");
     const lockNY = cur ? nyTime(cur.lockAt) : "9:30 AM", bellNY = cur ? nyTime(cur.bellAt) : "4:00 PM";
     const myTodayLine = mineToday.length ? `<div><div class="lab">YOU</div><div class="hi">${mineToday.length} call${mineToday.length === 1 ? "" : "s"} · ${fmt(mineToday.reduce((s, c) => s + c.stake, 0n))} $9TO5</div><div class="fine">${[...new Set(mineToday.map((c) => (c.up ? "UP" : "DOWN")))].join(" and ")} · settled at the ${bellNY} bell</div></div>` : "";
     const board = `<div class="cab board"><div class="scr">${banner}<div class="hero">
       <div class="lab">${whose}</div>
-      <div class="sym">${cur ? "$" + esc(cur.symbol) : "—"}<span class="date">${cur ? `${nyDate(cur.lockAt)} · calls close ${lockNY} NY · settled at the ${bellNY} bell` : ""}</span></div>
+      <div class="sym">${cur ? "$" + esc(cur.symbol) : "—"}<span class="date">${cur ? `${nyDate(cur.lockAt)} · call it before ${lockNY} NY · decided at the ${bellNY} close` : ""}</span></div>
       <div class="odds">${oddsLine}</div>
-      <div class="one">your broker calls it UP or DOWN by the close, staking $9TO5 · wrong callers pay right callers<span class="long"> · ${T.rakeBps / 100}% of the losing side is the house's, half of it burned</span></div>
+      <div class="one"><span class="long">will ${cur ? "$" + esc(cur.symbol) : "it"} close higher than it opens? <b>UP</b> = higher, <b>DOWN</b> = lower · right callers split the wrong callers' stakes · min ${fmt(T.minStake)} $9TO5 a call</span><span class="short">close above its open = <b>UP</b> · below = <b>DOWN</b> · min ${fmt(T.minStake)} a call</span></div>
       <div class="fine">${potLine}</div></div>
       <div class="row">
         <div><div class="lab">${open ? "CALLS CLOSE IN" : "CALLS CLOSED"}</div><div class="cd${open && left <= HOT_WINDOW ? " hot" : ""}">${countdown(left)}</div><div class="fine">${cur ? `<span class="long">${nyTime(cur.lockAt, true)} NY${localTime(cur.lockAt)} · the opening bell</span><span class="short">${nyTime(cur.lockAt)} NY${localTime(cur.lockAt, true)}</span>` : ""}</div></div>
@@ -628,31 +637,38 @@
     if (!S.account) {
       deskBody = S.pickWallet
         ? `<div class="lab">WHICH WALLET?</div>${S.pickWallet.map((x, i) => `<button class="go" data-act="wallet" data-i="${i}" type="button">CLOCK IN WITH ${esc(x.info.name).toUpperCase()}</button>`).join("")}<div class="fine">this browser has more than one wallet</div>`
-        : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to call, collect, or ring the bell</div>`;
+        : `<button class="go" data-act="connect">CLOCK IN</button><div class="fine">connect a wallet on Robinhood Chain to call, collect, or ring the bell</div><div class="fine">first time here? <a href="#rules">how it works ↓</a> — three steps, one minute</div>`;
     } else {
+      // WHO CALLS IT: every hired broker is a chip with a pick box — hollow on the
+      // bench, filled when he is sent in; the ones that already called, or wait on a
+      // settle, are shown but not offered. ALL / NONE beside them when there is a choice.
       const chips = S.brokers.filter((b) => b.active).map((b) => {
         const on = S.sel.has(b.id.toString());
-        if (b.call) return `<button class="chip done" type="button" disabled>#${b.id} <small>${b.call.up ? "UP" : "DOWN"} ${fmt(b.call.stake)}</small></button>`;
-        if (b.blocked) return `<button class="chip done" type="button" disabled title="his last call is not settled yet">#${b.id} <small>waiting</small></button>`;
-        return `<button class="chip${on ? " on" : ""}" data-act="brk" data-id="${b.id}" type="button">#${b.id} <small>max ${fmt(b.max)}${b.record && b.record.streak ? ` · ${b.record.streak}🔥` : ""}</small></button>`;
+        if (b.call) return `<button class="chip done" type="button" disabled>#${b.id} <small>called ${b.call.up ? "UP" : "DOWN"} ${fmt(b.call.stake)}</small></button>`;
+        if (b.blocked) return `<button class="chip done" type="button" disabled title="his last call is not settled yet">#${b.id} <small>waiting on the bell</small></button>`;
+        return `<button class="chip pick${on ? " on" : ""}" data-act="brk" data-id="${b.id}" type="button" aria-pressed="${on}">#${b.id} <small>max ${fmt(b.max)}${b.record && b.record.streak ? ` · ${b.record.streak}🔥` : ""}</small></button>`;
       }).join("");
-      const brokerLine = S.brokers.some((b) => b.active)
-        ? `<div class="brokers">${chips}</div><div class="fine">${eligible.length ? `${S.sel.size} of ${eligible.length} hired broker${eligible.length === 1 ? "" : "s"} picked · one call per broker per day · a promotion raises the max (${fmt(T.stakePerWeight)} per point of weight)` : "every hired broker of yours has called today"}</div>`
-        : S.brokersOwned ? `<div class="fine">your brokers are not hired · hire one at the furnace to call</div>` : `<div class="fine">no broker in this wallet · <a href="/market">the market</a></div>`;
       const nSel = eligible.filter((b) => S.sel.has(b.id.toString())).length;
+      const allNone = eligible.length > 1 ? `<button class="chip all" data-act="all" type="button">ALL</button><button class="chip all" data-act="none" type="button">NONE</button>` : "";
+      const brokerLine = S.brokers.some((b) => b.active)
+        ? `<div class="brokers">${chips}${allNone}</div><div class="fine">${eligible.length ? `${nSel ? `<b>${nSel} of ${eligible.length}</b>` : `0 of ${eligible.length}`} picked · tap a broker to send him in · one call per broker per day · max = ${fmt(T.stakePerWeight)} × his weight` : "every hired broker of yours has called today"}</div>`
+        : S.brokersOwned ? `<div class="fine">your brokers are not hired · hire one at the furnace to call</div>` : `<div class="fine">no broker in this wallet · <a href="/market">the market</a></div>`;
       deskBody = `
       ${poor ? `<div class="need">you need at least ${fmt(T.minStake)} $9TO5 to call${buyHref ? ` · <a href="${buyHref}" target="_blank" rel="noopener">get it on letscash →</a>` : ""}</div>` : ""}
+      <div class="step"><span class="lab">1 · UP OR DOWN?</span><span class="fine">${cur ? `does $${esc(cur.symbol)} close above where it opens ${nyDate(cur.lockAt)}?` : ""}</span></div>
       <div class="sides"><button class="side up${S.side === "up" ? " on" : ""}" data-act="side" data-side="up" type="button">▲ UP</button><button class="side down${S.side === "down" ? " on" : ""}" data-act="side" data-side="down" type="button">▼ DOWN</button></div>
+      <div class="step"><span class="lab">2 · WHO CALLS IT</span><span class="fine">your hired brokers · each one is a separate call</span></div>
       ${brokerLine}
+      <div class="step"><span class="lab">3 · HOW MUCH, PER BROKER</span><span class="fine">$9TO5 · min ${fmt(T.minStake)} · trimmed to a broker's max</span></div>
       <div class="amt"><input type="text" inputmode="decimal" id="mc-amt" placeholder="${fmt(T.minStake) + " min · per broker"}"></div>
       <div class="presets"><button class="chip" data-act="min" type="button">MIN</button>${[25000, 50000, 100000].map((n) => `<button class="chip" data-act="preset" data-n="${n}" type="button">${n / 1e3}k</button>`).join("")}<button class="chip" data-act="max" type="button">MAX</button></div>
-      <button class="go" data-act="call" ${open && !poor && nSel && S.side ? "" : "disabled"}>${!open ? "CALLS CLOSED — NEXT DAY AT THE OPENING BELL" : !S.side ? "PICK UP OR DOWN" : !nSel ? "PICK A BROKER" : `CALL $${esc(cur.symbol)} ${S.side.toUpperCase()}${nSel > 1 ? ` WITH ${nSel} BROKERS` : ""}`}</button>
+      <button class="go" data-act="call" ${open && !poor && nSel && S.side ? "" : "disabled"}>${!open ? "CALLS CLOSED — NEXT DAY AT THE OPENING BELL" : !S.side ? "1 · PICK UP OR DOWN" : !nSel ? "2 · PICK A BROKER" : `CALL $${esc(cur.symbol)} ${S.side.toUpperCase()}${nSel > 1 ? ` WITH ${nSel} BROKERS` : ""}`}</button>
       ${S.account && S.allowance < T.minStake && !poor ? `<div class="fine">two wallet prompts the first time: 1) allow $9TO5 · 2) the call</div>` : ""}
       <div class="fine">balance ${fmt(S.balance)} $9TO5 · ${short(S.account)}</div>
       ${mineToday.length ? `<div class="lab" style="margin-top:6px">YOUR CALLS · $${esc(cur.symbol)}</div><div class="mine">${mineToday.map((c) => `<div class="r"><span>#${c.tokenId} ${sideWord(c.up)}</span><span class="n">${fmt(c.stake)}</span></div>`).join("")}</div>` : ""}
       ${L && (S.myCalls[L.day] || []).length ? `<div class="lab" style="margin-top:6px">ON THE FLOOR · $${esc(L.symbol)}</div><div class="mine">${(S.myCalls[L.day] || []).map((c) => `<div class="r"><span>#${c.tokenId} ${sideWord(c.up)}</span><span class="n">${fmt(c.stake)}</span></div>`).join("")}</div>` : ""}
-      <div class="lab" style="margin-top:6px">TO COLLECT</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span><b>${fmt(S.claimTotal)}</b> $9TO5${S.claimDays.length ? ` · ${S.claimDays.length} day${S.claimDays.length === 1 ? "" : "s"}` : ""}</span><button class="chip" data-act="collect" ${S.claimDays.length ? "" : "disabled"}>COLLECT</button></div>
+      ${S.claimDays.length ? `<div class="lab" style="margin-top:6px">TO COLLECT</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span><b>${fmt(S.claimTotal)}</b> $9TO5 · ${S.claimDays.length} day${S.claimDays.length === 1 ? "" : "s"}</span><button class="chip" data-act="collect">COLLECT</button></div>` : ""}
       <details id="mc-spd"><summary>add to ${cur ? "$" + esc(cur.symbol) + "'s" : "the"} prize</summary><div class="amt" style="margin-top:6px"><input type="text" inputmode="decimal" id="mc-sp" placeholder="$9TO5 for the right callers"><button class="chip" data-act="sponsor" ${open ? "" : "disabled"}>SPONSOR</button></div><div class="fine">paid to whoever calls it right, on top of the losers' money · rolls to the next day on a push</div></details>
 `;
     }
@@ -676,10 +692,15 @@
       <div class="list">${!B ? `<div class="dim">reading the chain…</div>` : !rowsB.length ? `<div class="dim">${B.note || "no streak yet"}</div>` : rowsB.map((x, i) => `<div class="r${x.owner && same(x.owner, S.account) ? " me" : ""}"><span class="who">${i + 1}. broker <b>#${x.id}</b>${x.owner ? ` <a class="dim" href="${explorer(x.owner)}" rel="noopener">${same(x.owner, S.account) ? "you" : short(x.owner)}</a>` : ""}${pinFor(tab === "live" ? x.streak : x.best) ? `<span class="pin">${pinFor(tab === "live" ? x.streak : x.best)}</span>` : ""}</span><span class="n">${tab === "live" ? x.streak : x.best} in a row <span class="dim">· ${x.wins}/${x.played}</span></span></div>`).join("")}</div>
       <div class="fine" style="margin-top:8px">3 in a row = HOT HAND · 5 = ORACLE · 10 = LEGEND OF THE FLOOR · the streak lives on the broker and travels with him</div></div></div>`;
 
-    const rules = `<div class="cab rules"><div class="lab">HOUSE RULES</div>
-      <p><b>1.</b> One stock a trading day. Before its ${lockNY} New York opening bell, a hired broker calls it UP or DOWN, staking ${fmt(T.minStake)} to ${fmt(T.stakePerWeight)} × his weight in $9TO5. One call per broker per day. A call is final.</p>
-      <p><b>2.</b> At the ${bellNY} bell Chainlink's Robinhood feed decides: the first print after the open against the last print at or before the bell, both proved on-chain from the feed's own rounds. Wrong callers pay right callers, pro-rata. ${T.rakeBps / 100}% of the losing side is the house's, half of it burned.</p>
-      <p><b>3.</b> Flat day (within ${(T.deadbandBps / 100).toFixed(2)}%), one side empty, market holiday: no contest, everyone refunded. Call it right three days running and your broker wears a pin. Fine print: the <a href="/docs#call">handbook</a>.</p></div>`;
+    const rules = `<div class="cab rules" id="rules"><div class="lab">HOW IT WORKS · THE RULES</div>
+      <ol class="steps">
+      <li><b class="k">1</b><span><b class="t">One stock a trading day.</b> The office names it the day before. The question is always the same: will it close higher than it opens?</span></li>
+      <li><b class="k">2</b><span><b class="t">Call it before ${lockNY} New York</b> (the opening bell). A hired broker of yours calls <span class="grn">UP</span> or <span class="red">DOWN</span>, staking $9TO5: <b>${fmt(T.minStake)} at least</b>, at most ${fmt(T.stakePerWeight)} × his weight. One call per broker per day. A call is final — after ${lockNY} the desk is closed until the next day.</span></li>
+      <li><b class="k">3</b><span><b class="t">Decided at the ${bellNY} close.</b> Chainlink's Robinhood feed for the stock: its first price after the open against its last price at or before the bell, both proved on-chain from the feed's own rounds. Nobody at the firm can touch the price.</span></li>
+      <li><b class="k">4</b><span><b class="t">The pot.</b> Right callers get their stake back plus the wrong callers' stakes, split pro-rata to what each staked. ${T.rakeBps / 100}% of the losing side is the house's, half of it burned. Sponsored prizes go to the right callers too. Collect from this desk any time after the close.</span></li>
+      <li><b class="k">5</b><span><b class="t">No contest, everyone refunded:</b> a flat day (within ${(T.deadbandBps / 100).toFixed(2)}%), everyone on the same side, or a market holiday.</span></li>
+      <li><b class="k">6</b><span><b class="t">Streaks.</b> Call it right three days running and your broker wears a HOT HAND pin; five is ORACLE, ten LEGEND OF THE FLOOR. Fine print: the <a href="/docs#call">handbook</a>.</span></li>
+      </ol></div>`;
 
     // ---- the link: the wallet's pool code, on the call's own address (a holder
     // asked for a referral on the call, 2026-09-12: the call contract pays no
@@ -734,6 +755,7 @@
     if (act === "wallet") { const wl = S.pickWallet && S.pickWallet[Number(b.dataset.i)]; if (wl) connect(wl).catch((err) => toast(humanError(err), false)); return; }
     if (act === "side") { S.side = b.dataset.side; render(); return; }
     if (act === "brk") { S.selTouched = true; const k = b.dataset.id; if (S.sel.has(k)) S.sel.delete(k); else S.sel.add(k); render(); return; }
+    if (act === "all" || act === "none") { S.selTouched = true; S.sel = new Set(act === "all" ? S.brokers.filter((x) => x.active && !x.call && !x.blocked).map((x) => x.id.toString()) : []); render(); return; }
     if (act === "min") { if (amt()) amt().value = fmt(terms().minStake, 0); return; }
     if (act === "max") {
       // the biggest stake every picked broker can take (each is trimmed to his own max on send)
