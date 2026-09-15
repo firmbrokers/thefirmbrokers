@@ -232,6 +232,55 @@
     return Number(BigInt(j.result));
   }
 
+  // ------------------------------------------------------------ log windows
+  /// The official RPC began refusing eth_getLogs over 10,000 blocks on
+  /// 2026-09-15 ("internal server errror"; 9,999 answers) — a hard cap, not a
+  /// load complaint, so no retry of the same range can ever succeed and the
+  /// old bisect-from-15M-blocks walked 2,048 leaves into the per-IP limit.
+  /// Every wide scan is now paged at CFG.logSpan, oldest first, ONE page in
+  /// flight, a short gap between pages. Under that the old facts still hold
+  /// (10,000 LOGS per answer, "log query timed out" for an expensive page):
+  /// a page that fails for those bisects as before.
+  const LOG_SPAN = () => Math.max(1000, Number(CFG.logSpan) || 9_000);
+  const LOG_GAP_MS = 200;
+
+  /// the records-data host (the hourly scan served as JSON, 2026-09-09): the
+  /// block it is complete to, and per-broker histories. null = no records.
+  let _recordsHead = { at: 0, v: null };
+  const recordsBase = () => (CFG.recordsData ? String(CFG.recordsData).replace(/\/+$/, "") : "");
+  async function recordsGet(name, bust) {
+    const r = await fetch(`${recordsBase()}/${name}?h=${bust}`);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error("records http " + r.status);
+    return r.json();
+  }
+  async function recordsHead() {
+    if (!recordsBase()) return null;
+    if (_recordsHead.v && Date.now() - _recordsHead.at < 300_000) return _recordsHead.v;
+    try {
+      const h = await recordsGet("head.json", Math.floor(Date.now() / 300000));
+      const v = h && Number(h.head) >= CFG.deployBlock ? { head: Number(h.head), hired: Number(h.hired) || 0, at: h.at || "" } : null;
+      _recordsHead = { at: Date.now(), v };
+      return v;
+    } catch (e) { return null; }
+  }
+  /// one broker's recorded history to the records' head: t transfers
+  /// [from, to, block, li], s syncs [weight, liveFrom, block, li], d deliveries
+  /// [asset, ethIn, out, block, tx, li] — each sorted by block
+  async function tokenRecords(id, head) {
+    return (await recordsGet(`t/${id}.json`, head)) || { t: [], s: [], d: [] };
+  }
+  /// every settled hour on record: rows [round, pot, totalWeight, block], oldest first
+  async function recordsRounds(head) {
+    const rows = await recordsGet("rounds.json", head);
+    return Array.isArray(rows) ? rows : [];
+  }
+  async function mapLimit(items, n, fn) {
+    const out = new Array(items.length); let i = 0;
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, async () => { while (i < items.length) { const k = i++; out[k] = await fn(items[k], k); } }));
+    return out;
+  }
+
   /// "Too many requests" and "range too large" are OPPOSITE instructions, and
   /// this file used to treat them identically: rpcLogs turned both into a plain
   /// Error and rpcLogsRange split the range on either. So the code's answer to
@@ -297,7 +346,28 @@
     throw last;
   }
 
-  async function rpcLogsRange(base, from, to, depth, noWallet) {
+  /// every log of `base` in [from, to]: a range wider than the node's window
+  /// is walked in pages, oldest first, one in flight; "latest" is pinned to a
+  /// block first so the pages add up. `maxPages` (optional) refuses a scan
+  /// that would take more requests than the caller can stand — a decorative
+  /// stat hides instead of hammering the public node for ten minutes.
+  async function rpcLogsRange(base, from, to, depth, noWallet, maxPages) {
+    const span = LOG_SPAN();
+    let end = to;
+    if (end === "latest") { const head = await blockNumber(); if (head - from + 1 > span) end = head; }
+    if (end === "latest" || end - from + 1 <= span) return rpcLogsBisect(base, from, end, depth, noWallet);
+    const pages = Math.ceil((end - from + 1) / span);
+    if (maxPages && pages > maxPages) { const e = new Error(`log scan too wide for the public node (${pages} pages of ${span} blocks)`); e.tooWide = true; throw e; }
+    const out = [];
+    for (let a = from; a <= end; a += span) {
+      if (a > from) await sleep(LOG_GAP_MS);
+      const got = await rpcLogsBisect(base, a, Math.min(end, a + span - 1), depth, noWallet);
+      for (const g of got) out.push(g);
+    }
+    return out;
+  }
+
+  async function rpcLogsBisect(base, from, to, depth, noWallet) {
     depth = depth || 0;
     const params = Object.assign({}, base, {
       fromBlock: "0x" + from.toString(16),
@@ -313,8 +383,8 @@
       if (to === "latest") to = await blockNumber();
       if (to - from < 2) throw e;
       const mid = Math.floor((from + to) / 2);
-      return (await rpcLogsRange(base, from, mid, depth + 1, noWallet)).concat(
-        await rpcLogsRange(base, mid + 1, to, depth + 1, noWallet)
+      return (await rpcLogsBisect(base, from, mid, depth + 1, noWallet)).concat(
+        await rpcLogsBisect(base, mid + 1, to, depth + 1, noWallet)
       );
     }
   }
@@ -716,14 +786,18 @@
     // chain cannot serve it -- it serves all three in one request each. It is
     // that these scans move ~5,900 log entries across the wire to produce a
     // single integer. If that ever matters, that ratio is the reason.
-    const act = await rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true);
-    const deact = await rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true);
+    // Since 2026-09-15 the node's 9,999-block window makes each of these
+    // ~1,700 requests: the count comes from the records (head.json `hired`,
+    // hiredCount below) and this ledger runs only while the range still fits
+    // in 200 pages — past that it throws and the stat hides, as designed.
+    const act = await rpcLogsRange({ address: CFG.nft, topics: [ACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true, 200);
+    const deact = await rpcLogsRange({ address: CFG.nft, topics: [DEACTIVATED_TOPIC] }, CFG.deployBlock, "latest", 0, true, 200);
     // fuse() burns the absorbed tokens WITHOUT a Deactivated event, so a
     // fused broker's last Activated/Deactivated event stays Activated and
     // the last-wins ledger would count him hired forever. A burn is
     // terminal, so burned ids are a hard exclusion, immune to ordering.
     // NB Transfer's tokenId is the THIRD indexed arg: topics[3].
-    const burns = await rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, ZERO_WORD] }, CFG.deployBlock, "latest", 0, true);
+    const burns = await rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, ZERO_WORD] }, CFG.deployBlock, "latest", 0, true, 200);
     const burned = new Set(burns.map((g) => Number(BigInt(g.topics[3]))));
     const last = {};
     const mark = (logs, on) => {
@@ -778,16 +852,23 @@
   async function ownedSince(addr) {
     const key = String(addr).toLowerCase();
     if (_sinceFor.addr === key && _sinceFor.map) return _sinceFor.map;
-    const logs = await rpcLogsRange(
-      { address: CFG.nft, topics: [TRANSFER_TOPIC, null, "0x" + word(addr)] },
-      CFG.deployBlock, "latest", 0, true
-    );
     const map = {};
-    for (const g of logs) {
-      const id = Number(BigInt(g.topics[3]));
-      const blk = Number(BigInt(g.blockNumber));
-      if (!(id in map) || blk > map[id]) map[id] = blk;
+    const take = (id, blk) => { if (!(id in map) || blk > map[id]) map[id] = blk; };
+    // the records carry every transfer to the records' head; the chain adds the tail
+    let from = CFG.deployBlock;
+    const h = await recordsHead();
+    if (h) {
+      try {
+        const idx = await recordsGet(`w/${key}.json`, h.head);
+        const ids = ((idx && idx.ids) || []).map(Number);
+        const files = await mapLimit(ids, 8, (id) => tokenRecords(id, h.head));
+        files.forEach((f, i) => { for (const [, to, block] of f.t || []) if (String(to).toLowerCase() === key) take(ids[i], Number(block)); });
+        from = h.head + 1;
+      } catch (e) { for (const k in map) delete map[k]; from = CFG.deployBlock; }
     }
+    // without the records this is the whole history: 400 pages at most, else the line hides
+    const logs = await rpcLogsRange({ address: CFG.nft, topics: [TRANSFER_TOPIC, null, "0x" + word(addr)] }, from, "latest", 0, true, from === CFG.deployBlock ? 400 : 0);
+    for (const g of logs) take(Number(BigInt(g.topics[3])), Number(BigInt(g.blockNumber)));
     _sinceFor = { addr: key, map };
     return map;
   }
@@ -800,28 +881,42 @@
     // claimed. The money was never missing; the number was.
     const since = owner ? await ownedSince(owner) : null;
     let eth = 0n, usd6 = 0n, mixed = false;
+    const add = (tid, asset, ethIn, out, block) => {
+      if (since) {
+        const from = since[tid];
+        // No transfer-in found: fall back to the whole history rather than
+        // hiding real earnings. Reserve #1 was minted before deployBlock, so
+        // the treasury's own token takes this path -- which is the right way
+        // round to be wrong, and it affects one wallet.
+        if (from !== undefined && block < from) return;
+      }
+      eth += ethIn;
+      // Delivered(uint256 indexed tokenId, uint8 indexed assetIdx, uint256 ethIn, uint256 out)
+      if (asset === USDG_ASSET) usd6 += out;
+      else mixed = true;
+    };
+    // the records' deliveries to their head (one small file a broker), the chain for the tail
+    let from = CFG.deployBlock;
+    const h = await recordsHead();
+    if (h) {
+      try {
+        const files = await mapLimit(ids, 8, (id) => tokenRecords(id, h.head));
+        files.forEach((f, i) => { for (const [asset, ethIn, out, block] of f.d || []) add(Number(ids[i]), Number(asset), BigInt(ethIn), BigInt(out), Number(block)); });
+        from = h.head + 1;
+      } catch (e) { eth = 0n; usd6 = 0n; mixed = false; from = CFG.deployBlock; }
+    }
     for (let i = 0; i < ids.length; i += 100) {
       const topics = [DELIVERED_TOPIC, ids.slice(i, i + 100).map((id) => "0x" + BigInt(id).toString(16).padStart(64, "0"))];
-      const logs = await rpcLogsRange({ address: CFG.engine, topics }, CFG.deployBlock, "latest", 0, true);
-      for (const g of logs) {
-        if (since) {
-          const tid = Number(BigInt(g.topics[1]));
-          const from = since[tid];
-          // No transfer-in found: fall back to the whole history rather than
-          // hiding real earnings. Reserve #1 was minted before deployBlock, so
-          // the treasury's own token takes this path -- which is the right way
-          // round to be wrong, and it affects one wallet.
-          if (from !== undefined && Number(BigInt(g.blockNumber)) < from) continue;
-        }
-        eth += BigInt("0x" + g.data.slice(2, 66));
-        // Delivered(uint256 indexed tokenId, uint8 indexed assetIdx, uint256 ethIn, uint256 out)
-        if (Number(BigInt(g.topics[2])) === USDG_ASSET) usd6 += BigInt("0x" + g.data.slice(66, 130));
-        else mixed = true;
-      }
+      const logs = await rpcLogsRange({ address: CFG.engine, topics }, from, "latest", 0, true, from === CFG.deployBlock ? 400 : 0);
+      for (const g of logs) add(Number(BigInt(g.topics[1])), Number(BigInt(g.topics[2])), BigInt("0x" + g.data.slice(2, 66)), BigInt("0x" + g.data.slice(66, 130)), Number(BigInt(g.blockNumber)));
     }
     return { eth, usd6, mixed };
   }
   async function hiredCount() {
+    // the hourly scan counts the brokers on payroll (head.json `hired`, 2026-09-15);
+    // the client-side ledger is the fallback while a full scan still fits
+    const h = await recordsHead();
+    if (h && h.hired > 0) return h.hired;
     return (await firmLedger()).hired;
   }
 
@@ -1160,6 +1255,9 @@
     call,
     callBatch,
     tokensOfByRecords,
+    recordsHead,
+    tokenRecords,
+    recordsRounds,
     blockNumber,
     rpcLogsRange,
     TOPICS: { ACTIVATED: ACTIVATED_TOPIC, DEACTIVATED: DEACTIVATED_TOPIC, DELIVERED: DELIVERED_TOPIC },

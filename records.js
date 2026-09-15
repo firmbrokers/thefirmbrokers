@@ -38,13 +38,12 @@
   const KEY_ROUNDS = "firmbrokers.records.rounds.v1";
   const KEY_WALLET = "firmbrokers.records.wallet.v2."; // + address
   const KEY_META = "firmbrokers.records.assets.v1"; // the asset menu (symbols, decimals): full and closed, so a day's cache is safe
-  const PAGE_BLOCKS = 1_500_000; // one getLogs per ~2 days of chain for id-filtered scans (measured 2026-09-07: 0.3–0.6 s a page; 3M+ blocks "log query timed out")
-  const MIN_PAGE = 50_000;
-  // the mint and the first hires (≈2.6 days of chain after deploy) are so dense that a
-  // 1.5M-block id-filtered page there times out on the node (2.2–3.2 s each, every
-  // first visit, 2026-09-07): those blocks are paged at half size from the start
-  const DENSE_UNTIL = CFG.deployBlock + 2_250_000;
-  const pageCap = (a) => (a < DENSE_UNTIL ? PAGE_BLOCKS / 2 : PAGE_BLOCKS);
+  // the node's window: since 2026-09-15 the official RPC refuses 10,000+ blocks with
+  // "internal server errror" (9,999 answers) — CFG.logSpan, shared with firm.js. A
+  // page the node still calls too expensive is halved from there, down to MIN_PAGE
+  const PAGE_BLOCKS = () => Math.max(1000, Number(CFG.logSpan) || 9_000);
+  const MIN_PAGE = 1_000;
+  const RATE_LIMITED = /\b429\b|too many requests|rate.?limit/i;
   const GAP_MS = 300; // between getLogs: the official RPC 429s a burst, and its 429 carries a malformed CORS header so the browser only sees "Failed to fetch"
   const REQ_TIMEOUT = 30_000; // a stalled phone connection must not leave the page on "reading the chain…" for ever
   const ZERO = "0x0000000000000000000000000000000000000000";
@@ -116,7 +115,11 @@
         const j = await r.json();
         if (j.error) {
           const e = new Error(j.error.message || "rpc error");
-          if (/timed out|too large|too many results|exceed|limit/i.test(e.message)) { e.tooBig = true; throw e; }
+          // a node complaint about the RANGE ("log query timed out", "internal
+          // server errror" for a window it will not serve) is never cured by
+          // asking again: thrown at once for the caller to halve. Only a
+          // throttle wants the same range again, later.
+          if (!RATE_LIMITED.test(e.message)) e.tooBig = true;
           throw e;
         }
         return j.result || [];
@@ -127,29 +130,24 @@
     }
     throw last || new Error("no answer from the rpc");
   });
-  /// every log in [from, to] for a filter. `whole`: try the range in ONE
-  /// request first (RoundSettled since launch = 239 logs in 0.5 s; Transfers to
-  /// one wallet in 0.25 s), then page. A page the node calls too expensive is
-  /// halved at once (down to MIN_PAGE); after a page succeeds the size grows
-  /// back, so one heavy stretch (the mint) does not slow the whole scan.
-  /// The wallet's provider is never used (its chain may not be ours).
+  /// every log in [from, to] for a filter, in pages the node answers (the
+  /// window above), oldest first, one in flight. A page the node calls too
+  /// expensive is halved at once (down to MIN_PAGE); after a page succeeds the
+  /// size grows back, so one heavy stretch (the mint) does not slow the whole
+  /// scan. The wallet's provider is never used (its chain may not be ours).
   async function scan(base, from, to, opts) {
     opts = opts || {};
     if (to < from) return [];
-    if (opts.whole || to - from + 1 <= PAGE_BLOCKS) {
-      try { return (await logsOnce(base, from, to)) || []; }
-      catch (e) { if (to - from + 1 <= MIN_PAGE) throw e; /* page it */ }
-    }
     const out = [];
-    let page = PAGE_BLOCKS;
+    let page = PAGE_BLOCKS();
     for (let a = from; a <= to;) {
-      page = Math.min(page, pageCap(a), to - a + 1);
+      page = Math.min(page, to - a + 1);
       const b = Math.min(to, a + page - 1);
       try {
         const got = await logsOnce(base, a, b);
         for (const l of got || []) out.push(l);
         a = b + 1;
-        page = Math.min(pageCap(a), page * 2);
+        page = Math.min(PAGE_BLOCKS(), page * 2);
         if (opts.progress) opts.progress(Math.min(1, (a - from) / (to - from + 1)));
       } catch (e) {
         if (page <= MIN_PAGE) throw e;

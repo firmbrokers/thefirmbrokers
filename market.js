@@ -99,12 +99,25 @@
     const absorbed = [marks & 0xffff, (marks >>> 16) & 0xffff].filter((a) => a > 0);
     // history: first hire, last pay (topic-filtered, tiny result sets)
     let hiredAt = null, lastPaid = null, paidTotal = 0n;
+    // the records carry the broker's syncs and paydays to their head (his first
+    // sync with a weight is his hire), the chain adds the tail; without the
+    // records the full scan runs only while it fits in 200 pages of the node's
+    // window (2026-09-15), else the card shows without a history
     try {
       const t = "0x" + BigInt(id).toString(16).padStart(64, "0");
-      const [act, del] = await Promise.all([
-        F.rpcLogsRange({ address: CFG.nft, topics: [F.TOPICS.ACTIVATED, t] }, CFG.deployBlock, "latest", 0, true),
-        F.rpcLogsRange({ address: CFG.engine, topics: [F.TOPICS.DELIVERED, t] }, CFG.deployBlock, "latest", 0, true),
-      ]);
+      let from = CFG.deployBlock;
+      const h = await F.recordsHead();
+      if (h) {
+        try {
+          const rec = await F.tokenRecords(id, h.head);
+          const first = (rec.s || []).find((row) => BigInt(row[0]) > 0n);
+          if (first) hiredAt = Number(first[2]);
+          for (const [, ethIn, , block] of rec.d || []) { lastPaid = Number(block); paidTotal += BigInt(ethIn); }
+          from = h.head + 1;
+        } catch (e) { hiredAt = null; lastPaid = null; paidTotal = 0n; from = CFG.deployBlock; }
+      }
+      const act = hiredAt == null ? await F.rpcLogsRange({ address: CFG.nft, topics: [F.TOPICS.ACTIVATED, t] }, from, "latest", 0, true, 200) : [];
+      const del = await F.rpcLogsRange({ address: CFG.engine, topics: [F.TOPICS.DELIVERED, t] }, from, "latest", 0, true, 200);
       if (act.length) hiredAt = Number(BigInt(act[0].blockNumber));
       if (del.length) { lastPaid = Number(BigInt(del[del.length - 1].blockNumber)); for (const g of del) paidTotal += BigInt("0x" + g.data.slice(2, 66)); }
     } catch (e) {}

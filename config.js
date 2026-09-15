@@ -76,6 +76,7 @@ window.FIRM_CFG = {
   // test/keeper-sweep-config.mjs fails when these drift from the keeper.
   sweep: { minWei: "2000000000000000", txMinWei: "20000000000000000", maxWaitRounds: 48, afterSec: 1200, slotsMax: 200, idsMax: 100, chunksMax: 3, assetChunksMax: 2 },
   deployBlock: 48370000, // scan start = the token launch (2026-08-28 14:28Z). Every broker anyone owns was minted after this except our reserve #1; keeps the owned-broker scan inside the range every public RPC serves.
+  logSpan: 9000, // the widest eth_getLogs window the official RPC answers. On 2026-09-15 it began refusing 10,000+ blocks with "internal server errror" (9,999 answers) — a hard cap, not a load complaint. Every scanner pages at this; raise only after measuring.
 
   // ---- the mint: on OpenSea (decided 2026-08-25) ----
   // Minting happens on OpenSea, not on this site. The HR desk and the street

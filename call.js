@@ -778,11 +778,16 @@
       const cur = S.cur;
       const mine = cur ? (S.myCalls[cur.day] || [])[0] || null : null;
       const date = cur ? new Date(cur.lockAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : "";
+      const dateLong = cur ? new Date(cur.lockAt * 1000).toLocaleDateString("en-US", { timeZone: "America/New_York", weekday: "long", month: "long", day: "numeric" }) : "";
       const r = cur && cur.exists ? cur.r : null;
+      // the card's two buttons: what each side pays once both are in; what is on each side until then
+      const both = !!r && r.upStake > 0n && r.downStake > 0n;
       window.__POOL_CARD.open({
         kind: "call", slug: "morning-call", branch: "THE MORNING CALL", house: "FIRM BROKERS", mark: "/art/marks/hq.png", symbol: cur ? "$" + cur.symbol : "$9TO5",
         whose: cur ? `${nyWeekday(cur.lockAt).toUpperCase()}'S CALL` : "THE CALL", side: mine ? (mine.up ? "UP" : "DOWN") : "", stake: mine ? fmt(mine.stake) : "",
-        pot: r ? fmt(pot(r)) : "", calls: r ? Number(r.calls) : 0, lock: cur ? nyTime(cur.lockAt) : "9:30 AM", bell: cur ? nyTime(cur.bellAt) : "4:00 PM", date,
+        pays: both ? { up: times(S.odds.up), down: times(S.odds.down) } : null,
+        sides: r ? { up: fmt(r.upStake), down: fmt(r.downStake), upIn: r.upStake > 0n, downIn: r.downStake > 0n } : null,
+        pot: r ? fmt(pot(r)) : "", calls: r ? Number(r.calls) : 0, lock: cur ? nyTime(cur.lockAt) : "9:30 AM", bell: cur ? nyTime(cur.bellAt) : "4:00 PM", date, dateLong,
         code: S.code, link: refLink(S.code), inToday: !!mine, postText: postText(cur, mine, S.code),
       });
       return;

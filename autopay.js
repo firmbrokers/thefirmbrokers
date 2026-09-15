@@ -195,13 +195,26 @@
       for (const [id] of starved) { const m = meta.get(id); if (m && m.pots[c.asset] > 0n) { pot += m.pots[c.asset]; n++; } }
       assets.push({ asset: c.asset, pot, brokers: n, sends: plan.send.some((x) => x.asset === c.asset) });
     }
-    // the rate: fees per hour over the last two days, and the weight they are shared by
+    // the rate: fees per hour over the last two days, and the weight they are shared by.
+    // The settled hours come from the records (rounds.json, complete to their head) and
+    // the chain adds the tail; without the records the scan is capped at 40 pages of the
+    // node's window (2026-09-15: 9,999 blocks — the old 1.7M-block scan would be 189)
     let potPerHour = 0n;
     try {
       const head = await F.blockNumber();
-      const logs = await F.rpcLogsRange({ address: CFG.engine, topics: [TOPIC_SETTLED] }, Math.max(CFG.deployBlock, head - 1_700_000), head, 0, true);
+      const from = Math.max(CFG.deployBlock, head - 1_700_000);
       let sum = 0n, lo = Infinity, hi = 0;
-      for (const l of logs || []) { sum += big(l.data, 0); const r = Number(BigInt(l.topics[1])); lo = Math.min(lo, r); hi = Math.max(hi, r); }
+      const take = (r, pot) => { sum += pot; lo = Math.min(lo, r); hi = Math.max(hi, r); };
+      let tailFrom = from, pages = 40;
+      const rec = await F.recordsHead();
+      if (rec) {
+        try {
+          for (const [r, pot, , block] of await F.recordsRounds(rec.head)) if (Number(block) >= from && Number(block) <= rec.head) take(Number(r), BigInt(pot));
+          tailFrom = Math.max(from, rec.head + 1); pages = 0;
+        } catch (e) { sum = 0n; lo = Infinity; hi = 0; tailFrom = from; pages = 40; }
+      }
+      const logs = await F.rpcLogsRange({ address: CFG.engine, topics: [TOPIC_SETTLED] }, tailFrom, head, 0, true, pages);
+      for (const l of logs || []) take(Number(BigInt(l.topics[1])), big(l.data, 0));
       if (hi >= lo) potPerHour = sum / BigInt(Math.max(1, hi - lo + 1));
     } catch (e) { potPerHour = 0n; }
     const totalWeight = toBig(await F.call(CFG.engine, SEL.totalWeight, true));
